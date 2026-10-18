@@ -86,9 +86,10 @@ def make_pkce() -> tuple[str, str]:
     return verifier, challenge_for(verifier)
 
 
-def build_auth_url(port: int, challenge: str, state: str, workspace_id: str, label: str) -> str:
+def build_auth_url(port: int, challenge: str, state: str, workspace_id: str, label: str,
+                   *, callback_url: str | None = None) -> str:
     params = {
-        "callback_url": f"http://127.0.0.1:{port}/callback",
+        "callback_url": callback_url or f"http://127.0.0.1:{port}/callback",
         "code_challenge": challenge,
         "code_challenge_method": "S256",
         "state": state,
