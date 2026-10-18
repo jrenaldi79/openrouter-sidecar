@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import json
 import secrets
-import sqlite3
 from contextlib import nullcontext
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from . import storage
 from .advisor_client import AdvisorClient
 from .advisor_store import AdvisorAccessError, AdvisorStore, Scope
 from .credentials import CHANGED, CredentialSource, KeyringCredentials
@@ -223,7 +223,7 @@ class AdvisorService:
                     )
                     try:
                         self.store.record_upload(scope, chat_id, file_id, token)
-                    except (sqlite3.Error, OSError, AdvisorAccessError):
+                    except (*storage.DB_ERRORS, OSError, AdvisorAccessError):
                         # The confirmed ID belongs to this upload even if local receipt
                         # persistence fails. Never enumerate the workspace to guess it.
                         try:

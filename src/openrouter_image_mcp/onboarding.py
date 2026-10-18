@@ -61,8 +61,7 @@ class OnboardingDemos:
                 UNIQUE(owner, workspace, settings_id, revision, demo)
             )''')
             db.commit()
-            with db:
-                yield db
+            yield db
 
     def _context(self, settings_id, revision=None, scope=None):
         if scope is not None:
@@ -91,8 +90,7 @@ class OnboardingDemos:
             self.advisors._current(scope)
             # Preferences share this database. Read their revision under this
             # transaction rather than recursively acquiring their write lock.
-            if db.execute("SELECT name FROM sqlite_master WHERE type='table' "
-                          "AND name='sidecar_preferences'").fetchone():
+            if db.has_table("sidecar_preferences"):
                 prefs = db.execute('SELECT settings_id,revision FROM sidecar_preferences '
                                    'WHERE owner=? AND workspace=?',
                                    (scope.owner, scope.workspace)).fetchone()

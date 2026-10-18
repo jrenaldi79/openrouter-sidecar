@@ -9,12 +9,12 @@ from __future__ import annotations
 import json
 import os
 import secrets
-import sqlite3
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import storage
 from .config import ADVISOR_MAX_TIMEOUT_S
 from .errors import OpenRouterError
 
@@ -47,26 +47,22 @@ def default_store_path() -> Path:
 
 
 class AdvisorStore:
-    def __init__(self, path: Path):
-        self.path = path
+    def __init__(self, target: Path | str):
+        # A SQLite file path (local) or a postgresql:// URL (hosted).
+        self.target = target
+        self.path = None if storage.is_postgres(target) else Path(target)
 
     @contextmanager
     def _connection(self):
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        connection = sqlite3.connect(self.path, timeout=5)
-        connection.row_factory = sqlite3.Row
-        try:
-            connection.execute("""CREATE TABLE IF NOT EXISTS advisor_chats (
+        with storage.connect(self.target) as db:
+            db.execute("""CREATE TABLE IF NOT EXISTS advisor_chats (
                 id TEXT PRIMARY KEY, owner TEXT NOT NULL, workspace TEXT NOT NULL,
                 container_id TEXT NOT NULL, model TEXT NOT NULL, title TEXT NOT NULL,
                 history TEXT NOT NULL DEFAULT '[]', uploads TEXT NOT NULL DEFAULT '[]',
                 lease_token TEXT, lease_until REAL NOT NULL DEFAULT 0
             )""")
-            connection.commit()
-            with connection:
-                yield connection
-        finally:
-            connection.close()
+            db.commit()
+            yield db
 
     @staticmethod
     def _row(db, scope: Scope, chat_id: str):

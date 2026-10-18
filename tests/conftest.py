@@ -1,4 +1,7 @@
+import os
 import pathlib
+import secrets
+from urllib.parse import quote
 
 import keyring
 import keyring.backend
@@ -58,3 +61,31 @@ def no_network_probe(monkeypatch):
 
         monkeypatch.setattr(pathlib.Path, name, guarded)
     return seen
+
+
+def _pg_schema_url():
+    """A fresh Postgres schema for one test; skipped unless TEST_DATABASE_URL is set."""
+    base = os.environ.get("TEST_DATABASE_URL")
+    if not base:
+        pytest.skip("TEST_DATABASE_URL not set (disposable Postgres)")
+    import psycopg
+
+    schema = "t_" + secrets.token_hex(6)
+    with psycopg.connect(base, autocommit=True) as db:
+        db.execute(f"CREATE SCHEMA {schema}")
+    separator = "&" if "?" in base else "?"
+    return base, schema, base + separator + "options=" + quote(f"-csearch_path={schema}")
+
+
+@pytest.fixture(params=["sqlite", pytest.param("pg", marks=pytest.mark.pg)])
+def db_target(request, tmp_path):
+    """Storage target for either backend: a SQLite file path or a Postgres URL."""
+    if request.param == "sqlite":
+        yield tmp_path / "advisor.sqlite3"
+        return
+    base, schema, url = _pg_schema_url()
+    yield url
+    import psycopg
+
+    with psycopg.connect(base, autocommit=True) as db:
+        db.execute(f"DROP SCHEMA {schema} CASCADE")

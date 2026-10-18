@@ -167,6 +167,8 @@ class AdvisorResults:
             raise BadRequestError("Wait for advisor work to finish before exporting.")
         if not re.fullmatch(r"job_[0-9a-f]{32}", row["id"]):
             raise ProviderError("Advisor export rejected an invalid result identifier.")
+        if self.store.path is None:
+            raise BadRequestError("Saving results to this computer is unavailable on the hosted server.")
         base = self.store.path.absolute().parent
         # A single compact owner/workspace hash also fits Windows MAX_PATH with
         # the default DB directory (including longer test/application roots).

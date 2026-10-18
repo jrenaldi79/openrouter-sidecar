@@ -19,6 +19,13 @@ from openrouter_image_mcp.errors import BadRequestError
 job_rig = _job_rig
 
 
+def _sqlite_only(rig):
+    stores = [getattr(item, "store", None) for item in rig] + [
+        getattr(getattr(item, "advisors", None), "store", None) for item in rig]
+    if any(store is not None and store.path is None for store in stores):
+        pytest.skip("inspects the local SQLite file")
+
+
 def test_onboarding_backend_available():
     assert importlib.util.find_spec('openrouter_image_mcp.onboarding'), 'OnboardingDemos missing'
 
@@ -69,6 +76,7 @@ def responses(state):
 
 
 async def test_hello_bounded_background_sse_and_duplicate(rig):
+    _sqlite_only(rig)
     demos, prefs, jobs, advisors, state = rig
     job = await run(demos, prefs, 'hello')
     assert job['demo'] == 'hello' and job['status'] == 'queued'
@@ -257,6 +265,7 @@ async def test_image_background_first_model_wins_view_owned_and_restart(rig):
 
 
 async def test_image_shutdown_and_account_change_no_retry_no_secret_error(rig):
+    _sqlite_only(rig)
     demos, prefs, _, advisors, _ = rig
     entered = asyncio.Event()
     async def image_runner(model, guard):
@@ -285,6 +294,7 @@ async def test_real_preferences_share_database_without_nested_write_lock(rig):
 
 
 async def test_separate_process_claim_cannot_start_second_job(rig):
+    _sqlite_only(rig)
     demos, prefs, jobs, advisors, state = rig
     saved = prefs.get()
     job = await run(demos, prefs, 'hello')
@@ -314,6 +324,7 @@ print(json.dumps({'claimed': claimed, 'job_id': row['job_id']}))
 
 @pytest.mark.parametrize('failure', ['secret', 'credential', 'revision', 'timeout'])
 async def test_image_failures_are_safe_persisted_and_never_retried(rig, failure, monkeypatch):
+    _sqlite_only(rig)
     demos, prefs, _, advisors, _ = rig
     saved = prefs.get()
     calls = []
@@ -346,6 +357,7 @@ async def test_image_failures_are_safe_persisted_and_never_retried(rig, failure,
 
 
 async def test_image_expired_receipt_interrupts_without_provider(rig):
+    _sqlite_only(rig)
     demos, prefs, _, advisors, _ = rig
     saved = prefs.get()
     scope = demos._context(saved['settings_id'], saved['revision'])
@@ -388,6 +400,7 @@ async def test_preference_edit_after_paid_image_request_keeps_owned_result(rig):
 
 
 async def test_image_metadata_with_other_credentials_is_not_persisted(rig):
+    _sqlite_only(rig)
     demos, prefs, _, advisors, _ = rig
     async def image_runner(model, guard):
         guard.before_request()

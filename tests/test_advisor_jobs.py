@@ -70,8 +70,14 @@ class SyntheticStream(httpx.AsyncByteStream):
             self.state["cancelled"] += 1
 
 
+
+def _sqlite_only(store):
+    if store.path is None:
+        pytest.skip("inspects the local SQLite file or local export")
+
+
 @pytest.fixture
-async def rig(tmp_path, memory_keyring):
+async def rig(tmp_path, memory_keyring, db_target):
     assert importlib.util.find_spec("openrouter_image_mcp.advisor_jobs"), "AdvisorJobs missing"
     jobs_type = importlib.import_module("openrouter_image_mcp.advisor_jobs").AdvisorJobs
     keystore.set_key(KEY_A, workspace_id=WORKSPACE)
@@ -93,7 +99,7 @@ async def rig(tmp_path, memory_keyring):
             "content-type": "text/event-stream"})
 
     client = AdvisorClient(WORKSPACE, 30, transport=httpx.MockTransport(provider))
-    service = AdvisorService(WORKSPACE, AdvisorStore(tmp_path / "advisor.sqlite3"), client)
+    service = AdvisorService(WORKSPACE, AdvisorStore(db_target), client)
     chat = await service.start(MODEL, "Critic")
     jobs = jobs_type(service)
     try:
@@ -113,6 +119,7 @@ async def terminal(jobs, job_id):
 
 
 async def test_background_stream_status_and_final_history_and_original_prompt(rig):
+    _sqlite_only(rig[1].store)
     jobs, service, chat_id, state = rig
     status = await jobs.start(chat_id, "Original prompt", [SkillPacket(name="guide", content="SKILL_SECRET")])
     assert status["status"] == "queued"
@@ -211,6 +218,7 @@ async def test_shutdown_interrupts_partial_reconnects_without_replay(rig):
 
 
 async def test_live_job_and_chat_lease_exclusive_across_managers_stale_recovery(rig):
+    _sqlite_only(rig[1].store)
     jobs, service, chat_id, state = rig
     replacement = type(jobs)(service)
     try:
@@ -233,6 +241,7 @@ async def test_live_job_and_chat_lease_exclusive_across_managers_stale_recovery(
 
 
 async def test_summary_new_job_preserves_original_and_export_fixed_contained_path(rig):
+    _sqlite_only(rig[1].store)
     jobs, service, chat_id, state = rig
     state["release"].set()
     job = await jobs.start(chat_id, "Prompt")
@@ -253,6 +262,7 @@ async def test_summary_new_job_preserves_original_and_export_fixed_contained_pat
 
 
 async def test_export_rejects_symlink_destination_escape(rig, tmp_path):
+    _sqlite_only(rig[1].store)
     jobs, _, chat_id, state = rig
     state["release"].set()
     job = await jobs.start(chat_id, "Prompt")
@@ -279,6 +289,7 @@ async def test_close_immediately_after_enqueue_persists_interruption_without_pro
 
 
 async def test_reopen_metadata_and_delete_remove_jobs_preserve_export(rig):
+    _sqlite_only(rig[1].store)
     jobs, service, chat_id, state = rig
     state["release"].set()
     job = await jobs.start(chat_id, "Private prompt")
@@ -317,6 +328,7 @@ async def test_shutdown_tolerates_deleted_completed_job_record(rig):
 
 
 async def test_partial_credentials_redacted_and_stream_commentary_ignored(rig):
+    _sqlite_only(rig[1].store)
     jobs, service, chat_id, state = rig
     state["partial"] = "Do not leak " + KEY_A + " or " + KEY_B
     state["malformed"] = True
@@ -348,6 +360,7 @@ async def test_same_credential_other_workspace_cannot_reopen_job(rig):
 
 
 async def test_export_write_failure_leaves_no_partial_final_file(rig, monkeypatch):
+    _sqlite_only(rig[1].store)
     jobs, service, chat_id, state = rig
     state["release"].set()
     job = await jobs.start(chat_id, "Prompt")
@@ -366,6 +379,7 @@ async def test_export_write_failure_leaves_no_partial_final_file(rig, monkeypatc
 
 
 async def test_export_rejects_reparse_parent_even_without_symlink_privilege(rig, monkeypatch):
+    _sqlite_only(rig[1].store)
     jobs, _, chat_id, state = rig
     state["release"].set()
     job = await jobs.start(chat_id, "Prompt")
@@ -415,6 +429,7 @@ async def test_stream_ignores_commentary_and_shell_text_even_with_output_text_sh
 
 
 async def test_stale_recovery_reports_owned_upload_cleanup_and_explicit_cleanup_clears_flag(rig):
+    _sqlite_only(rig[1].store)
     jobs, service, chat_id, state = rig
     job = await jobs.start(chat_id, "Prompt")
     await state["entered"].wait()
@@ -440,6 +455,7 @@ async def test_stale_recovery_reports_owned_upload_cleanup_and_explicit_cleanup_
 
 
 async def test_separate_process_cannot_steal_live_work_but_recovers_expired_heartbeat(rig):
+    _sqlite_only(rig[1].store)
     jobs, service, chat_id, state = rig
     job = await jobs.start(chat_id, "Prompt")
     await state["entered"].wait()

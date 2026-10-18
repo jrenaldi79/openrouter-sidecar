@@ -14,8 +14,8 @@ def module():
 
 
 @pytest.fixture
-def store(module, tmp_path):
-    return module.AdvisorStore(tmp_path / "advisor.sqlite3")
+def store(module, db_target):
+    return module.AdvisorStore(db_target)
 
 
 @pytest.fixture
@@ -32,7 +32,7 @@ def test_persists_owned_history_without_credentials(store, module, a):
     chat = store.create(a, "test/model", "Critic")
     with store.lease(a, chat.id) as token:
         store.append_turn(a, chat.id, "Brief", "Answer", token)
-    reopened = module.AdvisorStore(store.path)
+    reopened = module.AdvisorStore(store.target)
     assert reopened.get(a, chat.id).history == [
         {"role": "user", "content": "Brief"},
         {"role": "assistant", "content": "Answer"},
@@ -73,7 +73,7 @@ def test_reset_rotates_container_and_preserves_history(store, a):
 
 def test_cross_instance_lease_blocks_mutations_and_releases_on_error(store, module, a):
     chat = store.create(a, "test/model", "A")
-    another = module.AdvisorStore(store.path)
+    another = module.AdvisorStore(store.target)
     with pytest.raises(RuntimeError, match="synthetic"), store.lease(a, chat.id):
         for operation in (another.reset, another.delete):
             with pytest.raises(module.AdvisorAccessError, match="busy"):
@@ -97,7 +97,7 @@ def test_long_call_keeps_exclusive_lease_and_can_save_answer(store, module, a, m
     clock = [1000]
     monkeypatch.setattr(module.time, "time", lambda: clock[0])
     chat = store.create(a, "test/model", "Long task")
-    another = module.AdvisorStore(store.path)
+    another = module.AdvisorStore(store.target)
     with store.lease(a, chat.id) as token:
         clock[0] += 31 * 60
         with pytest.raises(module.AdvisorAccessError, match="busy"):

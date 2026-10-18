@@ -5,12 +5,12 @@ from __future__ import annotations
 import json
 import re
 import secrets
-import sqlite3
 from calendar import monthrange
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 
+from . import storage
 from .advisor_store import AdvisorAccessError
 from .config import COHORT_WORKSPACES
 from .errors import BadRequestError
@@ -60,15 +60,12 @@ def six_month_cutoff(now):
 class PreferenceService:
     def __init__(self, advisors, *, utcnow=None):
         self.advisors = advisors
-        self.path = advisors.store.path
+        self.target = advisors.store.target
         self._utcnow = utcnow or (lambda: datetime.now(UTC))
 
     @contextmanager
     def _connection(self):
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        db = sqlite3.connect(self.path, timeout=5)
-        db.row_factory = sqlite3.Row
-        try:
+        with storage.connect(self.target) as db:
             db.execute("""CREATE TABLE IF NOT EXISTS sidecar_preferences (
                 settings_id TEXT PRIMARY KEY, owner TEXT NOT NULL, workspace TEXT NOT NULL,
                 revision INTEGER NOT NULL DEFAULT 0, general_default TEXT,
@@ -76,10 +73,7 @@ class PreferenceService:
                 UNIQUE(owner, workspace)
             )""")
             db.commit()
-            with db:
-                yield db
-        finally:
-            db.close()
+            yield db
 
     @staticmethod
     def _row(db, scope):

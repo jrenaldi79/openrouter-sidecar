@@ -49,8 +49,14 @@ async def test_grok_default_resolves_and_retains_catalog_filters(rig):
     assert (await preferences.resolve("xAI"))["model"] == "x-ai/grok-test"
 
 
+
+def _sqlite_only(store):
+    if store.path is None:
+        pytest.skip("inspects the local SQLite file or local export")
+
+
 @pytest.fixture
-async def rig(tmp_path, memory_keyring):
+async def rig(tmp_path, memory_keyring, db_target):
     spec = importlib.util.find_spec("openrouter_image_mcp.preferences")
     assert spec is not None, "PreferenceService has not been implemented"
     module = importlib.import_module("openrouter_image_mcp.preferences")
@@ -68,12 +74,13 @@ async def rig(tmp_path, memory_keyring):
         return httpx.Response(200, json={"data": rows})
 
     client = AdvisorClient(WORKSPACE, 30, transport=httpx.MockTransport(handle))
-    advisors = AdvisorService(WORKSPACE, AdvisorStore(tmp_path / "advisor.sqlite3"), client)
+    advisors = AdvisorService(WORKSPACE, AdvisorStore(db_target), client)
     yield module.PreferenceService(advisors, utcnow=lambda: NOW), advisors, state, seen, module
     await client.aclose()
 
 
 def test_initial_preferences_are_stable_and_have_no_identity(rig):
+    _sqlite_only(rig[1].store)
     preferences, advisors, _, seen, module = rig
     initial = preferences.get()
     assert initial == module.PreferenceService(advisors).get()
@@ -311,6 +318,7 @@ async def test_view_is_bounded_and_sanitizes_malformed_catalog(rig, monkeypatch)
 
 
 async def test_active_credential_cannot_be_stored_as_catalog_model(rig, monkeypatch):
+    _sqlite_only(rig[1].store)
     preferences, advisors, _, _, _ = rig
     initial = preferences.get()
 
