@@ -53,3 +53,9 @@ def test_log_redacts_exception_traceback(capsys):
     assert "Traceback" in err
     assert "RuntimeError: auth failed with sk-or-***" in err
     assert "TRACE_secret" not in err
+
+
+def test_redact_withholds_bearer_jwts():
+    jwt = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJlbWFpbHxhbGljZSJ9.c2lnbmF0dXJlLXZhbHVlLWhlcmU"
+    out = logs.redact(f"Authorization: Bearer {jwt} end")
+    assert jwt not in out and "[token withheld]" in out and out.endswith("end")

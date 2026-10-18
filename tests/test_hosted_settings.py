@@ -73,3 +73,12 @@ def test_optional_overrides():
     assert s.permission == "sidecar:admin"
     assert s.sandbox_enabled is True
     assert s.jwks_uri == "https://keys.example/jwks.json"
+
+
+def test_dev_openrouter_url_only_for_local_development():
+    s = load_hosted_settings(BASE | DEV | {"SIDECAR_DEV_OPENROUTER_URL": "http://127.0.0.1:9500"})
+    assert s.dev_openrouter_url == "http://127.0.0.1:9500"
+    with pytest.raises(ValueError, match="SIDECAR_DEV_OPENROUTER_URL"):
+        load_hosted_settings(BASE | {"SIDECAR_DEV_OPENROUTER_URL": "http://127.0.0.1:9500"})
+    with pytest.raises(ValueError, match="SIDECAR_DEV_OPENROUTER_URL"):
+        load_hosted_settings(BASE | DEV | {"SIDECAR_DEV_OPENROUTER_URL": "https://evil.example"})

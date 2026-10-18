@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import importlib
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -163,6 +164,12 @@ def _status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _serve_http(_args: argparse.Namespace) -> int:
+    hosted = importlib.import_module("openrouter_image_mcp.hosted.main")
+    hosted.serve(os.environ)
+    return 0
+
+
 def _print_config(args: argparse.Namespace) -> int:
     project = Path(__file__).resolve().parents[2]
     print(render_local_config(project, Path(sys.executable), cohort=args.cohort))
@@ -194,6 +201,9 @@ def _parser() -> argparse.ArgumentParser:
     sub.add_parser("status", help="show sign-in state and usage").set_defaults(
         func=_status
     )
+    sub.add_parser(
+        "serve-http", help="run the hosted multi-user server over Streamable HTTP"
+    ).set_defaults(func=_serve_http)
     pc = sub.add_parser("print-config", help="print an MCP client config snippet")
     pc.add_argument("--cohort", required=True, choices=sorted(COHORT_WORKSPACES))
     pc.set_defaults(func=_print_config)

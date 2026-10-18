@@ -24,6 +24,7 @@ class HostedSettings:
     profile_claim: str = "https://mpd.northwestern.edu/profile"
     sandbox_enabled: bool = False
     maintenance: bool = False
+    dev_openrouter_url: str | None = None
 
 
 def _secure_or_local(url: str, name: str) -> None:
@@ -56,6 +57,19 @@ def _check_issuer(issuer: str, resource: str, env: Mapping[str, str]) -> None:
         raise ValueError("A local test issuer is only allowed for a localhost resource.")
 
 
+def _dev_openrouter(env: Mapping[str, str], resource: str) -> str | None:
+    url = env.get("SIDECAR_DEV_OPENROUTER_URL") or None
+    if url is None:
+        return None
+    # A local fake OpenRouter is for development only: explicit flag, local resource,
+    # local target. Production always talks to openrouter.ai.
+    local = urlsplit(url).hostname in _LOCAL_HOSTS and urlsplit(resource).hostname in _LOCAL_HOSTS
+    if env.get("SIDECAR_DEV_INSECURE_ISSUER", "").lower() not in _TRUE or not local:
+        raise ValueError("SIDECAR_DEV_OPENROUTER_URL is only for local development "
+                         "(localhost target and resource, SIDECAR_DEV_INSECURE_ISSUER=1).")
+    return url.rstrip("/")
+
+
 def load_hosted_settings(env: Mapping[str, str]) -> HostedSettings:
     missing = [name for name in _REQUIRED if not env.get(name)]
     if missing:
@@ -76,4 +90,5 @@ def load_hosted_settings(env: Mapping[str, str]) -> HostedSettings:
         profile_claim=env.get("PROFILE_CLAIM", "https://mpd.northwestern.edu/profile"),
         sandbox_enabled=env.get("SIDECAR_SANDBOX_ENABLED", "").lower() in _TRUE,
         maintenance=env.get("SIDECAR_MAINTENANCE", "").lower() in _TRUE,
+        dev_openrouter_url=_dev_openrouter(env, resource),
     )

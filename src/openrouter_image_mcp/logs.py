@@ -5,11 +5,13 @@ import re
 import sys
 
 _KEY_RE = re.compile(r"sk-or-[A-Za-z0-9_\-]+")
+# Bearer JWTs (hosted mode): header.payload.signature, each base64url.
+_JWT_RE = re.compile(r"eyJ[A-Za-z0-9_\-]{8,}\.eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]*")
 _HANDLER_MARK = "_openrouter_image_mcp"
 
 
 def redact(text: str) -> str:
-    return _KEY_RE.sub("sk-or-***", text)
+    return _JWT_RE.sub("[token withheld]", _KEY_RE.sub("sk-or-***", text))
 
 
 class RedactingFilter(logging.Filter):
