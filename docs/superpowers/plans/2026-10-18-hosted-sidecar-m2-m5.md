@@ -101,3 +101,16 @@
 - Walk the spec §4 parity checklist in each client and record the results.
 - Then remove stdio-only code paths (`auth.py` localhost listener, `keystore.py`, `scripts/install_claude_desktop.py`, plugin `.mcp.json` stdio entry), replacing them with connector instructions, and update the README.
 - One PR, which needs explicit user approval before merging.
+
+---
+
+## M2 implementation notes (2026-10-18, resume here)
+
+Decisions made before work paused (no M2 code written yet):
+- **Keep stdio unchanged.** Add `advisor_chats.sandbox INTEGER NOT NULL DEFAULT 1` (legacy rows stay sandbox/shell). Existing SQLite files need a migration: add a `storage` helper for SQLite `PRAGMA table_info` / Postgres `ADD COLUMN IF NOT EXISTS`. `AdvisorService(..., sandbox_default=True, sandbox_allowed=True)`. Hosted `build_workspaces` passes `sandbox_default=False, sandbox_allowed=settings.sandbox_enabled`.
+- **Inline chats** (`sandbox=0`): no `tools` key, no skill upload (skills already go into the brief), and an inline INSTRUCTIONS variant with no container text.
+- **Files travel in memory** to the job task, like skills. `send` upserts them inside the chat lease, and the upsert delta produces the "Updated since last turn" line.
+- **Headless logic** goes in a new `headless.py` (`HeadlessAdvisor(service, jobs, preferences)` with `ask` / `wait`). It only calls service, jobs and preferences methods, so the hosted `ByWorkspace` proxies work unchanged. `AdvisorJobs` gets a per-job `asyncio.Event`; `wait` polls the DB every 1s plus the event. Progress uses `ctx.report_progress` from an MCPServer `Context` param.
+- **Busy:** `AdvisorResults.create` raises `AdvisorAccessError` when a job is active. Catch it and look up the active job id for `running_job_id`.
+- **`sandbox` arg** goes on `start_advisor_chat` and `ask_advisor` (create only). `send_advisor_message` gets `files` and `replace_files` only.
+- `cache_usage` is not stored on job rows; either add a JSON column or leave it out of `ask_advisor` results.
