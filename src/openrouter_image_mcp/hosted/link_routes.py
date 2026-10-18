@@ -9,7 +9,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.routing import Route
 
-from ..auth import build_auth_url, challenge_for
+from ..auth import AUTH_URL, build_auth_url, challenge_for
 from ..config import APP_TITLE
 from ..errors import OpenRouterError
 from .links import ATTEMPT_TTL_S, LinkError, LinkStore
@@ -32,8 +32,11 @@ def _fail(message: str) -> HTMLResponse:
     return _page("Link not completed", f"<p>{html.escape(message)}</p>", 400)
 
 
-def link_routes(links: LinkStore, *, exchange, verify) -> list[Route]:
-    """exchange(code, verifier) -> key; verify(key, workspace_id) -> key label."""
+def link_routes(links: LinkStore, *, exchange, verify, auth_url: str = AUTH_URL) -> list[Route]:
+    """exchange(code, verifier) -> key; verify(key, workspace_id) -> key label.
+
+    auth_url replaces OpenRouter's sign-in page only for local development fakes.
+    """
     secure = links.origin.startswith("https://")
 
     async def start(request: Request):
@@ -44,6 +47,7 @@ def link_routes(links: LinkStore, *, exchange, verify) -> list[Route]:
         url = build_auth_url(0, challenge_for(attempt["verifier"]), attempt["id"],
                              attempt["workspace"], f"{APP_TITLE} Sidecar",
                              callback_url=f"{links.origin}{BASE}/callback")
+        url = auth_url + url[len(AUTH_URL):]
         response = RedirectResponse(url, status_code=302)
         response.set_cookie(COOKIE, nonce, max_age=ATTEMPT_TTL_S, httponly=True,
                             secure=secure, samesite="lax", path=BASE)
@@ -65,8 +69,12 @@ def link_routes(links: LinkStore, *, exchange, verify) -> list[Route]:
             log.info("link callback rejected: %s", type(exc).__name__)
             return _fail("OpenRouter could not confirm this key for your class workspace.")
         csrf = links.csrf_for(state, nonce)
-        form = (f"<p>Link the OpenRouter key <b>{html.escape(label)}</b> to your Sidecar "
-                f"account? Claude will use it for your advisor chats and images.</p>"
+        account = html.escape(attempt.get("account") or "unknown")
+        form = (f"<p>Link the OpenRouter key <b>{html.escape(label)}</b> to the Sidecar "
+                f"account <b>{account}</b>? Claude will use it for that account's advisor "
+                f"chats and images, and charge this key.</p>"
+                f"<p><b>If {account} is not you, do not continue</b>: someone may have "
+                f"forwarded you their link. Close this page instead.</p>"
                 f"<form method=post action='{BASE}/confirm'>"
                 f"<input type=hidden name=state value='{html.escape(state)}'>"
                 f"<input type=hidden name=csrf value='{html.escape(csrf)}'>"

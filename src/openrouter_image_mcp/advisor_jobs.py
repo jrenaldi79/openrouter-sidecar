@@ -21,8 +21,10 @@ SUMMARY_PROMPT = (
 
 
 class AdvisorJobs:
-    def __init__(self, service):
+    def __init__(self, service, *, admit=None):
         self.service = service
+        # Optional hosted admission control (rate/spend limits); runs before any job row.
+        self.admit = admit
         self.results = AdvisorResults(service.store)
         self.process_id = secrets.token_hex(16)
         self._tasks = {}
@@ -49,6 +51,8 @@ class AdvisorJobs:
                _demo_limits=None, _context_guard=None, _before_request=None):
         key, scope = self.service._credentials()
         self.service._current(scope)
+        if self.admit:
+            self.admit(scope)
         if _context_guard:
             _context_guard()
         if _before_request:

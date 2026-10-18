@@ -16,7 +16,7 @@ from openrouter_image_mcp.hosted.vault import Vault
 
 ORIGIN = "https://sidecar.example"
 KEY = "sk-or-v1-" + "s" * 40
-ALICE = Principal("https://iss/", "email|alice", "ws-2027", "2027")
+ALICE = Principal("https://iss/", "email|alice", "ws-2027", "2027", "alice@u.northwestern.edu")
 BOB = Principal("https://iss/", "email|bob", "ws-2027", "2027")
 
 
@@ -155,3 +155,9 @@ def test_key_never_stored_in_plaintext(links, db_target):
     with storage.connect(db_target) as db:
         rows = db.execute("SELECT * FROM openrouter_links").fetchall()
     assert rows and all(KEY not in str(dict(row)) for row in rows)
+
+
+def test_confirmation_names_the_target_account_and_warns(client, links):
+    _, _, callback = _complete(client, links)
+    assert "alice@u.northwestern.edu" in callback.text
+    assert "not you" in callback.text.lower()

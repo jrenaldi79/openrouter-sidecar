@@ -55,7 +55,7 @@ class LinkStore:
             db.execute("""CREATE TABLE IF NOT EXISTS link_attempts (
                 id TEXT PRIMARY KEY, principal TEXT NOT NULL, workspace TEXT NOT NULL,
                 verifier TEXT NOT NULL, browser_nonce TEXT, pending_key TEXT,
-                pending_label TEXT, expires_at REAL NOT NULL, used_at REAL)""")
+                pending_label TEXT, account TEXT, expires_at REAL NOT NULL, used_at REAL)""")
             db.commit()
             yield db
 
@@ -107,9 +107,12 @@ class LinkStore:
         verifier, _ = make_pkce()
         expires = int(self.clock() + ATTEMPT_TTL_S)
         with self._db() as db:
-            db.execute("INSERT INTO link_attempts (id,principal,workspace,verifier,expires_at) "
-                       "VALUES (?,?,?,?,?)",
-                       (attempt_id, principal.key, principal.workspace_id, verifier, expires))
+            # The account label is shown before confirming, so a user who received a
+            # forwarded link can see it would bind their key to someone else.
+            db.execute("INSERT INTO link_attempts (id,principal,workspace,verifier,account,"
+                       "expires_at) VALUES (?,?,?,?,?,?)",
+                       (attempt_id, principal.key, principal.workspace_id, verifier,
+                        principal.email or principal.subject, expires))
         token = f"{attempt_id}.{expires}.{self._sign(f'{attempt_id}.{expires}')}"
         return f"{self.origin}/link/openrouter/start?t={token}"
 

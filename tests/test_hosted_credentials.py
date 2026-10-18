@@ -14,8 +14,8 @@ from openrouter_image_mcp.hosted.credentials import HostedCredentials
 from openrouter_image_mcp.hosted.links import LinkRequiredError, LinkStore
 from openrouter_image_mcp.hosted.openrouter_keys import exchange_code, verify_key
 from openrouter_image_mcp.hosted.principal import Principal
-from openrouter_image_mcp.hosted.verifier import Auth0Verifier
 from openrouter_image_mcp.hosted.vault import Vault
+from openrouter_image_mcp.hosted.verifier import Auth0Verifier
 from tests import jwt_helpers as h
 
 ALICE = Principal(h.ISSUER, "email|alice", h.WORKSPACE, "2027")

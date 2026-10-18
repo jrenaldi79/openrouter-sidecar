@@ -18,7 +18,7 @@ from openrouter_image_mcp import keystore
 from openrouter_image_mcp.advisor import AdvisorService, SkillPacket
 from openrouter_image_mcp.advisor_client import AdvisorClient
 from openrouter_image_mcp.advisor_store import AdvisorAccessError, AdvisorStore
-from openrouter_image_mcp.errors import OpenRouterError
+from openrouter_image_mcp.errors import BadRequestError, OpenRouterError
 
 WORKSPACE = "jobs-workspace"
 KEY_A = "sk-or-v1-jobs-account-a"
@@ -493,3 +493,19 @@ print(json.dumps({'status': status['status'], 'busy': busy}))
     await asyncio.sleep(0.05)
     assert service.get(chat_id)["messages"] == []
     assert sum(r.url.path.endswith("/responses") for r in state["seen"]) == 1
+
+
+async def test_admission_hook_runs_before_any_job_or_provider_call(rig):
+    jobs, _service, chat_id, state = rig
+    seen = []
+
+    def refuse(scope):
+        seen.append(scope)
+        raise BadRequestError("rate_limited: synthetic")
+
+    jobs.admit = refuse
+    with pytest.raises(BadRequestError, match="rate_limited"):
+        await jobs.start(chat_id, "Brief")
+    assert seen and seen[0].workspace == WORKSPACE
+    assert jobs.for_chat(chat_id) == []
+    assert not [r for r in state["seen"] if r.url.path.endswith("/responses")]
