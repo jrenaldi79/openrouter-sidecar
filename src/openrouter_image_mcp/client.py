@@ -11,8 +11,8 @@ from typing import Any, Self
 
 import httpx
 
-from . import keystore
 from .config import API_BASE, APP_TITLE, APP_URL, KEYRING_USER
+from .credentials import CredentialSource, KeyringCredentials
 from .errors import (
     AuthRequiredError,
     BadRequestError,
@@ -137,8 +137,10 @@ class OpenRouterClient:
         transport: httpx.AsyncBaseTransport | None = None,
         *,
         workspace_id: str = KEYRING_USER,
+        credentials: CredentialSource | None = None,
     ) -> None:
         self.workspace_id = workspace_id
+        self.credentials = credentials or KeyringCredentials(workspace_id)
         self._timeout_s = timeout_s
         # Trailing slash + relative request paths keep the /api/v1 prefix.
         self._http = httpx.AsyncClient(
@@ -189,9 +191,12 @@ class OpenRouterClient:
     ) -> Any:
         headers: dict[str, str] = {}
         if auth:
-            key = keystore.get_key(workspace_id=self.workspace_id)
-            if not key:
-                raise AuthRequiredError(_MSG_NO_KEY)
+            try:
+                key = self.credentials.resolve()[0]
+            except AuthRequiredError:
+                if isinstance(self.credentials, KeyringCredentials):
+                    raise AuthRequiredError(_MSG_NO_KEY) from None
+                raise  # hosted sources carry their own link instructions
             headers["Authorization"] = f"Bearer {key}"
 
         rate_retries = 0
@@ -243,7 +248,7 @@ class OpenRouterClient:
     def _raise_client_error(self, status: int, error: dict, message: str, auth: bool) -> None:
         if status == 401:
             if auth:
-                keystore.delete_key(workspace_id=self.workspace_id)
+                self.credentials.forget()
                 raise AuthRequiredError(_MSG_401)
             raise AuthRequiredError(_MSG_401_CODE)
         if status == 402:

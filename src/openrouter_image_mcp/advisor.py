@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import secrets
 import sqlite3
@@ -10,10 +9,10 @@ from contextlib import nullcontext
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from . import keystore
 from .advisor_client import AdvisorClient
 from .advisor_store import AdvisorAccessError, AdvisorStore, Scope
-from .errors import AuthRequiredError, BadRequestError, OpenRouterError, ProviderError
+from .credentials import CHANGED, CredentialSource, KeyringCredentials
+from .errors import BadRequestError, OpenRouterError, ProviderError
 from .logs import redact
 from .prompt_cache import cache_usage, configure_cache
 
@@ -50,23 +49,22 @@ class SkillPacket(BaseModel):
 
 
 class AdvisorService:
-    def __init__(self, workspace_id: str, store: AdvisorStore, client: AdvisorClient):
+    def __init__(self, workspace_id: str, store: AdvisorStore, client: AdvisorClient, *,
+                 credentials: CredentialSource | None = None):
         if workspace_id != client.workspace_id:
             raise ValueError("Advisor client workspace does not match configuration.")
         self.workspace_id, self.store, self.client = workspace_id, store, client
+        self.credentials = credentials or KeyringCredentials(workspace_id)
+        if self.credentials.workspace_id != workspace_id:
+            raise ValueError("Advisor credentials workspace does not match configuration.")
 
     def _credentials(self) -> tuple[str, Scope]:
-        key = keystore.get_key(workspace_id=self.workspace_id)
-        if not key:
-            raise AuthRequiredError("Not signed in. Call auth_login before using an advisor.")
-        # Scope tracks this credential, not a provider-verified student identity.
-        return key, Scope(hashlib.sha256(key.encode()).hexdigest(), self.workspace_id)
+        return self.credentials.resolve()
 
     def _current(self, scope):
-        key = keystore.get_key(workspace_id=self.workspace_id)
-        if (self.workspace_id != scope.workspace or self.client.workspace_id != scope.workspace
-                or not key or hashlib.sha256(key.encode()).hexdigest() != scope.owner):
-            raise AdvisorAccessError("Advisor sign-in changed during the operation; reply withheld.")
+        if self.workspace_id != scope.workspace or self.client.workspace_id != scope.workspace:
+            raise AdvisorAccessError(CHANGED)
+        self.credentials.check(scope)
 
     @staticmethod
     def _summary(chat) -> dict:
