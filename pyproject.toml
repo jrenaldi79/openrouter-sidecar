@@ -10,6 +10,10 @@ dependencies = [
     "httpx>=0.28.1",
     "pillow>=12.3.0",
     "keyring>=25.7.0",
+    "pyjwt[crypto]>=2.15.1",
+    "cryptography>=50.0.2",
+    "psycopg[binary]>=3.2",
+    "uvicorn>=0.54.0",
 ]
 
 [project.scripts]
@@ -36,7 +40,10 @@ packages = ["src/openrouter_image_mcp"]
 [tool.pytest.ini_options]
 pythonpath = ["."]
 asyncio_mode = "auto"
-markers = ["live: hits real OpenRouter, needs signed-in key"]
+markers = [
+    "live: hits real OpenRouter, needs signed-in key",
+    "pg: needs TEST_DATABASE_URL (disposable Postgres)",
+]
 addopts = "-m 'not live'"
 testpaths = ["tests"]
 
