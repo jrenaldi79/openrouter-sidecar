@@ -42,17 +42,28 @@ def _origin(resource: str) -> str:
     return f"{parts.scheme}://{parts.netloc}"
 
 
+def _check_issuer(issuer: str, resource: str, env: Mapping[str, str]) -> None:
+    if not issuer.endswith("/"):
+        raise ValueError("AUTH0_ISSUER must end with '/'.")
+    if urlsplit(issuer).scheme == "https":
+        return
+    # A plain-http issuer is a local test identity provider: only with an explicit
+    # developer flag, and only while the resource itself is local too.
+    if env.get("SIDECAR_DEV_INSECURE_ISSUER", "").lower() not in _TRUE:
+        raise ValueError("AUTH0_ISSUER must be https (set SIDECAR_DEV_INSECURE_ISSUER=1 for a local test issuer).")
+    _secure_or_local(issuer, "AUTH0_ISSUER")
+    if urlsplit(resource).hostname not in _LOCAL_HOSTS:
+        raise ValueError("A local test issuer is only allowed for a localhost resource.")
+
+
 def load_hosted_settings(env: Mapping[str, str]) -> HostedSettings:
     missing = [name for name in _REQUIRED if not env.get(name)]
     if missing:
         raise ValueError("Missing hosted settings: " + ", ".join(missing))
-    issuer = env["AUTH0_ISSUER"]
-    _secure_or_local(issuer, "AUTH0_ISSUER")
-    if not issuer.endswith("/"):
-        raise ValueError("AUTH0_ISSUER must end with '/'.")
+    issuer, resource = env["AUTH0_ISSUER"], env["MCP_RESOURCE_URI"]
+    _check_issuer(issuer, resource, env)
     if len(env["LINK_SIGNING_KEY"]) < 32:
         raise ValueError("LINK_SIGNING_KEY must be at least 32 characters.")
-    resource = env["MCP_RESOURCE_URI"]
     return HostedSettings(
         issuer=issuer,
         jwks_uri=env.get("AUTH0_JWKS_URI") or issuer + ".well-known/jwks.json",

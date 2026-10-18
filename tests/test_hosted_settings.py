@@ -41,11 +41,29 @@ def test_requires_every_value(missing):
         load_hosted_settings(env)
 
 
+DEV = {"MCP_RESOURCE_URI": "http://localhost:8000/mcp", "AUTH0_ISSUER": "http://127.0.0.1:9400/",
+       "SIDECAR_DEV_INSECURE_ISSUER": "1"}
+
+
 def test_localhost_resource_and_issuer_allowed_for_development():
-    s = load_hosted_settings(BASE | {"MCP_RESOURCE_URI": "http://localhost:8000/mcp",
-                                     "AUTH0_ISSUER": "http://127.0.0.1:9400/"})
+    s = load_hosted_settings(BASE | DEV)
     assert s.public_origin == "http://localhost:8000"
     assert s.jwks_uri == "http://127.0.0.1:9400/.well-known/jwks.json"
+
+
+def test_http_issuer_needs_explicit_dev_flag():
+    with pytest.raises(ValueError, match="SIDECAR_DEV_INSECURE_ISSUER"):
+        load_hosted_settings(BASE | DEV | {"SIDECAR_DEV_INSECURE_ISSUER": ""})
+
+
+def test_dev_issuer_refused_for_public_resource():
+    with pytest.raises(ValueError):
+        load_hosted_settings(BASE | DEV | {"MCP_RESOURCE_URI": "https://sidecar.example/mcp"})
+
+
+def test_http_resource_on_localhost_allowed_with_https_issuer():
+    s = load_hosted_settings(BASE | {"MCP_RESOURCE_URI": "http://localhost:8000/mcp"})
+    assert s.issuer.startswith("https://")
 
 
 def test_optional_overrides():
