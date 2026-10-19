@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import urlsplit
 
 _REQUIRED = ("AUTH0_ISSUER", "MCP_RESOURCE_URI", "DATABASE_URL", "VAULT_KEYS", "LINK_SIGNING_KEY")
@@ -74,7 +75,8 @@ def _dev_openrouter(env: Mapping[str, str], resource: str) -> str | None:
 def _asset_dir(env: Mapping[str, str]) -> str | None:
     # Image blobs live on a mounted volume; unset keeps the image tools off.
     path = env.get("ASSET_DIR") or None
-    if path is not None and not path.startswith("/"):
+    # POSIX-rooted (the Railway volume) or absolute on this OS (e.g. C:\ in Windows CI).
+    if path is not None and not (path.startswith("/") or Path(path).is_absolute()):
         raise ValueError("ASSET_DIR must be an absolute path (a mounted volume).")
     return path
 
