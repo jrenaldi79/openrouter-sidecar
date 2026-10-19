@@ -26,6 +26,13 @@ TOOLS = {
     "edit_image",
     "remask_image",
 } | ADVISOR_ARGUMENTS.keys()
+HOSTED_ONLY_TOOLS = {
+    "link_openrouter",
+    "unlink_openrouter",
+    "create_image_upload",
+    "get_image_download",
+    "open_image_uploader",
+}
 
 
 def _tree(base: Path) -> dict[str, bytes]:
@@ -76,4 +83,4 @@ def test_readme_uses_local_config_and_holds_deployment():
 
 def test_readme_lists_every_tool():
     text = README.read_text(encoding="utf-8")
-    assert set(re.findall(r"^\| `([a-z_]+)` \|", text, re.MULTILINE)) == TOOLS
+    assert set(re.findall(r"^\| `([a-z_]+)` \|", text, re.MULTILINE)) == TOOLS | HOSTED_ONLY_TOOLS

@@ -82,6 +82,11 @@ Filenames grouped by folder; each heading links that folder's note.
 - [scripts/dev/fake&#95;openrouter.py](../scripts/dev/fake_openrouter.py)
 - [scripts/dev/run&#95;sidecar.sh](../scripts/dev/run_sidecar.sh)
 
+### [scripts/ops](../scripts/ops/CLAUDE.md): Operator acceptance tools for a deployed sidecar: a real Auth0 PKCE login that saves a short-lived token, and a no-cost probe of the live server.
+
+- [scripts/ops/acceptance&#95;probe.py](../scripts/ops/acceptance_probe.py)
+- [scripts/ops/real&#95;login.py](../scripts/ops/real_login.py)
+
 ### [src/openrouter&#95;image&#95;mcp](../src/openrouter_image_mcp/CLAUDE.md): Core package: the local stdio MCP server, the shared image pipeline (catalog, client, imaging, service, outputs), the advisor, preferences and onboarding, and the SQLite/Postgres storage seam the hosted mode reuses.
 
 - [src/openrouter&#95;image&#95;mcp/&#95;&#95;init&#95;&#95;.py](../src/openrouter_image_mcp/__init__.py)
