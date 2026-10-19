@@ -68,14 +68,23 @@ Tell the "MPD MCP Interview Coach tool" session before any tenant change. Each r
 1. Create the project `openrouter-sidecar` and add a **Postgres** service.
 2. Add a service from this repo. Railway builds the `Dockerfile`.
 3. **Settings:**
-   - one replica;
-   - a **volume** mounted at `/data` (image assets live under `ASSET_DIR=/data/assets`). The volume ties the service to one replica;
+   - one replica in **one region** (the current plan allows only one; production runs in `iad`, US East). If a deploy fails with "can only deploy to a single region", the service lists more than one region: set `multiRegionConfig` back to a single entry;
+   - a **volume** mounted at `/data` (image assets live under `ASSET_DIR=/data/assets`). The volume ties the service to one replica. Railway mounts it root-owned; `docker-entrypoint.sh` gives `ASSET_DIR` to the `sidecar` user (uid 10001) and then drops root;
    - health check path `/health`;
    - **autodeploy off**, because deploys go through §4;
    - private networking to Postgres.
 4. Set the variables from §1. Generate a domain, then set `MCP_RESOURCE_URI` to it.
-5. Deploy. Check that `GET /health` returns 200 and `GET /ready` returns `{"ready": true}`. Check that `GET /.well-known/oauth-protected-resource/mcp` names the Auth0 issuer.
-6. **Acceptance (instructor account):**
+5. Deploy. Check that `GET /health` returns 200 and `GET /ready` returns `{"ready": true}`; `/ready` also fails with "asset storage is not writable" when the volume isn't usable. Check that `GET /.well-known/oauth-protected-resource/mcp` names the Auth0 issuer.
+6. **Operator probe (no cost).** Sign in as a real account and check the live server without claude.ai:
+
+   ```bash
+   uv run python scripts/ops/real_login.py --prompt-login --audience https://<domain>/mcp
+   uv run python scripts/ops/acceptance_probe.py --url https://<domain>/mcp
+   rm .dev-state/real-token
+   ```
+
+   The login uses the passwordless **email** connection (a code by email). The shared client also has the password database and Google enabled, and the identifier-first page sends an email address to the password form. Don't set a password there: that creates a separate account without the role. The probe checks 401 without a token, admission, the hosted tool list, `account_status` (profile and cohort), and an upload and signed download through the volume.
+7. **Acceptance (instructor account):**
    - add the connector in claude.ai (`https://<domain>/mcp`) and sign in;
    - run `link_openrouter` and open the link;
    - run `ask_advisor` with a file, then a follow-up with the same `chat_id`;

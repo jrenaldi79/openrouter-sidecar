@@ -55,6 +55,12 @@ Use maintained guidance, status, and reference documents for current decisions. 
 | [Outcome-focused Sidecar walkthrough](superpowers/specs/2026-10-06-sidecar-outcome-onboarding.md) | completed | Design spec: Outcome-focused Sidecar walkthrough. | Revisiting the design decisions behind this feature. |
 | [OpenRouter Sidecar name](superpowers/specs/2026-10-06-sidecar-rename-design.md) | completed | Design spec: OpenRouter Sidecar name. | Revisiting the design decisions behind this feature. |
 
+## Needs classification
+
+| Document | Status | Description | Read when |
+| --- | --- | --- | --- |
+| [superpowers/specs/2026-10-18-hosted-spikes.md](superpowers/specs/2026-10-18-hosted-spikes.md) | Unclassified |  |  |
+
 ## Source inventory
 
 Filenames grouped by folder; each heading links that folder's note.
