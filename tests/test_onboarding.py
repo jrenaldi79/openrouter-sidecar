@@ -12,7 +12,6 @@ import pytest
 from test_advisor_jobs import KEY_A, KEY_B, MODEL, WORKSPACE, terminal
 from test_advisor_jobs import rig as _job_rig
 
-from openrouter_image_mcp import keystore
 from openrouter_image_mcp.advisor_store import AdvisorAccessError
 from openrouter_image_mcp.errors import BadRequestError
 
@@ -136,12 +135,12 @@ async def test_skill_deliberately_selected_packet_separate_chat_and_upload_clean
 
 
 @pytest.mark.parametrize('mutation', ['credentials', 'workspace', 'revision'])
-async def test_context_change_during_resolve_prevents_jobs(rig, mutation):
+async def test_context_change_during_resolve_prevents_jobs(keys, rig, mutation):
     demos, prefs, jobs, advisors, state = rig
     saved = prefs.get()
     def switch():
         if mutation == 'credentials':
-            keystore.set_key(KEY_B, workspace_id=WORKSPACE)
+            keys.set(KEY_B, workspace_id=WORKSPACE)
         elif mutation == 'workspace':
             advisors.workspace_id = 'another-workspace'
         else:
@@ -152,14 +151,14 @@ async def test_context_change_during_resolve_prevents_jobs(rig, mutation):
     assert not responses(state) and not jobs._tasks
 
 
-async def test_stale_revision_wrong_scope_and_unknown_demo_do_not_claim(rig):
+async def test_stale_revision_wrong_scope_and_unknown_demo_do_not_claim(keys, rig):
     demos, prefs, _, advisors, state = rig
     saved = prefs.get()
     with pytest.raises(BadRequestError):
         await demos.run('hello', saved['settings_id'], -1)
     with pytest.raises(BadRequestError):
         await demos.run('custom', saved['settings_id'], saved['revision'])
-    keystore.set_key(KEY_B, workspace_id=WORKSPACE)
+    keys.set(KEY_B, workspace_id=WORKSPACE)
     with pytest.raises(AdvisorAccessError):
         await demos.run('hello', saved['settings_id'], saved['revision'])
     assert not responses(state)
@@ -227,7 +226,7 @@ async def test_revision_changes_before_background_worker_prevent_provider(rig):
     assert not responses(state)
 
 
-async def test_image_background_first_model_wins_view_owned_and_restart(rig):
+async def test_image_background_first_model_wins_view_owned_and_restart(keys, rig):
     demos, prefs, _, advisors, state = rig
     entered, release = asyncio.Event(), asyncio.Event()
     seen = []
@@ -256,7 +255,7 @@ async def test_image_background_first_model_wins_view_owned_and_restart(rig):
     another = type(demos)(advisors, demos.jobs, prefs, image_runner=image_runner)
     try:
         assert (await another.run_image(saved['settings_id'], saved['revision'], 'test/image'))['demo_id'] == result['demo_id']
-        keystore.set_key(KEY_B, workspace_id=WORKSPACE)
+        keys.set(KEY_B, workspace_id=WORKSPACE)
         with pytest.raises(AdvisorAccessError):
             demos.view_image(result['demo_id'], saved['settings_id'])
         assert seen == ['test/image'] and not responses(state)
@@ -323,7 +322,7 @@ print(json.dumps({'claimed': claimed, 'job_id': row['job_id']}))
 
 
 @pytest.mark.parametrize('failure', ['secret', 'credential', 'revision', 'timeout'])
-async def test_image_failures_are_safe_persisted_and_never_retried(rig, failure, monkeypatch):
+async def test_image_failures_are_safe_persisted_and_never_retried(keys, rig, failure, monkeypatch):
     _sqlite_only(rig)
     demos, prefs, _, advisors, _ = rig
     saved = prefs.get()
@@ -333,7 +332,7 @@ async def test_image_failures_are_safe_persisted_and_never_retried(rig, failure,
         if failure == 'secret':
             raise RuntimeError(KEY_A)
         if failure == 'credential':
-            keystore.set_key(KEY_B, workspace_id=WORKSPACE)
+            keys.set(KEY_B, workspace_id=WORKSPACE)
         if failure == 'revision':
             prefs.revision += 1
             guard.before_request()
@@ -346,7 +345,7 @@ async def test_image_failures_are_safe_persisted_and_never_retried(rig, failure,
     result = await demos.run_image(saved['settings_id'], saved['revision'], 'test/image')
     task = demos._image_tasks[result['demo_id']][0]
     await asyncio.wait_for(task, 5)
-    keystore.set_key(KEY_A, workspace_id=WORKSPACE)
+    keys.set(KEY_A, workspace_id=WORKSPACE)
     prefs.revision = saved['revision']
     view = demos.view_image(result['demo_id'], saved['settings_id'])
     assert view['status'] == 'failed' and 'retry' in view['error']

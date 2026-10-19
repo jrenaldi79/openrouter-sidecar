@@ -258,11 +258,6 @@ class AdvisorJobs:
             raise BadRequestError("Only completed advisor results can be summarized.")
         return self._start(row["chat_id"], SUMMARY_PROMPT, source_job_id=job_id)
 
-    def export(self, job_id):
-        scope, row = self._owned(job_id)
-        self.service._current(scope)
-        return self.results.export(scope, row)
-
     def delete_chat(self, chat_id):
         _, scope = self.service._credentials()
         self.service._current(scope)

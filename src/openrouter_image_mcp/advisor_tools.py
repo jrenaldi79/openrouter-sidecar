@@ -31,7 +31,6 @@ ADVISOR_ARGUMENTS = {
     "open_advisor_result": {"job_id"},
     "get_advisor_result": {"job_id"},
     "summarize_advisor_result": {"job_id"},
-    "export_advisor_result": {"job_id"},
 } | PREFERENCE_ARGUMENTS
 
 
@@ -256,23 +255,11 @@ def register_advisor_tools(server: MCPServer, service: AdvisorService, jobs: Adv
         with tool_errors():
             return status_result(await jobs.summarize(job_id))
 
-    async def export_advisor_result(job_id: str) -> CallToolResult:
-        """App-only: save an owned completed response as durable Markdown on disk.
-
-        Uses a server-selected directory on the user's own machine (Claude Desktop
-        only; the hosted connector refuses), outside OpenRouter's sandbox.
-        No caller-supplied path, provider file fetch, or inference.
-        """
-        with tool_errors():
-            exported = jobs.export(job_id)
-            return status_result({"saved": True}, meta={"advisorExport": exported})
-
     for fn in (list_chat_models, start_advisor_chat, send_advisor_message, ask_advisor,
                wait_advisor_job,
                list_advisor_chats, get_advisor_chat, reset_advisor_sandbox,
                delete_advisor_chat, retry_advisor_cleanup, get_advisor_job,
-               open_advisor_result, get_advisor_result, summarize_advisor_result,
-               export_advisor_result):
+               open_advisor_result, get_advisor_result, summarize_advisor_result):
         meta = None
         if fn.__name__ in ADVISOR_UI_TOOLS | APP_ONLY_TOOLS:
             ui = {"resourceUri": ADVISOR_UI_URI}

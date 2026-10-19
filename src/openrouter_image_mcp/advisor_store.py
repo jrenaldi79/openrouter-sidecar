@@ -7,7 +7,6 @@ the same OS user. The database contains briefs and final answers, never API keys
 from __future__ import annotations
 
 import json
-import os
 import secrets
 import time
 from contextlib import contextmanager
@@ -41,11 +40,6 @@ class Chat:
     history: list[dict[str, str]]
     # Sandbox chats get the hosted shell; inline chats get files in the prompt only.
     sandbox: bool = True
-
-
-def default_store_path() -> Path:
-    base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / ".local" / "share")
-    return base / "Northwestern AI" / "advisor.sqlite3"
 
 
 class AdvisorStore:

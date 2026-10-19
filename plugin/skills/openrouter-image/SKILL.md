@@ -1,32 +1,36 @@
 ---
 name: openrouter-image
-description: Use when the user wants to make, generate, edit, restyle, inpaint, extend (outpaint) or vary an image with the `generate_image` or `edit_image` tools of the openrouter-image MCP server, when choosing an OpenRouter image model, or when an image call fails with a sign-in, credits, size or moderation error.
+description: Use when the user wants to make, generate, edit, restyle, inpaint, extend (outpaint) or vary an image with the hosted Sidecar connector's `generate_image` or `edit_image` tools, when choosing an OpenRouter image model, or when an image call fails with a link, credits, size or moderation error.
 ---
 
-# Northwestern AI image generation and editing
+# Northwestern AI image generation and editing (hosted Sidecar)
 
 ## Overview
 
-The openrouter-image MCP server sends prompts and images to any OpenRouter image model and saves the results locally. It has no presets: picking the model, wording the prompt and keeping spend sensible is your job. Every call costs real money, billed to the user's OpenRouter organization.
+The Sidecar connector sends prompts and images to any OpenRouter image model and stores the results as private image assets on the server. It has no presets: picking the model, wording the prompt and keeping spend sensible is your job. Every call costs real money, billed to the OpenRouter account the student linked.
+
+The server can't see files on the user's computer or images pasted into the chat. Images reach it only as asset ids: from an upload, or from an earlier result.
 
 ## Tools
 
 | Tool | Use it for |
 |---|---|
-| `account_status()` | Signed in? The key's label, its usage (today, this week, this month, total) and its spending limit. Shows the configured Northwestern cohort/workspace; these are configuration, not independent billing verification. |
-| `auth_login(switch_account=false)` | Sign in. Returns at once; the user finishes in the browser. Then check `account_status()`. |
-| `auth_logout()` | Delete the stored key. |
+| `account_status()` | Signed-in Northwestern account, class cohort, and whether OpenRouter is linked. Free. |
+| `link_openrouter()` | Returns a one-time browser link that connects the student's own OpenRouter account. Needed once before any paid call. |
 | `list_image_models(query?, accepts_images?, author?, sort="newest"\|"price")` | Find candidate models. `accepts_images=true` for edits. |
 | `get_image_model(model_id)` | Exact aspect ratios, resolutions, quality values, max `n`, max input images, passthrough options, pricing. |
-| `generate_image(prompt, model, ...)` | Text to image. Saves to the default output folder unless `output_dir` is given. |
-| `edit_image(prompt, model, images, ...)` | Image(s) plus prompt to image. The first image is the primary; the rest are references. |
-| `remask_image(image, mask_path, ...)` | Redo a masked edit's blend with a new mask, locally and free. |
+| `create_image_upload(filename, mime, size_bytes)` | A one-time PUT link for one image file (`curl -T file "<url>"`); the response holds its asset id. |
+| `open_image_uploader()` | In clients with MCP Apps (claude.ai, Claude Desktop): a drop zone that uploads images and adds their asset ids to the conversation. |
+| `generate_image(prompt, model, ...)` | Text to image. Results are image assets with download links. |
+| `edit_image(prompt, model, images, ...)` | Image asset(s) plus prompt to image. The first id is the image being edited; the rest are references. |
+| `remask_image(image_id, mask_id, ...)` | Redo a masked edit's blend with a new mask, on the server and free. |
+| `get_image_download(asset_id)` | Fresh 24-hour download links for an image and its metadata. |
 
-## Northwestern cohort selection
+## Getting images in
 
-Use the single northwestern-images server. Its configured cohort is 2027 for capstone, full-time and second-year students, or 2028 for first-year students. Start with account status and confirm the configured Northwestern workspace. Never choose a cohort from an email suffix alone. Each user completes browser sign-in after receiving organization/workspace membership. If membership is missing, ask the administrator to resolve it rather than using a personal key. Logout and switch-account affect only this cohort. Default generation folders are ~/Pictures/Northwestern AI/Class of 2027 or Class of 2028.
-
-Claude supplies image descriptions and critiques through its native vision. Do not automatically upload an image for analysis. Student deployment is on hold until the administrator confirms the OpenRouter capacity increase.
+- In claude.ai or Claude Desktop, offer `open_image_uploader()`: the user drops the files and the asset ids come back into the chat.
+- Elsewhere (Claude Code, or a client without MCP Apps), call `create_image_upload` with the file's name, type and exact size, then have the user (or your shell) run the `curl -T` command it returns within 10 minutes.
+- An image the user pasted into the chat is visible to you, not to the server. Describe and critique it with your own vision; upload it only when it must be edited.
 
 ## Before uploading client or project imagery
 
@@ -34,33 +38,35 @@ Ask the user for an explicit OK before the first `edit_image` call that sends a 
 
 ## Workflow
 
-1. **Discover first.** Don't pick a model from memory. Call `list_image_models` (with `accepts_images=true` for edits), then `get_image_model` on the one or two candidates to read their real parameters.
-2. **Iterate cheaply.** Use a speed-tier model, or `quality="low"` where the model has `quality`, and start with `n=1` while the prompt is still changing. Increase the batch only when the student requests it and understands the cost.
-3. **State the cost before spending.** Before a large `n` or a high/max-quality final, tell the user the likely cost: the "This call" figure from a comparable earlier result times `n`, or, if the cost is unknown, say so and run `n=1` first. `n` can be 1 to 10; above the model's maximum the server splits it into several calls, each billed.
-4. **Final at full quality**, `n=1` unless the user wants options.
+1. **Check the account.** `account_status()`; if OpenRouter isn't linked, give the user the `link_openrouter()` link and wait for them to finish.
+2. **Discover first.** Don't pick a model from memory. Call `list_image_models` (with `accepts_images=true` for edits), then `get_image_model` on the one or two candidates to read their real parameters.
+3. **Iterate cheaply.** Use a speed-tier model, or `quality="low"` where the model has `quality`, and start with `n=1` while the prompt is still changing. Increase the batch only when the student requests it and understands the cost.
+4. **State the cost before spending.** Before a large `n` or a high/max-quality final, tell the user the likely cost: the cost of a comparable earlier result times `n`, or, if the cost is unknown, say so and run `n=1` first. `n` can be 1 to 10; above the model's maximum the server splits it into several calls, each billed.
+5. **Final at full quality**, `n=1` unless the user wants options.
 
-## Edits: paths, size and masks
+## Edits: size and masks
 
-- **Paths must be absolute** for `images`, `mask_path` and `output_dir`.
-- **`fit="preserve"` (default) returns exactly the input's pixel size.** The server picks the model's nearest aspect ratio and crops back, or pads with blurred mirrored edges and crops. Don't pass `aspect_ratio` or `size` with `fit="preserve"`; they are rejected. A model that offers a ratio close to the input's (21:9 for a 2.32:1 render) avoids padding, which can invent content at the edges.
+- **`fit="preserve"` (default) returns exactly the first input's pixel size.** The server picks the model's nearest aspect ratio and crops back, or pads with blurred mirrored edges and crops. Don't pass `aspect_ratio` or `size` with `fit="preserve"`; they are rejected. A model that offers a ratio close to the input's (21:9 for a 2.32:1 render) avoids padding, which can invent content at the edges.
 - **`fit="model"`** returns whatever the model made, untouched. Use it only when the user doesn't need the original size.
 - **Extending or reframing** (outpainting, a new aspect ratio) needs `fit="model"` with an `aspect_ratio`: the output is no longer the input's size, and masks can't be used.
-- **Masks** (`mask_path`, greyscale): white = may change, black = keep pixel-identical. The edge is feathered (`mask_feather_px`, default 0.5% of the short edge). A lighting seam can show at the mask edge; widen the feather or the white area if it does. Masks can't be combined with `fit="model"`. Black areas stay pixel-identical only with PNG output (the default); a JPEG or WebP `output_format` re-compresses them.
+- **Masks** (`mask_id`, an uploaded greyscale image the same size as the first input): white = may change, black = keep pixel-identical. The edge is feathered (`mask_feather_px`, chosen from the image size by default). A lighting seam can show at the mask edge; widen the feather or the white area if it does. Masks can't be combined with `fit="model"`. Black areas stay pixel-identical only with PNG output (the default); a JPEG or WebP `output_format` re-compresses them.
+- **Making a mask:** ask the user to paint one at the image's exact size (white where change is allowed) and upload it. In Claude Code you can draw it with Pillow from rectangles around the protected areas and upload it with `create_image_upload`.
 
-**Fix a seam with `remask_image`, not a new edit.** A masked edit also saves the model's image before the blend as `<result>.unmasked.png`. If the new content is good but blends badly (a ghosted edge where the model drew past the mask, or the mask was too small or too large), draw a corrected mask and call `remask_image(image=<result>, mask_path=<new mask>)`. It re-blends locally: free, nothing uploaded, no new consent needed. It needs a masked result from server v0.2.0 or later and the original input unchanged; otherwise it says so, and only then is a new `edit_image` warranted.
+**Fix a seam with `remask_image`, not a new edit.** A masked edit keeps the model's unblended image on the server. If the new content is good but blends badly (a ghosted edge where the model drew past the mask, or the mask was too small or too large), upload a corrected mask and call `remask_image(image_id=<result asset id>, mask_id=<new mask id>)`. It re-blends on the server: free, nothing sent to a provider, no new consent needed.
 
 ## Results
 
-Each image is saved next to the primary input (edits) with a `.json` sidecar holding the prompt, model, parameters, cost and fit details, and inline previews come back in the result. Use `output_dir` when the input folder shouldn't receive files. The result ends with the call cost and today's/this month's usage; relay the cost to the user.
+Each result lists its asset id, a 24-hour download link for the image and one for its metadata (prompt, model, parameters, cost and fit details), and inline previews where the client shows them. Pass result ids straight back into `edit_image` or `remask_image`; call `get_image_download` for fresh links later. Assets are private to the signed-in student and kept for 30 days (2 GB per student). The result ends with the call's cost; relay it to the user.
 
 ## Errors
 
 | Message | Do this |
 |---|---|
-| Not signed in / "call `auth_login`" (401) | Call `auth_login()`, ask the user to finish in the browser, confirm with `account_status()`. Never retry in a loop. |
-| Out of credits (402) | Tell the user to ask the org admin to top up. |
+| `openrouter_link_required` | Call `link_openrouter()`, give the user the link, and retry after they confirm. Never retry in a loop. |
+| Out of credits (402) | Tell the user to add credits or raise the key's limit on OpenRouter. |
 | "Blocked by … moderation … Not charged" | Nothing was billed. Reword neutrally (drop violent, body or brand wording), or check `get_image_model` for a `moderation` passthrough and offer it as a flat `provider_options={"moderation": "low"}` (the server routes it to each provider that allows it; other keys are rejected before spend), or switch to a model that isn't moderated. Tell the user which you chose. |
 | Invalid parameter (lists allowed values) | Pick from the list; nothing was billed. |
+| "unavailable" for an asset id | The id belongs to another sign-in or has expired; upload the image again. |
 | Model replied with text, no image | Treat as a refusal; rephrase or change model. |
 
 ## Model rules of thumb (As of 2026-10)
@@ -72,5 +78,5 @@ These go stale fast. `list_image_models` and `get_image_model` are the source of
 - **ByteDance Seedream 5.0 Pro** (`bytedance-seed/seedream-5-0-pro`, precise editing control, lifelike scenes) and **Flash** (`bytedance-seed/seedream-5-0-flash`, fast and cost-efficient): up to 14 input images, the widest ratio list (including 20:9 and 21:9), 1K/2K, `seed` support, `n=1`.
 - **Black Forest Labs FLUX.3** (`black-forest-labs/flux-3-image`): flagship generation and multi-reference editing with up to 10 input images, resolution tiers 768 to 4K, ratios including 21:9, `n=1`.
 - **Microsoft MAI-Image-2.6** (`microsoft/mai-image-2.6`, precision) and **MAI-Image-2.6 Flash** (lower latency and cost): design-ready visuals, up to 5 input images, ratios only up to 16:9, so wide renders get padded under `fit="preserve"`.
-- **Recraft vector models** (names ending `-vector`, such as `recraft/recraft-v4.1-vector`): output SVG, saved as `.svg` with no fitting and no preview. Recraft "styles" models require at least one style reference image.
+- **Recraft vector models** (names ending `-vector`, such as `recraft/recraft-v4.1-vector`): output SVG, with no fitting and no preview. Recraft "styles" models require at least one style reference image.
 - **Legible text in the image:** Qwen Image 3 / 3 Pro (`qwen/qwen-image-3`, `qwen/qwen-image-3-pro`) advertise text and detail down to 10px.

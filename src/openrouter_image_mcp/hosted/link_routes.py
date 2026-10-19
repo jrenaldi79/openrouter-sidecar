@@ -82,7 +82,7 @@ def link_routes(links: LinkStore, *, exchange, verify, auth_url: str = AUTH_URL)
             attempt, nonce = links.begin(request.query_params.get("t", ""))
         except LinkError as exc:
             return _fail(str(exc))
-        url = build_auth_url(0, challenge_for(attempt["verifier"]), attempt["id"],
+        url = build_auth_url(challenge_for(attempt["verifier"]), attempt["id"],
                              attempt["workspace"], f"{APP_TITLE} Sidecar",
                              callback_url=f"{links.origin}{BASE}/callback")
         url = auth_url + url[len(AUTH_URL):]

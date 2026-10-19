@@ -1,7 +1,7 @@
 {
   "name": "openrouter-image",
-  "version": "0.2.0",
-  "description": "Generate and edit images with any OpenRouter image model, plus skills for model choice and architectural render polish.",
+  "version": "0.3.0",
+  "description": "The hosted OpenRouter Sidecar connector (image generation and editing with any OpenRouter image model, side-advisor chats) plus skills for model choice and architectural render polish.",
   "author": {
     "name": "skelly-77"
   },

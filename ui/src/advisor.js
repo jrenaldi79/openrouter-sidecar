@@ -19,7 +19,6 @@ let generation = 0;
 let controller = new AbortController();
 let original = null;
 let renderedAnswer = '';
-let exportBusy = false;
 let followUpBusy = false;
 let fetchTail = Promise.resolve();
 
@@ -42,7 +41,7 @@ function setTheme(context) {
 
 function updateButtons() {
   const sharing = share.busy();
-  const following = followUpBusy || exportBusy || sharing;
+  const following = followUpBusy || sharing;
   const canFollowUp = !disposed && !blocked && canCallTools() && original?.kind === 'message'
     && original.status === 'completed' && !!string(original.chat_id) && !following;
   element('follow-up').disabled = disposed || (!original && !blocked) || !canCallTools();
@@ -50,8 +49,7 @@ function updateButtons() {
   element('follow-up-send').disabled = !canFollowUp || !element('follow-up').value.trim();
   const available = !disposed && !blocked && !followUpBusy && canCallTools() && !!string(original?.answer).trim();
   // Share only finished text: a completed answer, or an interrupted (labelled partial) one.
-  share.update(available && !exportBusy && ['completed', 'interrupted'].includes(original.status));
-  element('export').disabled = !available || exportBusy || sharing;
+  share.update(available && ['completed', 'interrupted'].includes(original.status));
 }
 
 function showError(message) {
@@ -63,13 +61,12 @@ function suppressResult(message) {
   stopPolling();
   live.stop();
   original = null;
-  exportBusy = followUpBusy = false;
+  followUpBusy = false;
   share.reset();
   answer.textContent = '';
   renderedAnswer = '';
   element('prompt').textContent = '';
   element('prompt-details').hidden = true;
-  element('export-status').textContent = '';
   element('job-status').textContent = 'Result unavailable';
   showError(message);
   updateButtons();
@@ -169,10 +166,9 @@ function receiveResult(result) {
   if (!validateStatus(data)) { suppressResult('No valid advisor result was supplied by the host.'); return; }
   blocked = false;
   original = null;
-  exportBusy = followUpBusy = false;
+  followUpBusy = false;
   share.reset();
   element('prompt-details').open = false;
-  element('export-status').textContent = '';
   // Public tool data identifies the job; even unexpected public answer fields
   // must not be rendered. The first app-only fetch also rechecks ownership.
   const { prompt, answer: ignoredAnswer, ...status } = data;
@@ -225,28 +221,6 @@ const share = createShare({
   app, element, poller, callTool, validStatus: validateStatus, validResult, toolError, suppress: suppressResult,
   original: () => original, generation: () => generation, signal: () => controller.signal, onChange: updateButtons,
   current: token => !disposed && !blocked && token === generation,
-});
-
-element('export').addEventListener('click', async () => {
-  if (!original || exportBusy || !canCallTools()) return;
-  const token = generation;
-  exportBusy = true;
-  element('export-status').textContent = 'Saving Markdown…';
-  updateButtons();
-  try {
-    // Always export the displayed original, including after sharing a summary.
-    const result = await callTool('export_advisor_result', original.job_id);
-    if (disposed || blocked || token !== generation) return;
-    if (result.isError) { suppressResult(toolError(result)); return; }
-    const path = result._meta?.advisorExport?.path;
-    if (result.structuredContent?.saved !== true || typeof path !== 'string' || !path) throw new Error('The host did not confirm a saved file.');
-    element('export-status').textContent = `Saved Markdown: ${path}`;
-  } catch (error) {
-    if (disposed || blocked || token !== generation) return;
-    element('export-status').textContent = `Unable to save: ${string(error?.message) || 'Host request failed.'}`;
-  } finally {
-    if (token === generation) { exportBusy = false; updateButtons(); }
-  }
 });
 
 function dispose() {

@@ -29,8 +29,8 @@ from ..apps import (
 from ..assets import AssetStore, LocalDirBlobs
 from ..auth import AUTH_URL
 from ..preference_tools import register_preference_tools
-from ..server import SERVER_NAME, _tool_errors
 from ..tool_annotations import annotate
+from ..tool_support import SERVER_NAME, tool_errors
 from .guidance import INSTRUCTIONS, register_guidance
 from .health import MAINTENANCE, Health
 from .image_tools import register_image_tools
@@ -49,7 +49,6 @@ from .verifier import Auth0Verifier
 from .workspaces import ByWorkspace, Gate, build_workspaces
 
 log = logging.getLogger(__name__)
-LOCAL_ONLY_TOOLS = ("export_advisor_result",)
 
 
 def storage_target(database_url: str):
@@ -70,7 +69,7 @@ def _scope_for(settings: HostedSettings, gate: Gate):
 def _register_imports(server: MCPServer, settings: HostedSettings, target, gate: Gate) -> None:
     """Local-export import (M5); needs no blob volume."""
     tokens = TransferTokens(target, settings.link_signing_key, settings.public_origin)
-    register_import_tool(server, tokens, _scope_for(settings, gate), _tool_errors)
+    register_import_tool(server, tokens, _scope_for(settings, gate), tool_errors)
     for route in import_routes(tokens, LocalImports(target)):
         server.custom_route(route.path, sorted(route.methods - {"HEAD"}))(route.endpoint)
 
@@ -90,7 +89,7 @@ def _register_account_tools(server: MCPServer, links: LinkStore, settings: Hoste
 
         No inference and no cost. If OpenRouter is not linked, call link_openrouter.
         """
-        with _tool_errors():
+        with tool_errors():
             who = principal()
             label = links.label_for(who)
             linked = f"Linked OpenRouter key: {label}" if label else "OpenRouter: not linked (call link_openrouter)."
@@ -103,7 +102,7 @@ def _register_account_tools(server: MCPServer, links: LinkStore, settings: Hoste
         OpenRouter sign-in for your class workspace, then asks them to confirm. Only
         the browser that opens the link can finish it.
         """
-        with _tool_errors():
+        with tool_errors():
             url = links.issue(principal())
             return f"Open this link in your browser within 10 minutes to link OpenRouter:\n{url}"
 
@@ -112,7 +111,7 @@ def _register_account_tools(server: MCPServer, links: LinkStore, settings: Hoste
 
         To fully revoke the key, also delete it at https://openrouter.ai/settings/keys.
         """
-        with _tool_errors():
+        with tool_errors():
             who = principal()
             links.revoke(who.key, who.workspace_id)
             return "Unlinked. Delete the key at https://openrouter.ai/settings/keys to revoke it fully."
@@ -129,7 +128,7 @@ def _register_images(server: MCPServer, settings: HostedSettings, target, servic
     transfers = TransferTokens(target, settings.link_signing_key, settings.public_origin)
     hosted = HostedImages(assets, transfers, services["images"], scope_for, max_input_edge=2048,
                           admit=admission.image_call)
-    register_image_tools(server, hosted, services["catalog"], _tool_errors)
+    register_image_tools(server, hosted, services["catalog"], tool_errors)
     register_uploader(server, settings.public_origin)
     for route in transfer_routes(transfers, assets):
         server.custom_route(route.path, sorted(route.methods - {"HEAD"}))(route.endpoint)
@@ -185,12 +184,10 @@ def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transpor
     register_gallery(server)
     register_advisor_viewer(server)
     register_settings(server)
-    register_advisor_tools(server, services["advisors"], services["jobs"], _tool_errors,
+    register_advisor_tools(server, services["advisors"], services["jobs"], tool_errors,
                            preferences=services["preferences"])
     register_preference_tools(server, services["preferences"], services["demos"],
-                              services["catalog"], services["settings"], _tool_errors)
-    for name in LOCAL_ONLY_TOOLS:
-        server.remove_tool(name)
+                              services["catalog"], services["settings"], tool_errors)
     _register_account_tools(server, links, settings, gate)
     for route in link_routes(links, exchange=exchange, verify=verify, auth_url=auth_url):
         server.custom_route(route.path, sorted(route.methods - {"HEAD"}))(route.endpoint)

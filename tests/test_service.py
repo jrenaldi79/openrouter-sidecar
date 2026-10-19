@@ -13,7 +13,7 @@ import respx
 from helpers import make_grid, save, unc_paths
 from PIL import Image
 
-from openrouter_image_mcp import keystore, outputs, service
+from openrouter_image_mcp import outputs, service
 from openrouter_image_mcp.catalog import Catalog
 from openrouter_image_mcp.client import OpenRouterClient
 from openrouter_image_mcp.config import Settings
@@ -28,17 +28,15 @@ from openrouter_image_mcp.service import ImageService
 BASE = "https://openrouter.ai/api/v1"
 FIXTURES = Path(__file__).parent / "fixtures"
 NOW = datetime(2026, 10, 3, 22, 15, 0, tzinfo=UTC)
-TS = "20261003-221500"
 SUNBURST = "openai/gpt-image-2.5-sunburst"  # 21:9, quality enum, no resolutions, max_n 10
 FLUX_PRO = "black-forest-labs/flux.2-pro"  # max_n 1
 FLUX_3 = "black-forest-labs/flux-3-image"  # resolutions 768..4K, 21:9
 VECTOR = "recraft/recraft-v4-vector"  # output_format svg
 CHAT = "openrouter/auto"  # chat route
 
-SIDECAR_KEYS = {
-    "schema_version", "server_version", "tool", "created_at", "model", "provider",
-    "prompt", "params", "seed", "generation_id", "elapsed_s", "usage", "cost_usd",
-    "call_cost_usd", "inputs", "mask", "unmasked_path", "fit",
+META_KEYS = {
+    "tool", "created_at", "model", "provider", "prompt", "params", "seed", "generation_id",
+    "elapsed_s", "usage", "cost_usd", "call_cost_usd", "inputs", "mask", "fit",
 }
 
 
@@ -75,13 +73,52 @@ def body_of(call):
     return json.loads(call.request.content)
 
 
-def sidecar(saved):
-    return json.loads(saved.sidecar.read_text(encoding="utf-8"))
-
-
 def decode_data_url(url):
     header, _, payload = url.partition(",")
     return header, Image.open(BytesIO(base64.b64decode(payload)))
+
+
+class MemorySink:
+    """Keeps what the service hands its output sink (hosted: `AssetSink`, stored as assets)."""
+
+    def __init__(self):
+        self.records: dict[str, dict] = {}
+        self.fail_on: set[int] = set()  # 1-based save attempts that fail
+        self.attempts = 0
+
+    def save(self, job, *, data, ext, unmasked, meta, index):
+        self.attempts += 1
+        if self.attempts in self.fail_on:
+            raise OSError("disk full")
+        asset_id = f"img_{len(self.records) + 1}"
+        self.records[asset_id] = {"data": data, "ext": ext, "unmasked": unmasked, "meta": meta,
+                                  "name": f"{job.stem}__{outputs.model_short(job.model.id)}_{index}"}
+        return asset_id
+
+
+class Rig:
+    """The service with a memory sink, as `HostedImages` drives it."""
+
+    def __init__(self, svc: ImageService):
+        self.svc, self.sink = svc, MemorySink()
+
+    async def generate(self, *args, **kwargs):
+        return await self.svc.generate(*args, sink=self.sink, **kwargs)
+
+    async def edit(self, *args, **kwargs):
+        return await self.svc.edit(*args, sink=self.sink, **kwargs)
+
+    def record(self, saved) -> dict:
+        return self.sink.records[saved.asset_id]
+
+    def meta(self, saved) -> dict:
+        return self.record(saved)["meta"]
+
+    def data(self, saved) -> bytes:
+        return self.record(saved)["data"]
+
+    def image(self, saved) -> Image.Image:
+        return Image.open(BytesIO(self.data(saved)))
 
 
 class Mono:
@@ -93,9 +130,9 @@ class Mono:
 
 
 @pytest.fixture
-def keyed(memory_keyring):
-    keystore.set_key("sk-or-test-abc123")
-    return memory_keyring
+def keyed(keys):
+    keys.set("sk-or-test-abc123")
+    return keys
 
 
 @pytest.fixture
@@ -121,15 +158,14 @@ def images_route(mock):
 
 @pytest.fixture
 async def client(keyed):
-    async with OpenRouterClient(timeout_s=30) as c:
+    async with OpenRouterClient(timeout_s=30, credentials=keyed.credentials()) as c:
         yield c
 
 
 @pytest.fixture
-def settings(tmp_path):
+def settings():
     return Settings(
         workspace_id="21082e84-ae02-4639-ad40-c7251b98ab10",
-        output_dir=tmp_path / "out",
         max_input_edge=2048,
         timeout_s=30,
         ratio_tolerance=0.03,
@@ -143,7 +179,7 @@ def mono():
 
 @pytest.fixture
 def svc(client, mock, settings, mono):
-    return ImageService(client, Catalog(client), settings, clock=lambda: NOW, monotonic=mono)
+    return Rig(ImageService(client, Catalog(client), settings, clock=lambda: NOW, monotonic=mono))
 
 
 @pytest.fixture
@@ -172,15 +208,16 @@ async def test_edit_sample_render_shape(svc, images_route, sample_render):
 
     assert len(result.images) == 1 and result.failures == []
     saved = result.images[0]
-    assert saved.path.parent == sample_render.parent
-    assert saved.path.name == f"Sample_Render_v5__gpt-image-2.5-sunburst_{TS}_1.png"
-    assert Image.open(saved.path).size == (1920, 828)
+    assert saved.asset_id == "img_1"
+    assert svc.record(saved)["name"] == "Sample_Render_v5__gpt-image-2.5-sunburst_1"
+    assert svc.record(saved)["ext"] == ".png" and svc.record(saved)["unmasked"] is None
+    assert svc.image(saved).size == (1920, 828)
     assert saved.cost_usd == pytest.approx(0.21)
     assert saved.preview_jpeg is not None
     assert Image.open(BytesIO(saved.preview_jpeg)).format == "JPEG"
 
-    meta = sidecar(saved)
-    assert set(meta) == SIDECAR_KEYS
+    meta = svc.meta(saved)
+    assert set(meta) == META_KEYS
     assert meta["tool"] == "edit_image"
     assert meta["created_at"] == NOW.isoformat()
     assert meta["model"] == SUNBURST and meta["provider"] == "openai"
@@ -197,8 +234,6 @@ async def test_edit_sample_render_shape(svc, images_route, sample_render):
     assert meta["call_cost_usd"] == pytest.approx(0.21)
     assert meta["usage"]["cost"] == pytest.approx(0.21)
     assert meta["mask"] is None
-    assert meta["unmasked_path"] is None
-    assert list(sample_render.parent.glob("*.unmasked.png")) == []
     assert meta["inputs"] == [
         {
             "path": sample_render.as_posix(),
@@ -230,11 +265,11 @@ async def test_large_input_preserve_returns_original_size(svc, images_route, tmp
     _, sent = decode_data_url(url)
     assert max(sent.size) == 2048
     saved = result.images[0]
-    assert Image.open(saved.path).size == (7680, 3300)
-    fit = sidecar(saved)["fit"]
+    assert svc.image(saved).size == (7680, 3300)
+    fit = svc.meta(saved)["fit"]
     assert fit["upscaled"] is True
     assert fit["final_size"] == [7680, 3300]
-    assert sidecar(saved)["inputs"][0]["size"] == [7680, 3300]
+    assert svc.meta(saved)["inputs"][0]["size"] == [7680, 3300]
     assert saved.note and "upscaled from 2016×864" in saved.note
 
 
@@ -251,8 +286,8 @@ async def test_pad_strategy_uses_plan_content_box(svc, images_route, tmp_path):
     assert sent.format == "PNG"
     assert sent.size == (2048, 878)  # sent copy (2048x683) padded out to 21:9
     saved = result.images[0]
-    assert Image.open(saved.path).size == (3000, 1000)
-    fit = sidecar(saved)["fit"]
+    assert svc.image(saved).size == (3000, 1000)
+    fit = svc.meta(saved)["fit"]
     assert fit["strategy"] == "pad" and fit["padded"] is True
     assert fit["crop_box"] == [0, 96, 2016, 768]
     assert any("padded" in n.lower() for n in result.notes)
@@ -279,14 +314,14 @@ async def test_mask_applied_after_fit(svc, images_route, tmp_path):
 
     result = await svc.edit("x", SUNBURST, [str(src)], mask_path=str(mask_path), mask_feather_px=0)
 
-    out = Image.open(result.images[0].path).convert("RGB")
+    out = svc.image(result.images[0]).convert("RGB")
     original = Image.open(src).convert("RGB")
     assert out.size == (1920, 828)
     for x, y in [(0, 0), (100, 400), (959, 827)]:
         assert out.getpixel((x, y)) == original.getpixel((x, y))
     for x, y in [(960, 0), (1500, 400), (1919, 827)]:
         assert out.getpixel((x, y)) == (0, 0, 255)
-    meta = sidecar(result.images[0])
+    meta = svc.meta(result.images[0])
     assert meta["mask"] == {"path": mask_path.as_posix(), "feather_px": 0}
 
 
@@ -304,14 +339,11 @@ async def test_masked_edit_keeps_unmasked_layer(svc, images_route, tmp_path):
     result = await svc.edit("x", SUNBURST, [str(src)], mask_path=str(mask_path), mask_feather_px=0)
 
     saved = result.images[0]
-    layer_path = saved.path.with_suffix(".unmasked.png")
-    assert layer_path.name == f"in__gpt-image-2.5-sunburst_{TS}_1.unmasked.png"
-    assert layer_path.is_file()
-    with Image.open(layer_path) as opened:
+    with Image.open(BytesIO(svc.record(saved)["unmasked"])) as opened:
         assert opened.format == "PNG"
         layer = opened.convert("RGB")
     assert layer.size == (1920, 828)  # the input's size, not the model's
-    out = Image.open(saved.path).convert("RGB")
+    out = svc.image(saved).convert("RGB")
     # Pixel-aligned with the result: inside the mask the two are identical...
     # (sample points stay clear of the resampled red/blue boundary near x=960)
     for x, y in [(1100, 0), (1500, 400), (1919, 827)]:
@@ -321,9 +353,7 @@ async def test_masked_edit_keeps_unmasked_layer(svc, images_route, tmp_path):
     # ...and outside it the layer still has the model's pixels the blend discarded.
     for x, y in [(0, 0), (100, 400), (800, 827)]:
         assert layer.getpixel((x, y)) == (255, 0, 0)
-    meta = sidecar(saved)
-    assert set(meta) == SIDECAR_KEYS
-    assert meta["unmasked_path"] == layer_path.as_posix()
+    assert set(svc.meta(saved)) == META_KEYS
 
 
 async def test_unmasked_layer_is_png_whatever_the_output_format(svc, images_route, tmp_path):
@@ -336,25 +366,8 @@ async def test_unmasked_layer_is_png_whatever_the_output_format(svc, images_rout
     )
 
     saved = result.images[0]
-    assert saved.path.suffix == ".jpg"
-    layer_path = saved.path.with_suffix(".unmasked.png")
-    assert Image.open(layer_path).format == "PNG"
-    assert sidecar(saved)["unmasked_path"] == layer_path.as_posix()
-
-
-async def test_masked_edit_never_reuses_a_name_with_an_unmasked_layer(svc, images_route, tmp_path):
-    src = save(make_grid(1920, 828), tmp_path / "in.png", "PNG")
-    mask_path = save(Image.new("L", (1920, 828), 255), tmp_path / "mask.png", "PNG")
-    stale = tmp_path / f"in__gpt-image-2.5-sunburst_{TS}_1.unmasked.png"
-    stale.write_bytes(b"left over from an earlier run")
-    images_route.mock(return_value=ok(2016, 864))
-
-    result = await svc.edit("x", SUNBURST, [str(src)], mask_path=str(mask_path))
-
-    saved = result.images[0]
-    assert saved.path.name == f"in__gpt-image-2.5-sunburst_{TS}_1-2.png"
-    assert stale.read_bytes() == b"left over from an earlier run"
-    assert saved.path.with_suffix(".unmasked.png").is_file()
+    assert svc.record(saved)["ext"] == ".jpg" and svc.image(saved).format == "JPEG"
+    assert Image.open(BytesIO(svc.record(saved)["unmasked"])).format == "PNG"
 
 
 async def test_mask_with_fit_model_rejected_before_network(svc, mock, images_route, sample_render, tmp_path):
@@ -378,8 +391,8 @@ async def test_fit_model_untouched(svc, images_route, sample_render):
 
     assert body_of(images_route.calls[0])["aspect_ratio"] == "16:9"
     saved = result.images[0]
-    assert hashlib.sha256(saved.path.read_bytes()).digest() == hashlib.sha256(provider_bytes).digest()
-    assert sidecar(saved)["fit"] == {
+    assert hashlib.sha256(svc.data(saved)).digest() == hashlib.sha256(provider_bytes).digest()
+    assert svc.meta(saved)["fit"] == {
         "strategy": "model",
         "requested_ratio": "16:9",
         "raw_size": [1344, 768],
@@ -388,23 +401,6 @@ async def test_fit_model_untouched(svc, images_route, sample_render):
         "padded": False,
         "upscaled": False,
     }
-
-
-async def test_edit_falls_back_when_dir_unwritable(svc, images_route, sample_render, settings, monkeypatch):
-    real = outputs._probe_writable
-
-    def probe(directory):
-        if directory == sample_render.parent:
-            raise PermissionError("denied")
-        real(directory)
-
-    monkeypatch.setattr(outputs, "_probe_writable", probe)
-    images_route.mock(return_value=ok())
-
-    result = await svc.edit("x", SUNBURST, [str(sample_render)])
-
-    assert result.images[0].path.parent == settings.output_dir
-    assert any(str(sample_render.parent) in n for n in result.notes)
 
 
 async def test_chat_route_used_for_chat_models(svc, mock, images_route, tmp_path):
@@ -428,8 +424,8 @@ async def test_chat_route_used_for_chat_models(svc, mock, images_route, tmp_path
     assert content[1]["image_url"]["url"].startswith("data:image/png;base64,")
     assert "image_config" not in body
     saved = result.images[0]
-    assert Image.open(saved.path).size == (1000, 500)
-    assert sidecar(saved)["fit"]["strategy"] == "none_supported"
+    assert svc.image(saved).size == (1000, 500)
+    assert svc.meta(saved)["fit"]["strategy"] == "none_supported"
     assert result.provider == "google"
     assert result.call_cost_usd == pytest.approx(0.04)
 
@@ -437,7 +433,7 @@ async def test_chat_route_used_for_chat_models(svc, mock, images_route, tmp_path
 # --------------------------------------------------------------- generate
 
 
-async def test_generate_saves_to_output_dir_with_slug(svc, images_route, settings):
+async def test_generate_names_results_with_a_prompt_slug(svc, images_route):
     provider_bytes = png_bytes(1024, 1024)
     images_route.mock(return_value=httpx.Response(200, json=images_body([provider_bytes])))
 
@@ -450,26 +446,22 @@ async def test_generate_saves_to_output_dir_with_slug(svc, images_route, setting
         "quality": "high",
     }
     saved = result.images[0]
-    assert saved.path.parent == settings.output_dir
-    assert saved.path.name == f"a-red-panda-astronaut-floating-in__gpt-image-2.5-sunburst_{TS}_1.png"
-    assert saved.path.read_bytes() == provider_bytes
-    meta = sidecar(saved)
-    assert set(meta) == SIDECAR_KEYS
+    assert svc.record(saved)["name"] == "a-red-panda-astronaut-floating-in__gpt-image-2.5-sunburst_1"
+    assert svc.data(saved) == provider_bytes and svc.record(saved)["unmasked"] is None
+    meta = svc.meta(saved)
+    assert set(meta) == META_KEYS
     assert meta["tool"] == "generate_image"
     assert meta["inputs"] == [] and meta["fit"] is None and meta["mask"] is None
-    assert meta["unmasked_path"] is None
-    assert list(settings.output_dir.glob("*.unmasked.png")) == []
     assert meta["params"]["quality"] == "high"
 
 
-async def test_generate_output_dir_prefix_and_n_in_one_call(svc, images_route, tmp_path):
+async def test_generate_prefix_and_n_in_one_call(svc, images_route):
     images_route.mock(return_value=httpx.Response(
         200, json=images_body([png_bytes(64, 64), png_bytes(64, 64)], cost=0.3)
     ))
-    custom = tmp_path / "custom" / "nested"
 
     result = await svc.generate(
-        "x", SUNBURST, n=2, output_dir=str(custom), filename_prefix="hero",
+        "x", SUNBURST, n=2, filename_prefix="hero",
         provider_options={"moderation": "low"},
     )
 
@@ -477,12 +469,11 @@ async def test_generate_output_dir_prefix_and_n_in_one_call(svc, images_route, t
     body = body_of(images_route.calls[0])
     assert body["n"] == 2
     assert body["provider"] == {"options": {"openai": {"moderation": "low"}}}
-    names = [s.path.name for s in result.images]
-    assert names == [f"hero__gpt-image-2.5-sunburst_{TS}_1.png", f"hero__gpt-image-2.5-sunburst_{TS}_2.png"]
-    assert all(s.path.parent == custom for s in result.images)
+    names = [svc.record(s)["name"] for s in result.images]
+    assert names == ["hero__gpt-image-2.5-sunburst_1", "hero__gpt-image-2.5-sunburst_2"]
     assert [s.cost_usd for s in result.images] == [pytest.approx(0.15), pytest.approx(0.15)]
     assert result.call_cost_usd == pytest.approx(0.3)
-    meta = sidecar(result.images[0])
+    meta = svc.meta(result.images[0])
     assert meta["params"]["n"] == 2
     assert meta["params"]["provider_options"] == {"moderation": "low"}
 
@@ -502,7 +493,7 @@ async def test_variations_loop(svc, images_route):
     assert all("n" not in body_of(c) for c in images_route.calls)
     assert "model max n is 1; will make 3 calls" in result.notes
     assert len(result.images) == 3
-    assert [s.path.name.rsplit("_", 1)[1] for s in result.images] == ["1.png", "2.png", "3.png"]
+    assert [svc.record(s)["name"].rsplit("_", 1)[1] for s in result.images] == ["1", "2", "3"]
     assert result.call_cost_usd == pytest.approx(0.63)
 
 
@@ -544,7 +535,7 @@ async def test_cost_fallback_via_generation(svc, mock, images_route, gen_body):
 
     assert gen.call_count == 1
     assert result.call_cost_usd == pytest.approx(0.05)
-    assert sidecar(result.images[0])["cost_usd"] == pytest.approx(0.05)
+    assert svc.meta(result.images[0])["cost_usd"] == pytest.approx(0.05)
     assert result.usage_line.startswith("This call: $0.0500")
 
 
@@ -634,11 +625,11 @@ async def test_svg_output_saved_raw_no_preview(svc, images_route):
 
     assert body_of(images_route.calls[0])["output_format"] == "svg"
     saved = result.images[0]
-    assert saved.path.suffix == ".svg"
-    assert saved.path.read_bytes() == svg
+    assert svc.record(saved)["ext"] == ".svg"
+    assert svc.data(saved) == svg
     assert saved.preview_jpeg is None
     assert "SVG output saved without preview or fitting" in result.notes
-    meta = sidecar(saved)
+    meta = svc.meta(saved)
     assert meta["fit"] is None
     assert meta["params"]["output_format"] == "svg"
 
@@ -669,47 +660,30 @@ async def test_edit_rejects_network_input_before_any_call(svc, mock, sample_rend
 
 
 @pytest.mark.parametrize("unc", [r"\/evil-host/share/m.png", r"/\evil-host\share\m.png"])
-async def test_edit_rejects_network_mask_and_output_dir_before_any_call(
+async def test_edit_rejects_network_mask_before_any_call(
     svc, mock, sample_render, no_network_probe, unc
 ):
     with pytest.raises(InputError, match="Network .*paths aren't supported"):
         await svc.edit("x", SUNBURST, [str(sample_render)], mask_path=unc)
-    with pytest.raises(InputError, match="Network .*paths aren't supported"):
-        await svc.edit("x", SUNBURST, [str(sample_render)], output_dir=unc)
-    with pytest.raises(InputError, match="Network .*paths aren't supported"):
-        await svc.generate("x", SUNBURST, output_dir=unc)
     assert mock.calls.call_count == 0
     assert no_network_probe == []
 
 
-async def test_save_failure_mid_loop_keeps_other_images(svc, images_route, monkeypatch):
+async def test_save_failure_mid_loop_keeps_other_images(svc, images_route):
     images_route.mock(side_effect=[ok(64, 64, gen_id=f"g{i}") for i in range(3)])
-    real = service.write_bytes_atomic
-    count = {"n": 0}
-
-    def flaky(path, data):  # sidecars go through outputs.write_bytes_atomic, not this
-        count["n"] += 1
-        if count["n"] == 2:  # the image from call 2
-            raise OSError("disk full")
-        real(path, data)
-
-    monkeypatch.setattr(service, "write_bytes_atomic", flaky)
+    svc.sink.fail_on = {2}  # the image from call 2
 
     result = await svc.generate("x", FLUX_PRO, n=3)
 
     assert images_route.call_count == 3
     assert len(result.images) == 2
-    assert all(s.path.exists() and s.sidecar.exists() for s in result.images)
+    assert all(s.asset_id in svc.sink.records for s in result.images)
     assert len(result.failures) == 1 and "disk full" in result.failures[0]
 
 
-async def test_save_failure_with_nothing_saved_raises(svc, images_route, monkeypatch):
+async def test_save_failure_with_nothing_saved_raises(svc, images_route):
     images_route.mock(return_value=ok(64, 64))
-
-    def broken(path, data):
-        raise OSError("disk full")
-
-    monkeypatch.setattr(service, "write_bytes_atomic", broken)
+    svc.sink.fail_on = {1}
     with pytest.raises(OSError, match="disk full"):
         await svc.generate("x", SUNBURST)
 
@@ -724,7 +698,7 @@ async def test_size_recorded_in_sidecar_params(svc, images_route):
     images_route.mock(return_value=ok(64, 64))
     result = await svc.generate("x", "inclusionai/ming-image-0.1-design", size="1024x1024")
     assert body_of(images_route.calls[0])["size"] == "1024x1024"
-    assert sidecar(result.images[0])["params"]["size"] == "1024x1024"
+    assert svc.meta(result.images[0])["params"]["size"] == "1024x1024"
 
 
 async def test_usage_line_survives_unexpected_key_info_error(svc, client, images_route, monkeypatch):
@@ -802,7 +776,7 @@ async def test_provider_options_keyed_by_each_allowing_provider(svc, mock, image
         "alpha": {"moderation": "low"},
         "beta": {"moderation": "low", "safety_tolerance": 5},
     }}
-    assert sidecar(result.images[0])["params"]["provider_options"] == options
+    assert svc.meta(result.images[0])["params"]["provider_options"] == options
 
 
 @pytest.mark.parametrize("n", [0, 11])
@@ -825,7 +799,7 @@ async def test_n_above_max_n_is_batched(svc, mock, images_route):
     assert [body_of(c).get("n") for c in images_route.calls] == [4, 4, 2]
     assert "model max n is 4; will make 3 calls" in result.notes
     assert len(result.images) == 10
-    assert [sidecar(s)["params"]["n"] for s in result.images] == [4] * 8 + [2] * 2
+    assert [svc.meta(s)["params"]["n"] for s in result.images] == [4] * 8 + [2] * 2
 
 
 async def test_n_batched_last_call_of_one_omits_n(svc, images_route):

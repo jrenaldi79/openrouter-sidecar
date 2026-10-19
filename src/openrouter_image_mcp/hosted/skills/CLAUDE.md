@@ -10,10 +10,10 @@ read_when: "Changing a class skill, or what hosted clients are told about the wo
 
 **Invariants:**
 
-- These are the hosted counterparts of `skills/` (the Claude Code plugin's source). They describe asset ids, uploads and download links, never local paths, `auth_login` or `output_dir`.
+- These are the source of the class skills. `skills/<name>/SKILL.md` (the Claude Code plugin's copy) must be byte-identical, since the plugin connects to this server. They describe asset ids, uploads and download links, never local paths or output folders.
 - Every tool named as `` `name(` `` must exist on the hosted server.
-- Support files that don't depend on transport, such as the render prompt template, are byte-identical copies of the `skills/` originals.
+- Support files, such as the render prompt template, are byte-identical to their `skills/` copies.
 
-**Tests:** `tests/test_hosted_guidance.py`.
+**Tests:** `tests/test_hosted_guidance.py`, `tests/test_skills.py`.
 
-**Gotchas:** when you change a skill in `skills/`, check whether its hosted variant here needs the same change. This folder note is skipped by the loader.
+**Gotchas:** after changing a skill here, copy it to `skills/<name>/SKILL.md` and run `uv run python scripts/sync_plugin_skills.py`. This folder note is skipped by the loader.

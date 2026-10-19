@@ -68,8 +68,6 @@ Filenames grouped by folder; each heading links that folder's note.
 ### scripts
 
 - [scripts/&#95;&#95;init&#95;&#95;.py](../scripts/__init__.py)
-- [scripts/install&#95;claude&#95;desktop.py](../scripts/install_claude_desktop.py)
-- [scripts/prepare&#95;gallery&#95;test.py](../scripts/prepare_gallery_test.py)
 - [scripts/sync&#95;plugin&#95;skills.py](../scripts/sync_plugin_skills.py)
 
 ### [scripts/checks](../scripts/checks/CLAUDE.md): Stdlib-only pre-commit gates run by .githooks/pre-commit: secret scan, TDD test mapping, 300-line ratchet and MCP App bundle freshness.
@@ -94,7 +92,7 @@ Filenames grouped by folder; each heading links that folder's note.
 - [scripts/ops/acceptance&#95;probe.py](../scripts/ops/acceptance_probe.py)
 - [scripts/ops/real&#95;login.py](../scripts/ops/real_login.py)
 
-### [src/openrouter&#95;image&#95;mcp](../src/openrouter_image_mcp/CLAUDE.md): Core package: the local stdio MCP server, the shared image pipeline (catalog, client, imaging, service, outputs), the advisor, preferences and onboarding, and the SQLite/Postgres storage seam the hosted mode reuses.
+### [src/openrouter&#95;image&#95;mcp](../src/openrouter_image_mcp/CLAUDE.md): Core package: the command line, the shared tool helpers, the image pipeline (catalog, client, imaging, service, outputs), the advisor, preferences and onboarding, and the SQLite/Postgres storage seam the hosted server builds on.
 
 - [src/openrouter&#95;image&#95;mcp/&#95;&#95;init&#95;&#95;.py](../src/openrouter_image_mcp/__init__.py)
 - [src/openrouter&#95;image&#95;mcp/advisor.py](../src/openrouter_image_mcp/advisor.py)
@@ -108,13 +106,13 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/assets.py](../src/openrouter_image_mcp/assets.py)
 - [src/openrouter&#95;image&#95;mcp/auth.py](../src/openrouter_image_mcp/auth.py)
 - [src/openrouter&#95;image&#95;mcp/catalog.py](../src/openrouter_image_mcp/catalog.py)
+- [src/openrouter&#95;image&#95;mcp/catalog&#95;tools.py](../src/openrouter_image_mcp/catalog_tools.py)
 - [src/openrouter&#95;image&#95;mcp/cli.py](../src/openrouter_image_mcp/cli.py)
 - [src/openrouter&#95;image&#95;mcp/client.py](../src/openrouter_image_mcp/client.py)
 - [src/openrouter&#95;image&#95;mcp/config.py](../src/openrouter_image_mcp/config.py)
 - [src/openrouter&#95;image&#95;mcp/credentials.py](../src/openrouter_image_mcp/credentials.py)
 - [src/openrouter&#95;image&#95;mcp/errors.py](../src/openrouter_image_mcp/errors.py)
 - [src/openrouter&#95;image&#95;mcp/headless.py](../src/openrouter_image_mcp/headless.py)
-- [src/openrouter&#95;image&#95;mcp/image&#95;onboarding.py](../src/openrouter_image_mcp/image_onboarding.py)
 - [src/openrouter&#95;image&#95;mcp/imaging.py](../src/openrouter_image_mcp/imaging.py)
 - [src/openrouter&#95;image&#95;mcp/keystore.py](../src/openrouter_image_mcp/keystore.py)
 - [src/openrouter&#95;image&#95;mcp/local&#95;bundle.py](../src/openrouter_image_mcp/local_bundle.py)
@@ -124,12 +122,11 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/preference&#95;tools.py](../src/openrouter_image_mcp/preference_tools.py)
 - [src/openrouter&#95;image&#95;mcp/preferences.py](../src/openrouter_image_mcp/preferences.py)
 - [src/openrouter&#95;image&#95;mcp/prompt&#95;cache.py](../src/openrouter_image_mcp/prompt_cache.py)
-- [src/openrouter&#95;image&#95;mcp/remask.py](../src/openrouter_image_mcp/remask.py)
-- [src/openrouter&#95;image&#95;mcp/server.py](../src/openrouter_image_mcp/server.py)
 - [src/openrouter&#95;image&#95;mcp/service.py](../src/openrouter_image_mcp/service.py)
 - [src/openrouter&#95;image&#95;mcp/session&#95;files.py](../src/openrouter_image_mcp/session_files.py)
 - [src/openrouter&#95;image&#95;mcp/storage.py](../src/openrouter_image_mcp/storage.py)
 - [src/openrouter&#95;image&#95;mcp/tool&#95;annotations.py](../src/openrouter_image_mcp/tool_annotations.py)
+- [src/openrouter&#95;image&#95;mcp/tool&#95;support.py](../src/openrouter_image_mcp/tool_support.py)
 
 ### [src/openrouter&#95;image&#95;mcp/hosted](../src/openrouter_image_mcp/hosted/CLAUDE.md): Hosted remote MCP (Railway): authenticated multi-tenant Streamable HTTP server with Auth0 verification, per-principal OpenRouter key linking and vault, cohort workspaces, limits, image assets with signed uploads and downloads, health, sweeper and retention.
 

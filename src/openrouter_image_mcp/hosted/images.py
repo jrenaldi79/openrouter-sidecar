@@ -27,10 +27,16 @@ from ..imaging import (
     prepare_input,
 )
 from ..outputs import SCHEMA_VERSION, encode_image, model_short
-from ..remask import MODEL_LABEL, NO_LAYER_KEY_MSG, NO_MASK_MSG, TOOL
 from ..service import SavedImage
 from .uploads import TransferTokens
 
+TOOL = "remask_image"
+MODEL_LABEL = "remask"  # stands in for the model in `<stem>__remask_1.png`
+NO_MASK_MSG = "This image wasn't made with a mask, so there is no unblended layer to re-mask."
+NO_LAYER_KEY_MSG = (
+    "This result has no unblended layer: it was made before v0.2.0, which started saving "
+    "one. Run edit_image again with mask_id to get a result that can be re-masked."
+)
 MIME_BY_EXT = {".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml"}
 EXT_BY_MIME = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
 
@@ -59,7 +65,6 @@ class AssetSink:
 
     def save(self, job, *, data: bytes, ext: str, unmasked: bytes | None, meta: dict, index: int) -> str:
         meta = dict(meta)
-        meta.pop("unmasked_path", None)
         meta["inputs"] = [{"asset_id": asset_id, "sha256": item["sha256"], "size": item["size"]}
                           for asset_id, item in zip(self.input_ids, meta["inputs"], strict=True)]
         if meta.get("mask"):
@@ -147,7 +152,7 @@ class HostedImages:
                                   "source_result": image_id, "unmasked_asset_id": meta["unmasked_asset_id"],
                                   "inputs": meta["inputs"], "mask": {"asset_id": mask_id, "feather_px": feather},
                                   "cost_usd": 0}))
-        saved = SavedImage(None, None, make_preview(blended), 0.0, None, out.id)
+        saved = SavedImage(out.id, make_preview(blended), 0.0, None)
         return saved, {out.id: self.transfers.download_links(scope, out)}
 
     def upload_ticket(self, filename: str, mime: str, size_bytes: int) -> dict:

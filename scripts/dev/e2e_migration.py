@@ -1,6 +1,6 @@
 """M5 migration leg of the synthetic e2e: local export -> one-time link -> hosted import.
 
-Builds a local advisor database (as the stdio server would leave it) in a temp folder,
+Builds a local advisor database (as the retired local server left it) in a temp folder,
 exports it with the same code `openrouter-image-mcp export-local` runs, uploads it as
 a fresh 2027 student and continues the imported chat on the hosted server.
 """

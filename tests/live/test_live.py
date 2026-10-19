@@ -1,101 +1,68 @@
 """Opt-in live tests against the real OpenRouter API.
 
-Deselected by default (`addopts = "-m 'not live'"`); run with `pytest -m live`
-after `openrouter-image-mcp login`. They spend real (small) amounts of money,
-use synthetic images only, and write only under pytest's tmp_path.
+Deselected by default (`addopts = "-m 'not live'"`); run with `pytest -m live` and an
+OpenRouter key for a class workspace in `OPENROUTER_LIVE_KEY` (cohort from
+`OPENROUTER_LIVE_COHORT`, default 2027). They spend real (small) amounts of money,
+use synthetic images only, and keep results in memory.
 """
 
-from dataclasses import replace
+import hashlib
+import os
+from io import BytesIO
 
-import keyring
-import keyring.backend
 import pytest
 from helpers import make_grid, save
 from PIL import Image
 
-from openrouter_image_mcp import keystore
+from openrouter_image_mcp.advisor_store import Scope
 from openrouter_image_mcp.catalog import Catalog, ModelCapabilities, price_key
 from openrouter_image_mcp.client import OpenRouterClient
-from openrouter_image_mcp.config import load_settings
+from openrouter_image_mcp.config import COHORT_WORKSPACES, Settings
 from openrouter_image_mcp.service import ImageService
 
 pytestmark = pytest.mark.live
 
-_NOT_SIGNED_IN = "run `openrouter-image-mcp login` first"
+
+class EnvCredentials:
+    """The live key from the environment; never stored or printed."""
+
+    def __init__(self, key: str, workspace_id: str):
+        self._key, self.workspace_id = key, workspace_id
+
+    def resolve(self):
+        return self._key, Scope(hashlib.sha256(self._key.encode()).hexdigest(), self.workspace_id)
+
+    def check(self, scope):
+        pass
+
+    def forget(self):
+        pass
 
 
-_NON_OS_BACKENDS = frozenset(
-    {"keyring.backends.fail", "keyring.backends.null", "keyring.backends.chainer"}
-)
+class MemorySink:
+    def __init__(self):
+        self.data: dict[str, bytes] = {}
 
-
-def _viable_priority(backend) -> float | None:
-    """The backend's priority, or None if it is not viable (property raises or is <= 0)."""
-    try:
-        priority = backend.priority
-    except Exception:  # noqa: BLE001 - a broken backend just means "not viable"
-        return None
-    return priority if priority > 0 else None
-
-
-def _real_os_backend():
-    """Highest-priority real OS keyring backend, or None if there is none."""
-    best, best_priority = None, 0.0
-    for backend in keyring.backend.get_all_keyring():
-        module = type(backend).__module__
-        if not module.startswith("keyring.backends.") or module in _NON_OS_BACKENDS:
-            continue
-        priority = _viable_priority(backend)
-        if priority is not None and priority > best_priority:
-            best, best_priority = backend, priority
-    return best
-
-
-@pytest.fixture(autouse=True)
-def _real_os_keyring():
-    """Use the real OS keyring for each live test, then restore the previous backend.
-
-    Collection imports test modules that define KeyringBackend test doubles, and keyring
-    auto-registers every subclass, so the default chainer would include a Plaintext one and
-    keystore would (rightly) refuse it. Runs only for live tests, so a default run never
-    touches the real keyring.
-    """
-    backend = _real_os_backend()
-    if backend is None:
-        pytest.skip(_NOT_SIGNED_IN)
-    previous = keyring.get_keyring()
-    keyring.set_keyring(backend)
-    try:
-        yield
-    finally:
-        keyring.set_keyring(previous)
-
-
-@pytest.fixture(autouse=True)
-def _require_key(_real_os_keyring):
-    """Skip (rather than fail) when nobody is signed in. Checked per test, not at import,
-    so a default run never touches the real keyring."""
-    try:
-        settings = load_settings()
-        key = keystore.get_key(workspace_id=settings.workspace_id)
-    except ValueError as exc:
-        pytest.skip(str(exc))
-    except keystore.InsecureKeyringError:
-        pytest.skip(_NOT_SIGNED_IN)
-    if key is None:
-        pytest.skip(_NOT_SIGNED_IN)
+    def save(self, job, *, data, ext, unmasked, meta, index):
+        asset_id = f"live_{len(self.data) + 1}"
+        self.data[asset_id] = data
+        return asset_id
 
 
 @pytest.fixture
-def settings(tmp_path):
-    return replace(load_settings(), output_dir=tmp_path)
+def settings():
+    key = os.environ.get("OPENROUTER_LIVE_KEY")
+    if not key:
+        pytest.skip("set OPENROUTER_LIVE_KEY to a class workspace key to run live tests")
+    workspace = COHORT_WORKSPACES[os.environ.get("OPENROUTER_LIVE_COHORT", "2027")]
+    return Settings(workspace_id=workspace, max_input_edge=2048, timeout_s=600, ratio_tolerance=0.03), key
 
 
 @pytest.fixture
 async def client(settings):
-    async with OpenRouterClient(
-        timeout_s=settings.timeout_s, workspace_id=settings.workspace_id
-    ) as c:
+    values, key = settings
+    async with OpenRouterClient(timeout_s=values.timeout_s,
+                                credentials=EnvCredentials(key, values.workspace_id)) as c:
         yield c
 
 
@@ -106,7 +73,7 @@ def catalog(client):
 
 @pytest.fixture
 def svc(client, catalog, settings):
-    return ImageService(client, catalog, settings)
+    return ImageService(client, catalog, settings[0])
 
 
 def _cheapest(models: list[ModelCapabilities], *, need_edit: bool = False) -> ModelCapabilities:
@@ -140,24 +107,27 @@ async def test_live_account(client):
 
 async def test_live_generate_cheapest(svc, catalog):
     model = _cheapest(await catalog.all())
+    sink = MemorySink()
     result = await svc.generate(
-        "a small red cube on a white table", model.id, n=1, quality=_quality(model)
+        "a small red cube on a white table", model.id, n=1, quality=_quality(model), sink=sink
     )
     assert len(result.images) == 1
-    assert result.images[0].path.is_file()
+    assert sink.data[result.images[0].asset_id]
     assert result.images[0].cost_usd is not None
 
 
 async def test_live_edit_synthetic_wide(svc, catalog, tmp_path):
     model = _cheapest(await catalog.all(), need_edit=True)
     source = save(make_grid(1920, 828), tmp_path / "wide.jpg", "JPEG")
+    sink = MemorySink()
     result = await svc.edit(
         "make the top-left cell slightly brighter",
         model.id,
         [str(source)],
         n=1,
         quality=_quality(model),
+        sink=sink,
     )
     assert len(result.images) == 1
-    with Image.open(result.images[0].path) as out:
+    with Image.open(BytesIO(sink.data[result.images[0].asset_id])) as out:
         assert out.size == (1920, 828)

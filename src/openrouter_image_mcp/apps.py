@@ -3,15 +3,12 @@
 import base64
 from collections.abc import Iterable
 from importlib.resources import files
-from pathlib import Path
 from typing import Any
 
 from mcp.server.context import CallNext, HandlerResult, ServerRequestContext
 from mcp.server.extension import Extension
 from mcp.server.mcpserver import MCPServer
 from mcp.types import Icon
-
-from .logs import redact
 
 UI_URI = "ui://openrouter-sidecar/preview.html"
 ADVISOR_UI_URI = "ui://openrouter-sidecar/advisor.html"
@@ -25,8 +22,7 @@ IMAGE_TOOLS = frozenset({"generate_image", "edit_image", "remask_image"})
 PREVIEWS_META = "sidecarPreviews"
 ADVISOR_UI_TOOLS = frozenset({"send_advisor_message", "open_advisor_result"})
 SETTINGS_UI_TOOLS = frozenset({"open_sidecar_settings"})
-APP_ONLY_TOOLS = frozenset({"get_advisor_result", "summarize_advisor_result", "export_advisor_result",
-                            "get_sidecar_settings", "run_sidecar_demo", "get_sidecar_demo",
+APP_ONLY_TOOLS = frozenset({"get_advisor_result", "summarize_advisor_result", "get_sidecar_settings", "run_sidecar_demo", "get_sidecar_demo",
                             "open_image_uploader"})
 
 
@@ -124,11 +120,6 @@ def _without_gallery_data(result: dict[str, Any]) -> dict[str, Any]:
     stripped = {k: v for k, v in result.items() if k not in ("structuredContent", "_meta")}
     meta = {k: v for k, v in (result.get("_meta") or {}).items() if k != PREVIEWS_META}
     return {**stripped, "_meta": meta} if meta else stripped
-
-
-def preview_image(path: Path) -> dict[str, Any]:
-    """Model-safe gallery entry for a saved image; its preview goes in `preview_meta`."""
-    return {"filename": redact(path.name), "path": redact(str(path))}
 
 
 def preview_meta(jpegs: Iterable[bytes | None]) -> dict[str, list[str | None]]:

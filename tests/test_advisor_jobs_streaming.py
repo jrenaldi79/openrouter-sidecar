@@ -6,7 +6,7 @@ import time
 import httpx
 import pytest
 
-from openrouter_image_mcp import keystore, storage
+from openrouter_image_mcp import storage
 from openrouter_image_mcp.advisor import AdvisorService
 from openrouter_image_mcp.advisor_client import AdvisorClient
 from openrouter_image_mcp.advisor_jobs import AdvisorJobs
@@ -45,8 +45,8 @@ class QueuedStream(httpx.AsyncByteStream):
 
 
 @pytest.fixture
-async def rig(memory_keyring, db_target, monkeypatch):
-    keystore.set_key(KEY, workspace_id=WORKSPACE)
+async def rig(keys, db_target, monkeypatch):
+    keys.set(KEY, workspace_id=WORKSPACE)
     state = {"queue": asyncio.Queue(), "idle": asyncio.Event(), "connections": 0, "now": 1000.0}
 
     async def provider(request):
@@ -66,7 +66,8 @@ async def rig(memory_keyring, db_target, monkeypatch):
 
     monkeypatch.setattr(storage, "connect", counting_connect)
     client = AdvisorClient(WORKSPACE, 30, transport=httpx.MockTransport(provider))
-    service = AdvisorService(WORKSPACE, AdvisorStore(db_target), client)
+    service = AdvisorService(WORKSPACE, AdvisorStore(db_target), client,
+                             credentials=keys.credentials(WORKSPACE))
     chat = await service.start(MODEL, "Critic")
     jobs = AdvisorJobs(service, clock=lambda: state["now"])
     try:
@@ -148,15 +149,15 @@ async def test_interruption_saves_the_unsaved_tail(rig):
     assert jobs.view(job_id)["answer"] == "Alpha beta gamma"
 
 
-async def test_credential_switch_still_withholds_the_unsaved_tail(rig):
+async def test_credential_switch_still_withholds_the_unsaved_tail(keys, rig):
     jobs, chat_id, state = rig
     job_id = await streaming(jobs, chat_id, state)
     for chunk in ("Alpha ", "beta "):
         await push(state, chunk)
-    keystore.set_key("sk-or-v1-other-account", workspace_id=WORKSPACE)
+    keys.set("sk-or-v1-other-account", workspace_id=WORKSPACE)
     await push(state, None)
     await asyncio.sleep(0.05)
-    keystore.set_key(KEY, workspace_id=WORKSPACE)
+    keys.set(KEY, workspace_id=WORKSPACE)
     assert (await settled(jobs, job_id))["status"] == "interrupted"
     assert jobs.view(job_id)["answer"] == ""
 

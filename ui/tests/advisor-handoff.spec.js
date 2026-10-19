@@ -144,18 +144,17 @@ for (const [label, summaries, summarize] of [
 }
 
 test('secondary actions stay tucked in a More menu that closes after a choice', async ({ page }) => {
-  const { viewer } = await openAdvisor(page, { responses: { ...completed,
-    'export_advisor_result:result-1': [{ content: [], structuredContent: { saved: true }, _meta: { advisorExport: { path: '/tmp/result-1.md' } } }],
-  } });
+  const { viewer } = await openAdvisor(page, { responses: completed });
   await expect(viewer.locator('#answer')).toContainText('Last paragraph.');
-  for (const name of ['Share full answer', 'Copy answer', 'Save as file']) {
+  for (const name of ['Share full answer', 'Copy answer']) {
     await expect(viewer.getByRole('button', { name, exact: true })).toBeHidden();
   }
-  const save = await moreAction(viewer, 'Save as file');
-  await expect(viewer.locator('#more-menu button')).toHaveText(['Share full answer', 'Copy answer', 'Save as file']);
+  await fakeClipboard(viewer);
+  const copy = await moreAction(viewer, 'Copy answer');
+  await expect(viewer.locator('#more-menu button')).toHaveText(['Share full answer', 'Copy answer']);
   await expect(viewer.getByRole('button', { name: /summary|selection/i })).toHaveCount(0);
-  await save.click();
-  await expect(viewer.locator('#export-status')).toContainText('/tmp/result-1.md');
+  await copy.click();
+  await expect(viewer.locator('#handoff-status')).toHaveText('Copied the full answer. Paste it into the chat.');
   expect(await viewer.locator('#more').evaluate(element => element.open)).toBe(false);
   await assertNoHandoff(page);
 });

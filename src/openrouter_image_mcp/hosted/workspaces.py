@@ -1,14 +1,13 @@
 """One service set per cohort workspace, routed by the caller's principal.
 
-The local services were written for one workspace per process. The hosted server
-builds one set per Northwestern cohort and forwards each call to the caller's,
-so every existing workspace consistency check keeps holding.
+Each service set serves one workspace. The hosted server builds one set per
+Northwestern cohort and forwards each call to the caller's, so every workspace
+consistency check in the services keeps holding.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 
 import httpx
 
@@ -83,9 +82,8 @@ def build_workspaces(target, links, *, profile_claim: str, admit, timeout_s: flo
     services = {}
     for workspace in COHORT_WORKSPACES.values():
         credentials = HostedCredentials(workspace, links, profile_claim)
-        settings = Settings(workspace_id=workspace, output_dir=Path("/nonexistent-hosted-output"),
-                            max_input_edge=2048, timeout_s=timeout_s, ratio_tolerance=0.03,
-                            advisor_timeout_s=advisor_timeout_s)
+        settings = Settings(workspace_id=workspace, max_input_edge=2048, timeout_s=timeout_s,
+                            ratio_tolerance=0.03, advisor_timeout_s=advisor_timeout_s)
         advisors = AdvisorService(workspace, AdvisorStore(target),
                                   AdvisorClient(workspace, advisor_timeout_s, transport=transport),
                                   credentials=credentials, sandbox_default=False,
@@ -94,7 +92,7 @@ def build_workspaces(target, links, *, profile_claim: str, admit, timeout_s: flo
         preferences = PreferenceService(advisors)
         http = OpenRouterClient(timeout_s=timeout_s, transport=transport, workspace_id=workspace,
                                 credentials=credentials)
-        # Image demos write local files; they return with hosted images (M3).
+        # No image runner: the settings walkthrough's image demo is unavailable when hosted.
         demos = OnboardingDemos(advisors, jobs, preferences, image_runner=None)
         catalog = Catalog(http)
         services[workspace] = WorkspaceServices(settings, advisors, jobs, preferences, demos,

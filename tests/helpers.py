@@ -1,8 +1,16 @@
-"""Synthetic image makers shared by the imaging tests."""
+"""Synthetic image makers shared by the imaging tests, and test credentials."""
 
+import hashlib
 from pathlib import Path
 
 from PIL import Image
+
+from openrouter_image_mcp.advisor_store import AdvisorAccessError, Scope
+from openrouter_image_mcp.config import COHORT_WORKSPACES
+from openrouter_image_mcp.credentials import CHANGED
+from openrouter_image_mcp.errors import AuthRequiredError
+
+WS_2027 = COHORT_WORKSPACES["2027"]
 
 # Twelve clearly distinct colours, one per grid cell (row-major).
 PALETTE: list[tuple[int, int, int]] = [
@@ -66,3 +74,53 @@ def unc_paths(name: str) -> list[str]:
         rf"/\evil-host\share\{name}",
         rf"\\?\UNC\evil-host\share\{name}",
     ]
+
+
+# ------------------------------------------------------------------ credentials
+
+
+class KeyBox:
+    """Test stand-in for where each caller's OpenRouter key comes from, one per workspace.
+
+    The hosted server reads linked keys from its vault (`hosted/credentials.py`); unit
+    tests swap keys here to simulate a different account or a revoked link.
+    """
+
+    def __init__(self):
+        self.keys: dict[str, str] = {}
+
+    def set(self, key: str, *, workspace_id: str = WS_2027) -> None:
+        self.keys[workspace_id] = key
+
+    def delete(self, *, workspace_id: str = WS_2027) -> None:
+        self.keys.pop(workspace_id, None)
+
+    def get(self, *, workspace_id: str = WS_2027) -> str | None:
+        return self.keys.get(workspace_id)
+
+    def credentials(self, workspace_id: str = WS_2027) -> "BoxCredentials":
+        return BoxCredentials(self, workspace_id)
+
+
+class BoxCredentials:
+    """A `CredentialSource` over a KeyBox: the owner scope is the key's SHA-256."""
+
+    MISSING = "OpenRouter is not linked. Call link_openrouter first."
+
+    def __init__(self, box: KeyBox, workspace_id: str):
+        self.box, self.workspace_id = box, workspace_id
+
+    def resolve(self) -> tuple[str, Scope]:
+        key = self.box.get(workspace_id=self.workspace_id)
+        if not key:
+            raise AuthRequiredError(self.MISSING)
+        return key, Scope(hashlib.sha256(key.encode()).hexdigest(), self.workspace_id)
+
+    def check(self, scope: Scope) -> None:
+        key = self.box.get(workspace_id=self.workspace_id)
+        if (scope.workspace != self.workspace_id or not key
+                or hashlib.sha256(key.encode()).hexdigest() != scope.owner):
+            raise AdvisorAccessError(CHANGED)
+
+    def forget(self) -> None:
+        self.box.delete(workspace_id=self.workspace_id)

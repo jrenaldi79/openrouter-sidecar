@@ -43,6 +43,14 @@ def memory_keyring():
 
 
 @pytest.fixture
+def keys():
+    """Per-workspace OpenRouter keys for unit tests (see helpers.KeyBox)."""
+    from helpers import KeyBox
+
+    return KeyBox()
+
+
+@pytest.fixture
 def no_network_probe(monkeypatch):
     r"""Fail if anything stats a UNC path: on Windows that opens SMB (and can leak NTLM).
 

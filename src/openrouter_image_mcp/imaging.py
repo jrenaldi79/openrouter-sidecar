@@ -84,20 +84,6 @@ def resolve_user_path(p: str) -> Path:
     return path
 
 
-def user_dir(output_dir: str | None) -> Path | None:
-    """Expand `~` in a user-given output folder; None stays None.
-
-    A relative or network (UNC) folder is an InputError.
-    """
-    if output_dir is None:
-        return None
-    reject_network_path(output_dir, "output_dir")
-    path = Path(output_dir).expanduser()
-    if not path.is_absolute():
-        raise InputError(f"output_dir must be absolute or start with '~': {output_dir!r}")
-    return path
-
-
 def check_mask(mask_path: str) -> Path:
     """Resolve the mask and prove it decodes, so a bad mask fails before any work or spend."""
     path = resolve_user_path(mask_path)

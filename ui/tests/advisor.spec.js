@@ -36,29 +36,21 @@ test('polls partials without overlap and stops once completed', async ({ page })
   await assertNoHandoff(page);
 });
 
-test('summary share keeps the original on screen and Save as file exports the original', async ({ page }) => {
-  const { viewer } = await openAdvisor(page, { responses: { ...longWithSummary(),
-    'export_advisor_result:result-1': [{ content: [], structuredContent: { saved: true }, _meta: { advisorExport: { path: 'C:\\exports\\original.md' } } }],
-  } });
+test('summary share keeps the original on screen', async ({ page }) => {
+  const { viewer } = await openAdvisor(page, { responses: longWithSummary() });
   await expect(viewer.locator('#answer')).toHaveText(longAnswer);
   await shareButton(viewer).click();
   await expect(viewer.locator('#handoff-status')).toHaveText(SHARED_SUMMARY);
   await expect(viewer.locator('#answer')).toHaveText(longAnswer);
-  await (await moreAction(viewer, 'Save as file')).click();
-  await expect(viewer.locator('#export-status')).toContainText('original.md');
-  expect(await page.evaluate(() => window.hostMessages.filter(message => message.method === 'tools/call' && message.params.name === 'export_advisor_result').map(message => message.params.arguments.job_id))).toEqual(['result-1']);
 });
 
-test('exports original result through app-only tool and displays returned local path', async ({ page }) => {
-  const { viewer } = await openAdvisor(page, { responses: { ...completed,
-    'export_advisor_result:result-1': [{ content: [], structuredContent: { saved: true }, _meta: { advisorExport: { path: 'C:\\advisor-exports\\result-1.md' } } }],
-  } });
+test('the viewer offers no Save as file action (the hosted server cannot write to this computer)', async ({ page }) => {
+  const { viewer } = await openAdvisor(page, { responses: completed });
   await expect(viewer.locator('#answer')).toContainText('Last paragraph.');
-  await (await moreAction(viewer, 'Save as file')).click();
-  await expect(viewer.locator('#export-status')).toHaveText('Saved Markdown: C:\\advisor-exports\\result-1.md');
-  const calls = await page.evaluate(() => window.hostMessages.filter(message => message.method === 'tools/call' && message.params.name === 'export_advisor_result'));
-  expect(calls[0].params.arguments).toEqual({ job_id: 'result-1' });
-  await assertNoHandoff(page);
+  await viewer.getByText('More', { exact: true }).click();
+  await expect(viewer.getByRole('button', { name: 'Save as file', exact: true })).toHaveCount(0);
+  await expect(viewer.locator('#export-status')).toHaveCount(0);
+  expect(await page.evaluate(() => window.hostMessages.some(message => message.params?.name === 'export_advisor_result'))).toBe(false);
 });
 
 test('hostile provider fields remain literal text and make no remote requests', async ({ page }) => {
@@ -124,7 +116,6 @@ test('teardown prevents further polling and late rendering', async ({ page }) =>
 
 for (const action of [
   { tool: 'summarize_advisor_result', run: async viewer => shareButton(viewer).click() },
-  { tool: 'export_advisor_result', run: async viewer => (await moreAction(viewer, 'Save as file')).click() },
 ]) {
   test(`denied ${action.tool} suppresses cached answer and handoff`, async ({ page }) => {
     const { viewer } = await openAdvisor(page, { responses: { ...longWithSummary(),

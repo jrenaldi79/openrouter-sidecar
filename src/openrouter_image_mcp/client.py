@@ -11,8 +11,8 @@ from typing import Any, Self
 
 import httpx
 
-from .config import API_BASE, APP_TITLE, APP_URL, KEYRING_USER
-from .credentials import CredentialSource, KeyringCredentials
+from .config import API_BASE, APP_TITLE, APP_URL
+from .credentials import CredentialSource
 from .errors import (
     AuthRequiredError,
     BadRequestError,
@@ -25,12 +25,11 @@ from .errors import (
     RateLimitError,
 )
 
-_MSG_NO_KEY = "Not signed in to OpenRouter. Call `auth_login` to sign in."
 _MSG_401 = (
     "Your OpenRouter sign-in is no longer valid (revoked or deleted). "
-    "Call `auth_login` to sign in again."
+    "Call `link_openrouter` to link it again."
 )
-_MSG_401_CODE = "The OpenRouter login code is invalid or expired. Call `auth_login` to try again."
+_MSG_401_ANONYMOUS = "OpenRouter rejected the request (HTTP 401)."
 _MSG_402 = "The OpenRouter workspace is out of credits. Ask the org admin to top up."
 _MSG_429 = "Rate limited by OpenRouter (HTTP 429). Try again shortly."
 
@@ -136,11 +135,11 @@ class OpenRouterClient:
         timeout_s: float,
         transport: httpx.AsyncBaseTransport | None = None,
         *,
-        workspace_id: str = KEYRING_USER,
-        credentials: CredentialSource | None = None,
+        credentials: CredentialSource,
+        workspace_id: str | None = None,
     ) -> None:
-        self.workspace_id = workspace_id
-        self.credentials = credentials or KeyringCredentials(workspace_id)
+        self.workspace_id = workspace_id or credentials.workspace_id
+        self.credentials = credentials
         self._timeout_s = timeout_s
         # Trailing slash + relative request paths keep the /api/v1 prefix.
         self._http = httpx.AsyncClient(
@@ -191,12 +190,7 @@ class OpenRouterClient:
     ) -> Any:
         headers: dict[str, str] = {}
         if auth:
-            try:
-                key = self.credentials.resolve()[0]
-            except AuthRequiredError:
-                if isinstance(self.credentials, KeyringCredentials):
-                    raise AuthRequiredError(_MSG_NO_KEY) from None
-                raise  # hosted sources carry their own link instructions
+            key = self.credentials.resolve()[0]  # the source says how to link a key
             headers["Authorization"] = f"Bearer {key}"
 
         rate_retries = 0
@@ -250,7 +244,7 @@ class OpenRouterClient:
             if auth:
                 self.credentials.forget()
                 raise AuthRequiredError(_MSG_401)
-            raise AuthRequiredError(_MSG_401_CODE)
+            raise AuthRequiredError(_MSG_401_ANONYMOUS)
         if status == 402:
             raise InsufficientCreditsError(_MSG_402)
         moderation = _moderation_error(error, message)
@@ -330,15 +324,6 @@ class OpenRouterClient:
     async def generation(self, gen_id: str) -> dict:
         body = await self._request("GET", "generation", auth=True, params={"id": gen_id})
         return body.get("data", body)
-
-    async def exchange_code(self, code: str, verifier: str) -> str:
-        body = await self._request(
-            "POST",
-            "auth/keys",
-            auth=False,
-            json={"code": code, "code_verifier": verifier, "code_challenge_method": "S256"},
-        )
-        return body["key"]
 
     # -------------------------------------------------------------- catalog
 

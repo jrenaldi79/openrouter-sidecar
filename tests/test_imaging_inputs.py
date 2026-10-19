@@ -14,7 +14,6 @@ from openrouter_image_mcp.imaging import (
     make_preview,
     prepare_input,
     resolve_user_path,
-    user_dir,
 )
 
 
@@ -36,8 +35,6 @@ def test_network_paths_rejected_without_touching_them(path, no_network_probe):
         check_mask(path)
     with pytest.raises(InputError, match="Network .*paths aren't supported"):
         prepare_input(path, 2048)
-    with pytest.raises(InputError, match="Network .*paths aren't supported"):
-        user_dir(path)
     assert no_network_probe == []
 
 
@@ -263,8 +260,3 @@ def test_check_mask_rejects_relative_path():
         check_mask("relative/mask.png")
 
 
-def test_user_dir(tmp_path):
-    assert user_dir(None) is None
-    assert user_dir(str(tmp_path)) == tmp_path
-    with pytest.raises(InputError, match="output_dir must be absolute"):
-        user_dir("relative/out")

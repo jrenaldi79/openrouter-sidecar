@@ -1,4 +1,4 @@
-"""Checks that the Claude Code plugin and marketplace match the rest of the repo.
+"""Checks that the Claude Code plugin, marketplace and README match the hosted server.
 
 Frontmatter and tool-name checks for the skills live in test_skills.py.
 """
@@ -8,32 +8,14 @@ import re
 from pathlib import Path
 
 from openrouter_image_mcp import __version__
-from openrouter_image_mcp.advisor_tools import ADVISOR_ARGUMENTS
-from openrouter_image_mcp.cli import render_plugin_config
+from openrouter_image_mcp.tool_annotations import ANNOTATIONS
 
 ROOT = Path(__file__).resolve().parent.parent
 SKILLS = ROOT / "skills"
 PLUGIN = ROOT / "plugin"
 MARKETPLACE = ROOT / ".claude-plugin" / "marketplace.json"
 README = ROOT / "README.md"
-TOOLS = {
-    "account_status",
-    "auth_login",
-    "auth_logout",
-    "list_image_models",
-    "get_image_model",
-    "generate_image",
-    "edit_image",
-    "remask_image",
-} | ADVISOR_ARGUMENTS.keys()
-HOSTED_ONLY_TOOLS = {
-    "link_openrouter",
-    "unlink_openrouter",
-    "create_image_upload",
-    "get_image_download",
-    "open_image_uploader",
-    "create_local_import",
-}
+HOSTED_URL = "https://sidecar-production-e110.up.railway.app/mcp"
 
 
 def _tree(base: Path) -> dict[str, bytes]:
@@ -55,10 +37,16 @@ def test_plugin_skills_in_sync():
         assert copied[name] == data, f"{name} differs; run scripts/sync_plugin_skills.py"
 
 
-def test_plugin_mcp_json():
+def test_plugin_connects_to_the_hosted_server_over_http():
     actual = json.loads((PLUGIN / ".mcp.json").read_text(encoding="utf-8"))
-    expected = json.loads(render_plugin_config())
-    assert actual == expected
+    assert actual == {"mcpServers": {"openrouter-sidecar": {"type": "http", "url": HOSTED_URL}}}
+
+
+def test_no_stdio_server_configs_remain():
+    configs = [p for p in ROOT.rglob(".mcp.json")
+               if not {"node_modules", "reference", ".git"} & set(p.relative_to(ROOT).parts)]
+    assert configs == [PLUGIN / ".mcp.json"]
+    assert not (ROOT / "scripts" / "install_claude_desktop.py").exists()
 
 
 def test_marketplace_points_to_plugin():
@@ -75,13 +63,17 @@ def test_versions_match():
     assert manifest["version"] == __version__
 
 
-def test_readme_uses_local_config_and_holds_deployment():
+def test_readme_installs_only_the_hosted_connector():
     text = README.read_text(encoding="utf-8")
-    assert "print-config" in text
-    assert "deployment" in text.lower()
+    assert HOSTED_URL in text
+    assert f"claude mcp add --transport http openrouter-sidecar {HOSTED_URL}" in text
+    assert "export-local" in text and "create_local_import" in text  # moving from the local Sidecar
+    for retired in ("print-config", "install_claude_desktop", "auth_login", "openrouter-image-mcp login",
+                    "OPENROUTER_IMAGE_OUTPUT_DIR", "stdio"):
+        assert retired not in text, retired
     assert "git+https" not in text
 
 
 def test_readme_lists_every_tool():
     text = README.read_text(encoding="utf-8")
-    assert set(re.findall(r"^\| `([a-z_]+)` \|", text, re.MULTILINE)) == TOOLS | HOSTED_ONLY_TOOLS
+    assert set(re.findall(r"^\| `([a-z_]+)` \|", text, re.MULTILINE)) == set(ANNOTATIONS)

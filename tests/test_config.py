@@ -1,73 +1,37 @@
-from pathlib import Path
+"""Per-workspace image and advisor settings (the hosted server builds one per cohort)."""
 
 import pytest
 
-from openrouter_image_mcp.config import Settings, load_settings
-
-IMAGE_TOOLS_WORKSPACE = "21082e84-ae02-4639-ad40-c7251b98ab10"
-
-
-def test_defaults():
-    s = load_settings({"OPENROUTER_IMAGE_COHORT": "2027"})
-    assert isinstance(s, Settings)
-    assert s.output_dir == Path.home() / "Pictures" / "Northwestern AI" / "Class of 2027"
-    assert s.max_input_edge == 2048
-    assert s.timeout_s == 600
-    assert s.advisor_timeout_s == 1800
-    assert s.ratio_tolerance == 0.03
-    assert s.workspace_id == IMAGE_TOOLS_WORKSPACE
+from openrouter_image_mcp import config
+from openrouter_image_mcp.config import COHORT_WORKSPACES, Settings
 
 
-def test_env_overrides():
-    s = load_settings(
-        {
-            "OPENROUTER_IMAGE_WORKSPACE_ID": IMAGE_TOOLS_WORKSPACE,
-            "OPENROUTER_IMAGE_OUTPUT_DIR": "~/somewhere/else",
-            "OPENROUTER_IMAGE_MAX_INPUT_EDGE": "1024",
-            "OPENROUTER_IMAGE_TIMEOUT_S": "30.5",
-            "OPENROUTER_IMAGE_RATIO_TOLERANCE": "0.1",
-        }
-    )
-    assert s.workspace_id == IMAGE_TOOLS_WORKSPACE
-    assert s.output_dir == Path.home() / "somewhere" / "else"
-    assert s.max_input_edge == 1024
-    assert s.timeout_s == 30.5
-    assert s.advisor_timeout_s == 1800
-    assert s.ratio_tolerance == 0.1
+def _settings(**overrides) -> Settings:
+    values = {"workspace_id": COHORT_WORKSPACES["2027"], "max_input_edge": 2048, "timeout_s": 600.0,
+              "ratio_tolerance": 0.03} | overrides
+    return Settings(**values)
 
 
-def test_empty_workspace_env_is_rejected():
-    with pytest.raises(ValueError, match="WORKSPACE_ID"):
-        load_settings({"OPENROUTER_IMAGE_WORKSPACE_ID": ""})
+@pytest.mark.parametrize("cohort", sorted(COHORT_WORKSPACES))
+def test_workspace_selects_its_cohort(cohort):
+    settings = _settings(workspace_id=COHORT_WORKSPACES[cohort])
+    assert settings.cohort == cohort
+    assert settings.advisor_timeout_s == 1800
 
 
-@pytest.mark.parametrize(
-    "var",
-    [
-        "OPENROUTER_IMAGE_MAX_INPUT_EDGE",
-        "OPENROUTER_IMAGE_TIMEOUT_S",
-        "OPENROUTER_IMAGE_RATIO_TOLERANCE",
-    ],
-)
-def test_bad_number_raises(var):
-    with pytest.raises(ValueError, match=var):
-        load_settings({"OPENROUTER_IMAGE_COHORT": "2027", var: "abc"})
+@pytest.mark.parametrize("workspace", ["", "old-firm"])
+def test_unknown_workspace_is_rejected(workspace):
+    with pytest.raises(ValueError, match="cohort"):
+        _settings(workspace_id=workspace)
 
 
-def test_empty_output_dir_env_means_default():
-    s = load_settings({"OPENROUTER_IMAGE_COHORT": "2027", "OPENROUTER_IMAGE_OUTPUT_DIR": ""})
-    assert s.output_dir == Path.home() / "Pictures" / "Northwestern AI" / "Class of 2027"
-
-
-def test_advisor_timeout_override_is_independent_of_images():
-    s = load_settings({"OPENROUTER_IMAGE_COHORT": "2027",
-                       "OPENROUTER_ADVISOR_TIMEOUT_S": "1200.5"})
-    assert s.advisor_timeout_s == 1200.5
-    assert s.timeout_s == 600
-
-
-@pytest.mark.parametrize("value", ["0", "-1", "nan", "inf", "1800.1", "abc"])
+@pytest.mark.parametrize("value", [0, -1, float("nan"), float("inf"), 1800.1])
 def test_invalid_advisor_timeout_is_rejected(value):
-    with pytest.raises(ValueError, match="OPENROUTER_ADVISOR_TIMEOUT_S"):
-        load_settings({"OPENROUTER_IMAGE_COHORT": "2027",
-                       "OPENROUTER_ADVISOR_TIMEOUT_S": value})
+    with pytest.raises(ValueError, match="advisor_timeout_s"):
+        _settings(advisor_timeout_s=value)
+
+
+def test_no_local_settings_remain():
+    # Output folders and environment selection belonged to the retired stdio server.
+    assert not hasattr(config, "load_settings") and not hasattr(config, "KEYRING_USER")
+    assert "output_dir" not in Settings.__dataclass_fields__

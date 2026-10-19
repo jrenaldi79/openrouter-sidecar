@@ -6,14 +6,10 @@ destructive calls. The server can't skip approval itself; it can only label tool
 """
 
 import pytest
-from mcp import Client
 from mcp.client import advertise
 from mcp.server.mcpserver import MCPServer
 
-from openrouter_image_mcp.client import OpenRouterClient
-from openrouter_image_mcp.config import Settings
-from openrouter_image_mcp.server import build_server
-from openrouter_image_mcp.tool_annotations import annotate
+from openrouter_image_mcp.tool_annotations import ANNOTATIONS, annotate
 from tests.hosted_harness import running_server
 
 APPS = [advertise("io.modelcontextprotocol/ui", {"mimeTypes": ["text/html;profile=mcp-app"]})]
@@ -26,7 +22,7 @@ READ_ONLY = {
 OPENS_APP = {"open_advisor_result", "open_sidecar_settings", "open_image_uploader"}
 PAID = {"ask_advisor", "send_advisor_message", "generate_image", "edit_image",
         "summarize_advisor_result", "run_sidecar_demo"}
-DESTRUCTIVE = {"delete_advisor_chat", "unlink_openrouter", "auth_logout", "retry_advisor_cleanup"}
+DESTRUCTIVE = {"delete_advisor_chat", "unlink_openrouter", "retry_advisor_cleanup"}
 
 
 def _by_hint(tools):
@@ -61,17 +57,11 @@ async def test_tools_that_show_an_app_to_the_user_are_not_read_only(db_target, t
     assert {t.name for t in tools if t.name in OPENS_APP and t.annotations.destructive_hint} == set()
 
 
-async def test_local_tools_are_labelled_too(tmp_path, memory_keyring):
-    settings = Settings(workspace_id="21082e84-ae02-4639-ad40-c7251b98ab10", output_dir=tmp_path / "out",
-                        max_input_edge=2048, timeout_s=30, ratio_tolerance=0.03)
-    async with OpenRouterClient(timeout_s=30) as http, \
-            Client(build_server(settings, http), mode="legacy", extensions=APPS) as client:
-        tools = (await client.list_tools()).tools
-    names, read_only, destructive, paid = _by_hint(tools)
-    assert read_only == READ_ONLY & names
-    assert destructive == DESTRUCTIVE & names
-    assert paid == PAID & names
-    assert "auth_logout" in destructive
+async def test_every_annotation_names_a_hosted_tool(db_target, tmp_path):
+    # The stdio server's tools (auth_login, auth_logout, export_advisor_result) are retired.
+    async with running_server(db_target, env={"ASSET_DIR": str(tmp_path / "assets")}) as server:
+        names = set(server.server._tool_manager._tools)
+    assert set(ANNOTATIONS) == names
 
 
 def test_an_unlabelled_tool_fails_at_startup():

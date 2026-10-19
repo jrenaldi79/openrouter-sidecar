@@ -48,8 +48,8 @@ def clock():
 
 
 @pytest.fixture
-async def client():
-    async with OpenRouterClient(timeout_s=30) as c:
+async def client(keys):
+    async with OpenRouterClient(timeout_s=30, credentials=keys.credentials()) as c:
         yield c
 
 

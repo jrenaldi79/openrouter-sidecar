@@ -12,7 +12,7 @@ globs: ['src/**', 'ui/src/**', 'ui/tests/**', 'scripts/**', 'tests/**']
 | **Any function** | 50 | Code review |
 
 The file limit is a **ratchet**: a new file may not exceed 300 lines, and a file already over it
-(`server.py`, `service.py`, `auth.py`, `imaging.py`, several test files) may
+(`service.py`, `imaging.py`, `client.py`, `catalog.py`, several test files) may
 shrink or hold steady but never grow. Adding to one of those means extracting something first, into a
 sibling module (`advisor_tools.py`, `image_results.py` show the pattern). `--all` lists them.
 Generated bundles in `src/openrouter_image_mcp/ui/` and `reference/` are not checked.
@@ -28,7 +28,7 @@ Generated bundles in `src/openrouter_image_mcp/ui/` and `reference/` are not che
 
 ## Secrets
 
-Never commit credentials. Local keys live in the OS keyring; hosted values (`VAULT_KEYS`,
+Never commit credentials. OpenRouter keys are vault-encrypted per principal; hosted values (`VAULT_KEYS`,
 `LINK_SIGNING_KEY`, Auth0, `DATABASE_URL`) come from the environment. `scripts/checks/secret_scan.py`
 scans staged files **including tests** for provider keys, JWTs, Auth0/Railway/vault/link-signing values,
 non-local Postgres passwords and signed `lnk_`/`upl_`/`img_` tokens. Build fixtures at runtime

@@ -12,7 +12,8 @@ globs: ['tests/**', 'ui/tests/**']
 - Markers: `live` hits real OpenRouter and is deselected by default; `pg` needs `TEST_DATABASE_URL`
   (disposable Postgres). The `db_target` fixture runs storage tests on SQLite and, when the URL is set,
   Postgres too.
-- `conftest.py` swaps in an in-memory keyring; never touch the real OS keyring in tests.
+- Pass OpenRouter keys through the `keys` fixture (`helpers.KeyBox`, `credentials=keys.credentials(ws)`).
+  `memory_keyring` swaps in an in-memory keyring for the `export-local` tests; never touch the real OS keyring.
 - HTTP goes through `respx` or the fakes in `scripts/dev/`; never the real network outside `live`.
 - Run one file while iterating: `uv run pytest tests/test_x.py`.
 

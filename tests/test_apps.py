@@ -1,24 +1,31 @@
 """Gallery data split: model-safe structured fields, previews only in the result's _meta."""
 
 import base64
-from pathlib import Path
+import re
 from types import SimpleNamespace
 
+from mcp import Client
+from mcp.client import advertise
+from mcp.server.mcpserver import MCPServer
+
+from openrouter_image_mcp import apps
 from openrouter_image_mcp.apps import (
     PREVIEWS_META,
     UI_EXTENSION,
     UI_MIME,
+    UI_URI,
+    ImageApps,
     negotiate_apps,
-    preview_image,
     preview_meta,
+    register_gallery,
 )
 
 PREFIX = "data:image/jpeg;base64,"
 
 
-def test_preview_image_carries_no_image_bytes():
-    path = Path("/tmp/out/render_1.png")
-    assert preview_image(path) == {"filename": "render_1.png", "path": str(path)}
+def test_no_local_path_gallery_entries_remain():
+    # Hosted results carry asset ids and signed links (`hosted/image_results.py`).
+    assert not hasattr(apps, "preview_image")
 
 
 def test_preview_meta_is_index_aligned_with_null_for_missing_previews():
@@ -61,3 +68,38 @@ async def test_clients_without_apps_keep_other_meta():
 async def test_other_tools_pass_through_for_clients_without_apps():
     wire = _wire({PREVIEWS_META: []})
     assert await _negotiate(False, wire, name="get_image_download") == wire
+
+
+def _gallery_server() -> MCPServer:
+    server = MCPServer("t", extensions=[ImageApps()], middleware=[negotiate_apps])
+    register_gallery(server)
+
+    def generate_image() -> str:
+        return "x"
+
+    server.add_tool(generate_image, meta={"ui": {"resourceUri": UI_URI}})
+    return server
+
+
+async def test_negotiation_does_not_mutate_shared_tools():
+    server = _gallery_server()
+    for extensions, expected in (
+        (None, False),
+        ([advertise(UI_EXTENSION, {"mimeTypes": [UI_MIME]})], True),
+        ([advertise(UI_EXTENSION, {"mimeTypes": ["text/plain"]})], False),
+        ([advertise(UI_EXTENSION, {"mimeTypes": [UI_MIME]})], True),
+    ):
+        async with Client(server, mode="legacy", extensions=extensions) as client:
+            tool = next(t for t in (await client.list_tools()).tools if t.name == "generate_image")
+            assert bool(tool.meta and "ui" in tool.meta) is expected
+
+
+async def test_gallery_resource_is_self_contained_html():
+    async with Client(_gallery_server(), mode="legacy",
+                      extensions=[advertise(UI_EXTENSION, {"mimeTypes": [UI_MIME]})]) as client:
+        page = (await client.read_resource(UI_URI)).contents[0]
+    assert page.mime_type == UI_MIME
+    assert page.text.lower().startswith("<!doctype html>")
+    assert "<script" in page.text
+    assert not re.search(r"<script[^>]+src=", page.text)
+    assert page.meta["ui"]["csp"] == {"connectDomains": [], "resourceDomains": []}

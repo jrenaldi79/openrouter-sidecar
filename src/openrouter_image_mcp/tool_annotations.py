@@ -1,4 +1,4 @@
-"""MCP tool annotations for every Sidecar tool, local and hosted.
+"""MCP tool annotations for every hosted Sidecar tool.
 
 Hosts (claude.ai, Claude Desktop) group a connector's tools by these hints, so a
 user can allow the free read-only tools at once and keep approval on calls that
@@ -39,12 +39,10 @@ ANNOTATIONS: dict[str, ToolAnnotations] = {
                     _hints(idempotent=True)),
     **dict.fromkeys(("ask_advisor", "send_advisor_message", "generate_image", "edit_image",
                      "summarize_advisor_result", "run_sidecar_demo"), _PAID),
-    **dict.fromkeys(("create_image_upload", "remask_image", "export_advisor_result", "create_local_import",
+    **dict.fromkeys(("create_image_upload", "remask_image", "create_local_import",
                      "link_openrouter", "reset_advisor_sandbox"), _WRITE),
     "set_sidecar_preferences": _hints(idempotent=True),
     "start_advisor_chat": _hints(open_world=True),  # checks the live catalog; no inference
-    "auth_login": _hints(idempotent=True, open_world=True),
-    "auth_logout": _hints(destructive=True, idempotent=True),
     "unlink_openrouter": _hints(destructive=True, idempotent=True),
     "delete_advisor_chat": _hints(destructive=True, idempotent=True),
     "retry_advisor_cleanup": _hints(destructive=True, idempotent=True, open_world=True),

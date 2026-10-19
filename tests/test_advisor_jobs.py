@@ -8,17 +8,14 @@ import sqlite3
 import subprocess
 import sys
 import time
-from pathlib import Path
-from types import SimpleNamespace
 
 import httpx
 import pytest
 
-from openrouter_image_mcp import keystore
 from openrouter_image_mcp.advisor import AdvisorService, SkillPacket
 from openrouter_image_mcp.advisor_client import AdvisorClient
 from openrouter_image_mcp.advisor_store import AdvisorAccessError, AdvisorStore
-from openrouter_image_mcp.errors import BadRequestError, OpenRouterError
+from openrouter_image_mcp.errors import BadRequestError
 from tests.advisor_streams import SyntheticStream, event, final
 
 WORKSPACE = "jobs-workspace"
@@ -33,14 +30,14 @@ def test_jobs_backend_is_available():
 
 def _sqlite_only(store):
     if store.path is None:
-        pytest.skip("inspects the local SQLite file or local export")
+        pytest.skip("inspects the SQLite file")
 
 
 @pytest.fixture
-async def rig(tmp_path, memory_keyring, db_target):
+async def rig(tmp_path, keys, db_target):
     assert importlib.util.find_spec("openrouter_image_mcp.advisor_jobs"), "AdvisorJobs missing"
     jobs_type = importlib.import_module("openrouter_image_mcp.advisor_jobs").AdvisorJobs
-    keystore.set_key(KEY_A, workspace_id=WORKSPACE)
+    keys.set(KEY_A, workspace_id=WORKSPACE)
     state = {"partial": "Partial advice", "answer": "Final advice", "entered": asyncio.Event(),
              "release": asyncio.Event(), "cancelled": 0, "seen": []}
 
@@ -59,7 +56,8 @@ async def rig(tmp_path, memory_keyring, db_target):
             "content-type": "text/event-stream"})
 
     client = AdvisorClient(WORKSPACE, 30, transport=httpx.MockTransport(provider))
-    service = AdvisorService(WORKSPACE, AdvisorStore(db_target), client)
+    service = AdvisorService(WORKSPACE, AdvisorStore(db_target), client,
+                             credentials=keys.credentials(WORKSPACE))
     chat = await service.start(MODEL, "Critic")
     jobs = jobs_type(service)
     try:
@@ -98,11 +96,11 @@ async def test_background_stream_status_and_final_history_and_original_prompt(ri
     assert KEY_A not in service.store.path.read_bytes().decode(errors="ignore")
 
 
-@pytest.mark.parametrize("operation", ["status", "view", "export", "summarize"])
-async def test_other_credential_known_job_cannot_read_or_act(rig, operation):
+@pytest.mark.parametrize("operation", ["status", "view", "summarize"])
+async def test_other_credential_known_job_cannot_read_or_act(keys, rig, operation):
     jobs, _, chat_id, state = rig
     job = await jobs.start(chat_id, "Private prompt")
-    keystore.set_key(KEY_B, workspace_id=WORKSPACE)
+    keys.set(KEY_B, workspace_id=WORKSPACE)
     before = len(state["seen"])
     with pytest.raises(AdvisorAccessError, match="unavailable"):
         result = getattr(jobs, operation)(job["job_id"])
@@ -111,26 +109,26 @@ async def test_other_credential_known_job_cannot_read_or_act(rig, operation):
     assert len(state["seen"]) == before
 
 
-async def test_credential_switch_before_worker_blocks_provider_and_suppresses_partial(rig):
+async def test_credential_switch_before_worker_blocks_provider_and_suppresses_partial(keys, rig):
     jobs, service, chat_id, state = rig
     job = await jobs.start(chat_id, "Prompt")
-    keystore.set_key(KEY_B, workspace_id=WORKSPACE)
+    keys.set(KEY_B, workspace_id=WORKSPACE)
     await asyncio.sleep(0.05)
     assert not any(r.url.path.endswith("/responses") for r in state["seen"])
-    keystore.set_key(KEY_A, workspace_id=WORKSPACE)
+    keys.set(KEY_A, workspace_id=WORKSPACE)
     assert (await terminal(jobs, job["job_id"]))["status"] == "interrupted"
     assert jobs.view(job["job_id"])["answer"] == ""
     assert service.get(chat_id)["messages"] == []
 
 
-async def test_credential_switch_during_stream_cannot_save_answer(rig):
+async def test_credential_switch_during_stream_cannot_save_answer(keys, rig):
     jobs, service, chat_id, state = rig
     job = await jobs.start(chat_id, "Prompt")
     await state["entered"].wait()
-    keystore.set_key(KEY_B, workspace_id=WORKSPACE)
+    keys.set(KEY_B, workspace_id=WORKSPACE)
     state["release"].set()
     await asyncio.sleep(0.05)
-    keystore.set_key(KEY_A, workspace_id=WORKSPACE)
+    keys.set(KEY_A, workspace_id=WORKSPACE)
     assert (await terminal(jobs, job["job_id"]))["status"] == "interrupted"
     assert jobs.view(job["job_id"])["answer"] == ""
     assert service.get(chat_id)["messages"] == []
@@ -200,17 +198,11 @@ async def test_live_job_and_chat_lease_exclusive_across_managers_stale_recovery(
         await replacement.close()
 
 
-async def test_summary_new_job_preserves_original_and_export_fixed_contained_path(rig):
-    _sqlite_only(rig[1].store)
-    jobs, service, chat_id, state = rig
+async def test_summary_new_job_preserves_original(rig):
+    jobs, _, chat_id, state = rig
     state["release"].set()
     job = await jobs.start(chat_id, "Prompt")
     await terminal(jobs, job["job_id"])
-    exported = jobs.export(job["job_id"])
-    path = Path(exported["path"]).resolve()
-    assert path.is_relative_to(service.store.path.parent.resolve())
-    assert path.name == job["job_id"] + ".md"
-    assert "Final advice" in path.read_text(encoding="utf-8")
     summary = await jobs.summarize(job["job_id"])
     assert summary["kind"] == "summary" and summary["source_job_id"] == job["job_id"]
     assert summary["model"] == MODEL and "answer" not in summary
@@ -221,25 +213,6 @@ async def test_summary_new_job_preserves_original_and_export_fixed_contained_pat
     assert "concise" in json.loads(request.content)["input"][-1]["content"].lower()
 
 
-async def test_export_rejects_symlink_destination_escape(rig, tmp_path):
-    _sqlite_only(rig[1].store)
-    jobs, _, chat_id, state = rig
-    state["release"].set()
-    job = await jobs.start(chat_id, "Prompt")
-    await terminal(jobs, job["job_id"])
-    export = jobs.export(job["job_id"])
-    path = Path(export["path"])
-    path.unlink()
-    escape = tmp_path / "escaped.md"
-    try:
-        path.symlink_to(escape)
-    except OSError:
-        pytest.skip("Symlink creation requires Windows developer-mode privilege")
-    with pytest.raises(OpenRouterError):
-        jobs.export(job["job_id"])
-    assert not escape.exists()
-
-
 async def test_close_immediately_after_enqueue_persists_interruption_without_provider(rig):
     jobs, _, chat_id, state = rig
     job = await jobs.start(chat_id, "Prompt")
@@ -248,28 +221,26 @@ async def test_close_immediately_after_enqueue_persists_interruption_without_pro
     assert not any(r.url.path.endswith("/responses") for r in state["seen"])
 
 
-async def test_reopen_metadata_and_delete_remove_jobs_preserve_export(rig):
+async def test_reopen_metadata_and_delete_remove_jobs(keys, rig):
     _sqlite_only(rig[1].store)
     jobs, service, chat_id, state = rig
     state["release"].set()
     job = await jobs.start(chat_id, "Private prompt")
     await terminal(jobs, job["job_id"])
-    path = Path(jobs.export(job["job_id"])["path"])
     rows = jobs.for_chat(chat_id)
     assert [row["job_id"] for row in rows] == [job["job_id"]]
     assert "answer" not in rows[0] and "prompt" not in rows[0]
-    keystore.set_key(KEY_B, workspace_id=WORKSPACE)
+    keys.set(KEY_B, workspace_id=WORKSPACE)
     with pytest.raises(AdvisorAccessError):
         jobs.for_chat(chat_id)
     with pytest.raises(AdvisorAccessError):
         jobs.delete_chat(chat_id)
-    keystore.set_key(KEY_A, workspace_id=WORKSPACE)
+    keys.set(KEY_A, workspace_id=WORKSPACE)
     assert jobs.delete_chat(chat_id)["deleted"] is True
     with pytest.raises(AdvisorAccessError):
         jobs.view(job["job_id"])
     with sqlite3.connect(service.store.path) as db:
         assert db.execute("SELECT COUNT(*) FROM advisor_jobs").fetchone()[0] == 0
-    assert path.exists()
 
 
 async def test_shutdown_tolerates_deleted_completed_job_record(rig):
@@ -302,13 +273,14 @@ async def test_partial_credentials_redacted_and_stream_commentary_ignored(rig):
     assert status["status"] == "failed" and "invalid JSON" not in status["error"]
 
 
-async def test_same_credential_other_workspace_cannot_reopen_job(rig):
+async def test_same_credential_other_workspace_cannot_reopen_job(keys, rig):
     jobs, service, chat_id, _ = rig
     job = await jobs.start(chat_id, "Prompt")
-    keystore.set_key(KEY_A, workspace_id="another-workspace")
+    keys.set(KEY_A, workspace_id="another-workspace")
     foreign_client = AdvisorClient("another-workspace", 30, transport=httpx.MockTransport(
         lambda request: pytest.fail("Foreign workspace reached provider")))
-    foreign = type(jobs)(AdvisorService("another-workspace", service.store, foreign_client))
+    foreign = type(jobs)(AdvisorService("another-workspace", service.store, foreign_client,
+                                         credentials=keys.credentials("another-workspace")))
     try:
         with pytest.raises(AdvisorAccessError):
             foreign.view(job["job_id"])
@@ -317,45 +289,6 @@ async def test_same_credential_other_workspace_cannot_reopen_job(rig):
     finally:
         await foreign.close()
         await foreign_client.aclose()
-
-
-async def test_export_write_failure_leaves_no_partial_final_file(rig, monkeypatch):
-    _sqlite_only(rig[1].store)
-    jobs, service, chat_id, state = rig
-    state["release"].set()
-    job = await jobs.start(chat_id, "Prompt")
-    await terminal(jobs, job["job_id"])
-
-    def failed_fsync(descriptor):
-        raise OSError("Synthetic disk failure")
-
-    with monkeypatch.context() as patch:
-        patch.setattr("openrouter_image_mcp.advisor_results.os.fsync", failed_fsync)
-        with pytest.raises(OpenRouterError, match="saved locally"):
-            jobs.export(job["job_id"])
-    assert list(service.store.path.parent.rglob(job["job_id"] + ".md")) == []
-    path = Path(jobs.export(job["job_id"])["path"])
-    assert "Final advice" in path.read_text(encoding="utf-8")
-
-
-async def test_export_rejects_reparse_parent_even_without_symlink_privilege(rig, monkeypatch):
-    _sqlite_only(rig[1].store)
-    jobs, _, chat_id, state = rig
-    state["release"].set()
-    job = await jobs.start(chat_id, "Prompt")
-    await terminal(jobs, job["job_id"])
-    real_lstat = Path.lstat
-
-    def reparse_lstat(path, *args, **kwargs):
-        info = real_lstat(path, *args, **kwargs)
-        if path.name == "advisor-exports":
-            return SimpleNamespace(st_mode=info.st_mode, st_file_attributes=0x400)
-        return info
-
-    jobs.export(job["job_id"])
-    monkeypatch.setattr(Path, "lstat", reparse_lstat)
-    with pytest.raises(OpenRouterError, match="linked path"):
-        jobs.export(job["job_id"])
 
 
 async def test_stream_event_header_must_match_json_type(rig):

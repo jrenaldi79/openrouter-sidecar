@@ -1,10 +1,17 @@
-"""API key storage in the OS keyring. Never falls back to plaintext storage."""
+"""Read the key the retired local Sidecar left in the OS keyring, for `export-local` only.
+
+The local server stored one OpenRouter key per cohort workspace and owned its chats
+by the key's SHA-256. The export needs that owner scope to find them. Nothing here
+writes or deletes a key, and an insecure backend is refused (no plaintext fallback).
+"""
+
+import hashlib
 
 import keyring
-import keyring.errors
 from keyring.backends import chainer
 
-from .config import KEYRING_SERVICE, KEYRING_USER
+from .advisor_store import Scope
+from .config import KEYRING_SERVICE
 
 _INSECURE_MODULES = {"keyring.backends.fail", "keyring.backends.null"}
 
@@ -33,22 +40,12 @@ def _check_backend() -> None:
         )
 
 
-def get_key(*, workspace_id: str = KEYRING_USER) -> str | None:
+def get_key(*, workspace_id: str) -> str | None:
     _check_backend()
     return keyring.get_password(KEYRING_SERVICE, workspace_id)
 
 
-def set_key(key: str, *, workspace_id: str = KEYRING_USER) -> None:
-    _check_backend()
-    # Remove the old entry first: some backends (e.g. a Windows fallback entry) would
-    # otherwise keep returning a switched-away key.
-    delete_key(workspace_id=workspace_id)
-    keyring.set_password(KEYRING_SERVICE, workspace_id, key)
-
-
-def delete_key(*, workspace_id: str = KEYRING_USER) -> None:
-    _check_backend()
-    try:
-        keyring.delete_password(KEYRING_SERVICE, workspace_id)
-    except keyring.errors.PasswordDeleteError:
-        pass
+def local_scope(workspace_id: str) -> Scope | None:
+    """The local chats' owner scope for this cohort, or None if it never signed in here."""
+    key = get_key(workspace_id=workspace_id)
+    return Scope(hashlib.sha256(key.encode()).hexdigest(), workspace_id) if key else None

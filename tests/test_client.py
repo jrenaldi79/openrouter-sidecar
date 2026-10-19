@@ -5,8 +5,8 @@ import json
 import httpx
 import pytest
 import respx
+from helpers import BoxCredentials
 
-from openrouter_image_mcp import keystore
 from openrouter_image_mcp.client import (
     GeneratedImage,
     GenerationResult,
@@ -32,9 +32,9 @@ PNG_B64 = base64.b64encode(PNG).decode()
 
 
 @pytest.fixture
-def keyed(memory_keyring):
-    keystore.set_key(KEY)
-    return memory_keyring
+def keyed(keys):
+    keys.set(KEY)
+    return keys
 
 
 @pytest.fixture
@@ -55,8 +55,8 @@ def mock():
 
 
 @pytest.fixture
-async def client(keyed):
-    async with OpenRouterClient(timeout_s=30) as c:
+async def client(keys, keyed):
+    async with OpenRouterClient(timeout_s=30, credentials=keys.credentials()) as c:
         yield c
 
 
@@ -157,22 +157,21 @@ async def test_chat_no_image_raises_noimage(client, mock):
     assert exc.value.text == "I can't help with that"
 
 
-async def test_401_deletes_key_and_raises(client, mock):
+async def test_401_deletes_key_and_raises(keys, client, mock):
     mock.post(f"{BASE}/images").respond(401, json={"error": {"message": "bad key"}})
     with pytest.raises(AuthRequiredError) as exc:
         await client.images({"prompt": "x"})
-    assert keystore.get_key() is None
-    assert "auth_login" in str(exc.value)
+    assert keys.get() is None
+    assert "link_openrouter" in str(exc.value)
     assert "no longer valid" in exc.value.message
 
 
-async def test_no_key_raises_auth_required_without_request(memory_keyring, mock):
+async def test_no_key_raises_auth_required_without_request(keys, mock):
     route = mock.post(f"{BASE}/images").respond(200, json={})
-    async with OpenRouterClient(timeout_s=5) as c:
+    async with OpenRouterClient(timeout_s=5, credentials=keys.credentials()) as c:
         with pytest.raises(AuthRequiredError) as exc:
             await c.images({"prompt": "x"})
-    assert "Not signed in" in str(exc.value)
-    assert "auth_login" in str(exc.value)
+    assert str(exc.value) == BoxCredentials.MISSING  # the credential source's own instructions
     assert route.call_count == 0
 
 
@@ -297,44 +296,23 @@ async def test_error_text_never_contains_key(client, mock):
     assert "sk-or-***" in str(exc.value)
 
 
-async def test_exchange_code_body(keyed, mock):
-    route = mock.post(f"{BASE}/auth/keys").respond(200, json={"key": "sk-or-new", "user_id": "u"})
-    async with OpenRouterClient(timeout_s=5) as c:
-        key = await c.exchange_code("the-code", "the-verifier")
-    assert key == "sk-or-new"
-    req = route.calls.last.request
-    assert "Authorization" not in req.headers
-    assert json.loads(req.content) == {
-        "code": "the-code",
-        "code_verifier": "the-verifier",
-        "code_challenge_method": "S256",
-    }
+async def test_unauthenticated_401_keeps_the_key(keys, keyed, mock):
+    mock.get(f"{BASE}/images/models").respond(401, json={"error": {"message": "no"}})
+    async with OpenRouterClient(timeout_s=5, credentials=keys.credentials()) as c:
+        with pytest.raises(AuthRequiredError, match="rejected the request"):
+            await c.image_models()
+    assert keys.get() == KEY
 
 
-async def test_exchange_code_401_keeps_stored_key(keyed, mock):
-    mock.post(f"{BASE}/auth/keys").respond(401, json={"error": {"message": "bad code"}})
-    async with OpenRouterClient(timeout_s=5) as c:
-        with pytest.raises(AuthRequiredError) as exc:
-            await c.exchange_code("c", "v")
-    assert keystore.get_key() == KEY
-    assert "invalid or expired" in str(exc.value)
-
-
-async def test_exchange_code_works_without_key(memory_keyring, mock):
-    mock.post(f"{BASE}/auth/keys").respond(200, json={"key": "sk-or-new"})
-    async with OpenRouterClient(timeout_s=5) as c:
-        assert await c.exchange_code("c", "v") == "sk-or-new"
-
-
-async def test_catalog_network_error_maps(memory_keyring, mock):
+async def test_catalog_network_error_maps(keys, mock):
     mock.get(f"{BASE}/images/models").mock(side_effect=httpx.ConnectError("boom"))
-    async with OpenRouterClient(timeout_s=5) as c:
+    async with OpenRouterClient(timeout_s=5, credentials=keys.credentials()) as c:
         with pytest.raises(CatalogUnavailableError) as exc:
             await c.image_models()
     assert "Couldn't reach the OpenRouter catalog" in str(exc.value)
 
 
-async def test_catalog_methods_unauthenticated(keyed, mock):
+async def test_catalog_methods_unauthenticated(keys, keyed, mock):
     r1 = mock.get(f"{BASE}/images/models").respond(200, json={"data": [{"id": "a/b"}]})
     r2 = mock.get(f"{BASE}/models", params={"output_modalities": "image"}).respond(
         200, json={"data": [{"id": "c/d"}]}
@@ -342,7 +320,7 @@ async def test_catalog_methods_unauthenticated(keyed, mock):
     r3 = mock.get(f"{BASE}/images/models/a/b/endpoints").respond(
         200, json={"id": "a/b", "endpoints": [{"provider_name": "P"}]}
     )
-    async with OpenRouterClient(timeout_s=5) as c:
+    async with OpenRouterClient(timeout_s=5, credentials=keys.credentials()) as c:
         assert await c.image_models() == [{"id": "a/b"}]
         assert await c.image_models_meta() == [{"id": "c/d"}]
         assert await c.image_model_endpoints("a/b") == [{"provider_name": "P"}]
@@ -350,18 +328,18 @@ async def test_catalog_methods_unauthenticated(keyed, mock):
         assert "Authorization" not in r.calls.last.request.headers
 
 
-async def test_catalog_timeout_maps_to_catalog_unavailable(memory_keyring, mock):
+async def test_catalog_timeout_maps_to_catalog_unavailable(keys, mock):
     mock.get(f"{BASE}/images/models").mock(side_effect=httpx.ReadTimeout("slow"))
-    async with OpenRouterClient(timeout_s=5) as c:
+    async with OpenRouterClient(timeout_s=5, credentials=keys.credentials()) as c:
         with pytest.raises(CatalogUnavailableError) as exc:
             await c.image_models()
     assert "Couldn't reach the OpenRouter catalog" in str(exc.value)
     assert "Not charged" not in str(exc.value)
 
 
-async def test_catalog_5xx_maps_to_catalog_unavailable(memory_keyring, mock, sleeps):
+async def test_catalog_5xx_maps_to_catalog_unavailable(keys, mock, sleeps):
     route = mock.get(f"{BASE}/images/models").respond(500, text="oops")
-    async with OpenRouterClient(timeout_s=5) as c:
+    async with OpenRouterClient(timeout_s=5, credentials=keys.credentials()) as c:
         with pytest.raises(CatalogUnavailableError) as exc:
             await c.image_models()
     assert "HTTP 500" in str(exc.value)
@@ -370,25 +348,25 @@ async def test_catalog_5xx_maps_to_catalog_unavailable(memory_keyring, mock, sle
     assert sleeps == [1.0]
 
 
-async def test_catalog_429_maps_to_catalog_unavailable(memory_keyring, mock, sleeps):
+async def test_catalog_429_maps_to_catalog_unavailable(keys, mock, sleeps):
     mock.get(f"{BASE}/images/models").respond(429, json={"error": {"message": "slow"}})
-    async with OpenRouterClient(timeout_s=5) as c:
+    async with OpenRouterClient(timeout_s=5, credentials=keys.credentials()) as c:
         with pytest.raises(CatalogUnavailableError) as exc:
             await c.image_models()
     assert "HTTP 429" in str(exc.value)
     assert sleeps == [1.0, 2.0]
 
 
-async def test_catalog_non_json_maps_to_catalog_unavailable(memory_keyring, mock):
+async def test_catalog_non_json_maps_to_catalog_unavailable(keys, mock):
     mock.get(f"{BASE}/images/models").respond(200, text="<html>oops</html>")
-    async with OpenRouterClient(timeout_s=5) as c:
+    async with OpenRouterClient(timeout_s=5, credentials=keys.credentials()) as c:
         with pytest.raises(CatalogUnavailableError):
             await c.image_models()
 
 
-async def test_as_list_dict_without_endpoints_is_empty(memory_keyring, mock):
+async def test_as_list_dict_without_endpoints_is_empty(keys, mock):
     mock.get(f"{BASE}/images/models/a/b/endpoints").respond(200, json={"id": "a/b"})
-    async with OpenRouterClient(timeout_s=5) as c:
+    async with OpenRouterClient(timeout_s=5, credentials=keys.credentials()) as c:
         assert await c.image_model_endpoints("a/b") == []
 
 
@@ -470,12 +448,13 @@ async def test_images_empty_data_raises_noimage(client, mock):
         await client.images({"prompt": "x"})
 
 
-async def test_custom_transport_is_used(keyed):
+async def test_custom_transport_is_used(keys, keyed):
     def handler(request: httpx.Request) -> httpx.Response:
         assert str(request.url) == f"{BASE}/key"
         return httpx.Response(200, json={"data": {"ok": True}})
 
-    async with OpenRouterClient(timeout_s=5, transport=httpx.MockTransport(handler)) as c:
+    async with OpenRouterClient(timeout_s=5, transport=httpx.MockTransport(handler),
+                                credentials=keys.credentials()) as c:
         assert await c.key_info() == {"ok": True}
 
 

@@ -1,6 +1,7 @@
-"""Shared generate/edit pipeline: validate, prepare, call, fit, save.
+"""Shared generate/edit pipeline: validate, prepare, call, fit, store.
 
-The MCP tools in `server.py` are thin wrappers around `ImageService`.
+The hosted image tools drive `ImageService` through `hosted/images.py`, whose
+`AssetSink` stores every result (and a masked edit's unblended layer) as an asset.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from PIL import Image, UnidentifiedImageError
 
@@ -43,17 +44,8 @@ from .imaging import (
     plan_fit,
     prepare_input,
     reject_network_path,
-    user_dir,
 )
-from .outputs import (
-    choose_dir,
-    encode_image,
-    output_path,
-    prompt_slug,
-    unmasked_path,
-    write_bytes_atomic,
-    write_sidecar,
-)
+from .outputs import encode_image, prompt_slug
 
 log = logging.getLogger(__name__)
 
@@ -89,12 +81,17 @@ ProgressFn = Callable[[float, float, str], Awaitable[None]]
 
 @dataclass
 class SavedImage:
-    path: Path | None  # None when saved through a sink (hosted assets)
-    sidecar: Path | None
+    asset_id: str  # what the output sink stored it as
     preview_jpeg: bytes | None
     cost_usd: float | None
     note: str | None
-    asset_id: str | None = None
+
+
+class OutputSink(Protocol):
+    """Stores one result and returns its id (hosted: `hosted.images.AssetSink`)."""
+
+    def save(self, job: Any, *, data: bytes, ext: str, unmasked: bytes | None, meta: dict,
+             index: int) -> str: ...
 
 
 @dataclass
@@ -121,7 +118,7 @@ class _Job:
     provider_options: dict | None  # flat, as the user gave them (recorded in the sidecar)
     data_urls: list[str]
     inputs: list[PreparedImage]
-    directory: Path
+    sink: OutputSink
     stem: str
     notes: list[str]
     plan: FitPlan | None = None  # set only when outputs are post-processed (fit="preserve")
@@ -130,8 +127,6 @@ class _Job:
     fit_model: bool = False
     previews: int = 0
     provider: dict | None = None  # the request's `provider` object: options keyed by slug
-    # Hosted: stores outputs as assets instead of files (sink.save(...) -> asset id).
-    sink: Any = None
 
 
 def _error_text(exc: Exception) -> str:
@@ -235,25 +230,19 @@ class ImageService:
         self, prompt: str, model: str, *, n: int = 1, aspect_ratio: str | None = None,
         resolution: str | None = None, size: str | None = None, quality: str | None = None,
         seed: int | None = None, background: str | None = None, output_format: str | None = None,
-        output_dir: str | None = None, filename_prefix: str | None = None,
-        provider_options: dict | None = None, progress: ProgressFn | None = None,
-        sink: Any = None,
+        filename_prefix: str | None = None, provider_options: dict | None = None,
+        progress: ProgressFn | None = None, sink: OutputSink,
     ) -> ServiceResult:
         send = {"aspect_ratio": aspect_ratio, "resolution": resolution, "size": size,
                 "quality": quality, "seed": seed, "background": background,
                 "output_format": output_format}
-        out_dir = user_dir(output_dir)  # a relative or network folder fails before any call
         m = await self._catalog.get(model)
         notes = self._validate(m, n, send, provider_options, input_count=0)
         provider = await self._provider_object(m, provider_options)
-        directory, dir_note = (Path(), None) if sink is not None else choose_dir(
-            out_dir or self._settings.output_dir, self._settings.output_dir
-        )
         job = _Job(
             tool="generate_image", prompt=prompt, model=m, n=n, send=send,
-            provider_options=provider_options, data_urls=[], inputs=[], directory=directory,
-            stem=filename_prefix or prompt_slug(prompt), notes=notes + ([dir_note] if dir_note else []),
-            provider=provider, sink=sink,
+            provider_options=provider_options, data_urls=[], inputs=[], sink=sink,
+            stem=filename_prefix or prompt_slug(prompt), notes=notes, provider=provider,
         )
         return await self._run(job, progress)
 
@@ -262,9 +251,9 @@ class ImageService:
         mask_feather_px: int | None = None, fit: str = "preserve", n: int = 1,
         aspect_ratio: str | None = None, resolution: str | None = None, size: str | None = None,
         quality: str | None = None, seed: int | None = None, background: str | None = None,
-        output_format: str | None = None, output_dir: str | None = None,
-        filename_prefix: str | None = None, provider_options: dict | None = None,
-        progress: ProgressFn | None = None, sink: Any = None,
+        output_format: str | None = None, filename_prefix: str | None = None,
+        provider_options: dict | None = None, progress: ProgressFn | None = None,
+        sink: OutputSink,
     ) -> ServiceResult:
         if fit not in ("preserve", "model"):
             raise BadRequestError(f"fit must be 'preserve' or 'model', got {fit!r}")
@@ -279,7 +268,6 @@ class ImageService:
         mask = check_mask(mask_path) if mask_path is not None else None
         for p in images:  # a network path is refused before any call, and never touched
             reject_network_path(p, "images")
-        out_dir = user_dir(output_dir)
 
         send = {"aspect_ratio": aspect_ratio, "resolution": resolution, "size": size,
                 "quality": quality, "seed": seed, "background": background,
@@ -310,17 +298,12 @@ class ImageService:
             elif plan.strategy == "none_supported":
                 notes.append(f"{m.id} has no aspect_ratio setting; outputs were cropped to {w}×{h}.")
 
-        directory, dir_note = (Path(), None) if sink is not None else choose_dir(
-            out_dir or primary.path.parent, self._settings.output_dir
-        )
-        if dir_note:
-            notes.append(dir_note)
         job = _Job(
             tool="edit_image", prompt=prompt, model=m, n=n, send=send,
             provider_options=provider_options, data_urls=data_urls, inputs=prepared,
-            directory=directory, stem=filename_prefix or primary.path.stem, notes=notes,
+            sink=sink, stem=filename_prefix or primary.path.stem, notes=notes,
             plan=plan, mask=mask, mask_feather_px=mask_feather_px, fit_model=fit == "model",
-            provider=provider, sink=sink,
+            provider=provider,
         )
         return await self._run(job, progress)
 
@@ -403,7 +386,7 @@ class ImageService:
                                        elapsed, per_call_n)
                         )
                     except (ProviderError, InputError, OSError) as exc:
-                        # Local failures after a paid call: keep going with the other images.
+                        # Failures after a paid call: keep going with the other images.
                         last_error = exc
                         failures.append(_error_text(exc))
             await _notify(progress, k + 1, calls, f"Finished call {k + 1} of {calls}")
@@ -563,20 +546,10 @@ class ImageService:
                 for p in job.inputs
             ],
             "mask": mask_meta,
-            "unmasked_path": None,
             "fit": fit,
         }
-        note = "; ".join(notes) or None
-        if job.sink is not None:
-            asset_id = job.sink.save(job, data=data, ext=ext, unmasked=unmasked, meta=meta, index=index)
-            return SavedImage(None, None, preview, cost, note, asset_id)
-        path = output_path(job.directory, job.stem, job.model.id, index, ext, now)
-        layer = unmasked_path(path) if unmasked is not None else None
-        if layer is not None:
-            write_bytes_atomic(layer, unmasked)
-        write_bytes_atomic(path, data)
-        meta["unmasked_path"] = layer.as_posix() if layer is not None else None
-        return SavedImage(path, write_sidecar(path, meta), preview, cost, note)
+        asset_id = job.sink.save(job, data=data, ext=ext, unmasked=unmasked, meta=meta, index=index)
+        return SavedImage(asset_id, preview, cost, "; ".join(notes) or None)
 
     @staticmethod
     def _sidecar_params(job: _Job, call_n: int) -> dict:

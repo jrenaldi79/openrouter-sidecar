@@ -31,7 +31,7 @@
     .model-identity { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--color-text-primary, var(--fg)); }
     .provider-logo { width: 18px; height: 18px; object-fit: contain; padding: 1px; background: #fff; border-radius: 4px; }
     #error, #share-error { color: var(--error); }
-    #error:empty, #cleanup:empty, #export-status:empty, #handoff-status:empty, #follow-up-status:empty { display: none; }
+    #error:empty, #cleanup:empty, #handoff-status:empty, #follow-up-status:empty { display: none; }
     details.quiet { font-size: 12px; } details.quiet summary { cursor: pointer; color: var(--color-text-secondary, var(--muted)); width: max-content; }
     pre { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; margin: 6px 0 0; }
 
@@ -68,7 +68,7 @@
     .more-menu button { border: 0; background: transparent; text-align: left; font-weight: 500; padding: 8px 10px; }
     .more-menu button:not(:disabled):hover { background: var(--color-background-secondary, var(--card)); }
     #share-note { margin-top: -6px; }
-    #export-status, #handoff-status, #share-error { font-size: 13px; }
+    #handoff-status, #share-error { font-size: 13px; }
 
     /* Share outcome: a summary failure offers the full answer; a blocked clipboard shows the text. */
     .share-fallback { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -134,7 +134,6 @@
         <div class="more-menu" id="more-menu">
           <button id="share-full" disabled>Share full answer</button>
           <button id="copy-answer" disabled>Copy answer</button>
-          <button id="export" disabled>Save as file</button>
         </div>
       </details>
     </div>
@@ -148,7 +147,6 @@
       <label for="copy-text">Copyable message</label>
       <textarea id="copy-text" readonly spellcheck="false"></textarea>
     </div>
-    <p id="export-status" role="status" aria-live="polite"></p>
     <section class="follow-up" aria-label="Continue advisor conversation">
       <div class="composer">
         <label for="follow-up" class="visually-hidden">Message advisor</label>

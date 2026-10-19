@@ -7,7 +7,6 @@ import time
 import httpx
 import pytest
 
-from openrouter_image_mcp import keystore
 from openrouter_image_mcp.advisor import AdvisorService, SkillPacket
 from openrouter_image_mcp.advisor_client import AdvisorClient
 from openrouter_image_mcp.advisor_store import AdvisorStore
@@ -26,8 +25,8 @@ def reply(text="Advice"):
 
 
 @pytest.fixture
-async def make(tmp_path, memory_keyring):
-    keystore.set_key(KEY, workspace_id=WORKSPACE)
+async def make(tmp_path, keys):
+    keys.set(KEY, workspace_id=WORKSPACE)
     seen, clients = [], []
 
     async def handle(request):
@@ -50,7 +49,8 @@ async def make(tmp_path, memory_keyring):
         client = AdvisorClient(WORKSPACE, 30, transport=httpx.MockTransport(handle))
         clients.append(client)
         store = AdvisorStore(tmp_path / "advisor.sqlite3")
-        return AdvisorService(WORKSPACE, store, client, **options), seen
+        return AdvisorService(WORKSPACE, store, client, credentials=keys.credentials(WORKSPACE),
+                              **options), seen
 
     yield build
     for client in clients:

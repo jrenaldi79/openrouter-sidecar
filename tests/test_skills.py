@@ -1,8 +1,9 @@
-"""Checks on the companion skills shipped in skills/.
+"""Checks on the companion skills shipped in skills/ (the Claude Code plugin's copy).
 
 The server has no prompt presets; the skills carry the know-how. These tests
 keep the skills loadable (valid frontmatter) and honest (they only name tools
-the server actually exposes).
+the hosted server actually exposes). The plugin connects to the hosted server,
+so its skills are the hosted variants, byte for byte.
 """
 
 import re
@@ -10,19 +11,13 @@ from pathlib import Path
 
 import pytest
 
+from openrouter_image_mcp.hosted import guidance
+from openrouter_image_mcp.tool_annotations import ANNOTATIONS
+
 SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
 EXPECTED_SKILLS = {"openrouter-image", "architectural-render-polish"}
-TOOL_NAMES = {
-    "account_status",
-    "auth_login",
-    "auth_logout",
-    "list_image_models",
-    "get_image_model",
-    "generate_image",
-    "edit_image",
-    "remask_image",
-}
-TOOL_LIKE = re.compile(r"^(account|auth|list|get|generate|edit|remask)_[a-z_]+$")
+TOOL_NAMES = set(ANNOTATIONS)
+TOOL_LIKE = re.compile(r"^(account|auth|link|unlink|create|open|list|get|generate|edit|remask)_[a-z_]+$")
 FENCE = re.compile(r"^```.*?^```", re.MULTILINE | re.DOTALL)
 INLINE_CODE = re.compile(r"`([^`\n]+)`")
 CALL = re.compile(r"\b([a-z_][a-z0-9_]*)\s*\(")
@@ -126,9 +121,21 @@ def test_render_polish_masks_point_to_remask_image():
 
 def test_masks_section_points_to_remask_image():
     text = read(SKILLS_DIR / "openrouter-image" / "SKILL.md")
-    section = text.split("## Edits: paths, size and masks", 1)[1].split("\n## ", 1)[0]
+    section = text.split("## Edits: size and masks", 1)[1].split("\n## ", 1)[0]
     assert "`remask_image`" in section
-    assert ".unmasked.png" in section
+    assert "mask_id" in section
+
+
+@pytest.mark.parametrize("name", sorted(EXPECTED_SKILLS))
+def test_plugin_skills_are_the_hosted_variants(name):
+    # The plugin connects to the hosted server: no local paths, sign-in or output folders.
+    assert read(SKILLS_DIR / name / "SKILL.md") == guidance.hosted_skills()[name].text
+
+
+def test_skills_name_no_retired_local_tools():
+    for path in skill_files():
+        for retired in ("auth_login", "auth_logout", "output_dir", "mask_path"):
+            assert retired not in read(path), (path.name, retired)
 
 
 def test_model_rules_of_thumb_are_dated():

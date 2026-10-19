@@ -8,7 +8,6 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 
-from openrouter_image_mcp import keystore
 from openrouter_image_mcp.advisor import AdvisorService
 from openrouter_image_mcp.advisor_client import AdvisorClient
 from openrouter_image_mcp.advisor_store import AdvisorStore
@@ -56,11 +55,11 @@ def _sqlite_only(store):
 
 
 @pytest.fixture
-async def rig(tmp_path, memory_keyring, db_target):
+async def rig(tmp_path, keys, db_target):
     spec = importlib.util.find_spec("openrouter_image_mcp.preferences")
     assert spec is not None, "PreferenceService has not been implemented"
     module = importlib.import_module("openrouter_image_mcp.preferences")
-    keystore.set_key(KEY_A, workspace_id=WORKSPACE)
+    keys.set(KEY_A, workspace_id=WORKSPACE)
     state = {"models": json.loads(json.dumps(MODELS)), "switch": False}
     seen = []
 
@@ -68,13 +67,13 @@ async def rig(tmp_path, memory_keyring, db_target):
         seen.append(request)
         assert request.url.path.endswith("/models"), "Preferences must never invoke inference"
         if state["switch"]:
-            keystore.set_key(KEY_B, workspace_id=WORKSPACE)
+            keys.set(KEY_B, workspace_id=WORKSPACE)
         rows = [row | {"architecture": {"output_modalities": ["text"]},
                        "supported_parameters": ["tools"]} for row in state["models"]]
         return httpx.Response(200, json={"data": rows})
 
     client = AdvisorClient(WORKSPACE, 30, transport=httpx.MockTransport(handle))
-    advisors = AdvisorService(WORKSPACE, AdvisorStore(db_target), client)
+    advisors = AdvisorService(WORKSPACE, AdvisorStore(db_target), client, credentials=keys.credentials(WORKSPACE))
     yield module.PreferenceService(advisors, utcnow=lambda: NOW), advisors, state, seen, module
     await client.aclose()
 
@@ -210,11 +209,11 @@ async def test_revision_is_rechecked_after_catalog_for_competing_instance(rig, m
     assert preferences.get()["revision"] == 1
 
 
-async def test_two_owners_and_two_workspaces_are_independent(rig):
+async def test_two_owners_and_two_workspaces_are_independent(keys, rig):
     preferences, advisors, _, seen, module = rig
     initial = preferences.get()
     saved = await preferences.update(initial["settings_id"], 0, general_default="google/other-advisor")
-    keystore.set_key(KEY_B, workspace_id=WORKSPACE)
+    keys.set(KEY_B, workspace_id=WORKSPACE)
     account_b = preferences.get()
     assert account_b["settings_id"] != initial["settings_id"]
     assert account_b["general_default"] is None
@@ -223,24 +222,25 @@ async def test_two_owners_and_two_workspaces_are_independent(rig):
         await preferences.update(initial["settings_id"], 0, general_default="openai/gpt-test")
     assert not seen
     other_workspace = COHORT_WORKSPACES["2028"]
-    keystore.set_key(KEY_A, workspace_id=other_workspace)
+    keys.set(KEY_A, workspace_id=other_workspace)
     other_client = AdvisorClient(other_workspace, 30, transport=advisors.client._http._transport)
     try:
-        scoped = module.PreferenceService(AdvisorService(other_workspace, advisors.store, other_client))
+        scoped = module.PreferenceService(AdvisorService(other_workspace, advisors.store, other_client,
+                                                         credentials=keys.credentials(other_workspace)))
         assert scoped.get()["settings_id"] not in {initial["settings_id"], account_b["settings_id"]}
         assert scoped.get()["general_default"] is None
         with pytest.raises(OpenRouterError):
             scoped.assert_context(initial["settings_id"])
-        keystore.set_key(KEY_B, workspace_id=other_workspace)
+        keys.set(KEY_B, workspace_id=other_workspace)
         assert scoped.get()["settings_id"] not in {initial["settings_id"], account_b["settings_id"]}
     finally:
         await other_client.aclose()
-    keystore.set_key(KEY_A, workspace_id=WORKSPACE)
+    keys.set(KEY_A, workspace_id=WORKSPACE)
     assert preferences.get() == saved
 
 
 @pytest.mark.parametrize("operation", ["view", "resolve", "update"])
-async def test_switch_during_catalog_withholds_result_and_write(rig, operation):
+async def test_switch_during_catalog_withholds_result_and_write(keys, rig, operation):
     preferences, _, state, _, _ = rig
     initial = preferences.get()
     state["switch"] = True
@@ -251,7 +251,7 @@ async def test_switch_during_catalog_withholds_result_and_write(rig, operation):
             await preferences.resolve("google/other-advisor")
         else:
             await preferences.view()
-    keystore.set_key(KEY_A, workspace_id=WORKSPACE)
+    keys.set(KEY_A, workspace_id=WORKSPACE)
     assert preferences.get() == initial
 
 
@@ -275,10 +275,10 @@ async def test_absent_or_invalid_choice_has_no_inference(rig, model):
     assert all(request.url.path.endswith("/models") for request in seen)
 
 
-async def test_signed_out_cannot_read_or_mutate_preferences(rig):
+async def test_signed_out_cannot_read_or_mutate_preferences(keys, rig):
     preferences, _, _, seen, _ = rig
     initial = preferences.get()
-    keystore.delete_key(workspace_id=WORKSPACE)
+    keys.delete(workspace_id=WORKSPACE)
     for action in (preferences.get, lambda: preferences.assert_context(initial["settings_id"])):
         with pytest.raises(OpenRouterError):
             action()
@@ -332,10 +332,10 @@ async def test_active_credential_cannot_be_stored_as_catalog_model(rig, monkeypa
     assert KEY_A.encode() not in advisors.store.path.read_bytes()
 
 
-async def test_numeric_credential_is_not_exposed_in_valid_pricing(rig, monkeypatch):
+async def test_numeric_credential_is_not_exposed_in_valid_pricing(keys, rig, monkeypatch):
     preferences, advisors, _, _, _ = rig
     numeric_key = "12345678901234567890"
-    keystore.set_key(numeric_key, workspace_id=WORKSPACE)
+    keys.set(numeric_key, workspace_id=WORKSPACE)
 
     async def credential_price():
         return [{"id": "google/other-advisor", "name": "Other", "pricing": {"prompt": numeric_key,

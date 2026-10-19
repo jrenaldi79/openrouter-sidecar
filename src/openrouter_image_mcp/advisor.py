@@ -12,7 +12,7 @@ from . import storage
 from .advisor_client import AdvisorClient
 from .advisor_payload import INSTRUCTIONS, SANDBOX_DISABLED, build_payload, files_tar
 from .advisor_store import AdvisorAccessError, AdvisorStore, Scope
-from .credentials import CHANGED, CredentialSource, KeyringCredentials
+from .credentials import CHANGED, CredentialSource
 from .errors import BadRequestError, OpenRouterError, ProviderError
 from .logs import redact
 from .prompt_cache import cache_usage, configure_cache
@@ -39,16 +39,15 @@ class SkillPacket(BaseModel):
 
 class AdvisorService:
     def __init__(self, workspace_id: str, store: AdvisorStore, client: AdvisorClient, *,
-                 credentials: CredentialSource | None = None, sandbox_default: bool = True,
+                 credentials: CredentialSource, sandbox_default: bool = True,
                  sandbox_allowed: bool = True):
         if workspace_id != client.workspace_id:
             raise ValueError("Advisor client workspace does not match configuration.")
         self.workspace_id, self.store, self.client = workspace_id, store, client
         self.files = SessionFiles(store)
-        # Hosted: inline by default, sandbox behind a server flag. Local stdio keeps
-        # its original shell chats until it is retired.
+        # The hosted server passes inline by default, with the sandbox behind a server flag.
         self.sandbox_default, self.sandbox_allowed = sandbox_default, sandbox_allowed
-        self.credentials = credentials or KeyringCredentials(workspace_id)
+        self.credentials = credentials
         if self.credentials.workspace_id != workspace_id:
             raise ValueError("Advisor credentials workspace does not match configuration.")
 

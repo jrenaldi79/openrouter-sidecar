@@ -1,18 +1,8 @@
 {
   "mcpServers": {
     "openrouter-sidecar": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--directory",
-        "${CLAUDE_PLUGIN_ROOT}/..",
-        "--no-sync",
-        "openrouter-image-mcp"
-      ],
-      "env": {
-        "OPENROUTER_IMAGE_COHORT": "2027",
-        "OPENROUTER_IMAGE_WORKSPACE_ID": "21082e84-ae02-4639-ad40-c7251b98ab10"
-      }
+      "type": "http",
+      "url": "https://sidecar-production-e110.up.railway.app/mcp"
     }
   }
 }

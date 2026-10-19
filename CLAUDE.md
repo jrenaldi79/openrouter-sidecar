@@ -1,17 +1,20 @@
 # CLAUDE.md
 
 Guidance for Claude Code in **OpenRouter Sidecar** (`openrouter-image-mcp`): image generation, editing
-and side-advisor chats for Northwestern AI classes. It runs as a local stdio MCP server for
-Claude Desktop and Claude Code, and as a hosted multi-tenant remote MCP on Railway (`serve-http`).
+and side-advisor chats for Northwestern AI classes. It runs as a hosted multi-tenant remote MCP on
+Railway (`serve-http`) for claude.ai, Claude Desktop and Claude Code. The local stdio server was retired on
+2026-10-19; only `export-local` remains, to move a student's old local chats to the hosted server.
 Folder-level `CLAUDE.md` notes load automatically when you work in a folder; read them before editing.
 
 ## Stack
 
-- **Server:** Python 3.12+ with `uv`, one root `pyproject.toml` (`mcp`, `httpx`, `pillow`, `keyring`,
-  `pyjwt`, `psycopg`, `uvicorn`). SQLite locally, Postgres when hosted. The Dockerfile builds the hosted image.
+- **Server:** Python 3.12+ with `uv`, one root `pyproject.toml` (`mcp`, `httpx`, `pillow`, `pyjwt`, `psycopg`,
+  `uvicorn`; `keyring` only so `export-local` can read the retired local key). SQLite in tests and the local
+  e2e stack, Postgres in production. The Dockerfile builds the hosted image.
 - **MCP Apps:** ESM in `ui/` with its own `package.json` (esbuild, `@modelcontextprotocol/ext-apps`,
   Playwright). `ui/build.mjs` bundles each app into `src/openrouter_image_mcp/ui/<app>.html` (generated).
-- **Skills:** `skills/` is the source; `plugin/skills/` is a copy kept in step by `scripts/sync_plugin_skills.py`.
+- **Skills:** `src/openrouter_image_mcp/hosted/skills/` is served to connector clients; `skills/` (the plugin's
+  source) holds byte-identical copies, and `plugin/skills/` is kept in step by `scripts/sync_plugin_skills.py`.
 - `reference/` holds vendored upstream code and is excluded from ruff and the checks.
 
 ## Essential commands
@@ -52,14 +55,15 @@ Path-scoped rules live in `.claude/rules/` (TDD, code quality, testing, Python, 
 - **Never edit `src/openrouter_image_mcp/ui/*.html`.** They are generated; edit `ui/src` and rebuild.
 - **OpenRouter HTTP lives in a few seams:** `client.py` (images), `advisor_client.py` (advisor) and
   `hosted/openrouter_keys.py` (key exchange). Tests stub them with `respx`; don't add httpx calls elsewhere.
-- **Keys never leak:** local keys live in the OS keyring (no plaintext fallback); hosted keys are vault-encrypted per
-  principal. Errors and logs pass through `logs.redact`. Tests use the in-memory keyring from `conftest.py`.
+- **Keys never leak:** keys are vault-encrypted per principal; nothing writes to the OS keyring (`keystore.py` only
+  reads the retired local key for `export-local`). Errors and logs pass through `logs.redact`. Tests pass keys through
+  the `keys` fixture (`helpers.KeyBox`); `memory_keyring` exists only for the export tests.
 - **Schema changes are additive in code** (`IF NOT EXISTS`); there is no migrations folder. Storage tests run on
   SQLite and, with `TEST_DATABASE_URL`, Postgres via the `db_target` fixture.
 - **Auth0 and class identity are managed outside this repo** (`../mpd-auth`); don't change them from here.
 - **Hosted single owner:** one replica holds the advisory lock (`hosted/health.py`) for sweeps and background work.
-- **Oversized files are grandfathered, not blessed:** before adding to `server.py`, `service.py`, `auth.py` or
-  `imaging.py`, extract a sibling module.
+- **Oversized files are grandfathered, not blessed:** before adding to `service.py`, `imaging.py`, `client.py` or
+  `catalog.py`, extract a sibling module.
 
 ## Key docs
 

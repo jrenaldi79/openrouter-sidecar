@@ -33,10 +33,8 @@ def png(w, h, color=None):
 
 
 @pytest.fixture
-async def rig(tmp_path, db_target, memory_keyring):
-    from openrouter_image_mcp import keystore
-
-    keystore.set_key("sk-or-v1-synthetic", workspace_id=WS)
+async def rig(tmp_path, db_target, keys):
+    keys.set("sk-or-v1-synthetic", workspace_id=WS)
     sent = []
 
     def handle(request):
@@ -54,8 +52,8 @@ async def rig(tmp_path, db_target, memory_keyring):
             return httpx.Response(200, json={"data": {"usage": 1.0}})
         return httpx.Response(404, json={"error": {"message": "unexpected " + path}})
 
-    client = OpenRouterClient(30, transport=httpx.MockTransport(handle), workspace_id=WS)
-    settings = Settings(WS, Path("/nonexistent"), 2048, 30, 0.03)
+    client = OpenRouterClient(30, transport=httpx.MockTransport(handle), credentials=keys.credentials(WS))
+    settings = Settings(WS, 2048, 30, 0.03)
     service = ImageService(client, Catalog(client), settings)
     assets = AssetStore(db_target, LocalDirBlobs(tmp_path / "blobs"))
     tokens = TransferTokens(db_target, "k" * 32, "https://sidecar.example")
@@ -69,7 +67,7 @@ async def test_generate_stores_outputs_as_assets_with_download_links(rig):
     images, assets, _, _ = rig
     result, links = await images.generate("a red barn", SUNBURST, aspect_ratio="21:9")
     saved = result.images[0]
-    assert saved.path is None and saved.asset_id.startswith("img_") and saved.preview_jpeg
+    assert saved.asset_id.startswith("img_") and saved.preview_jpeg
     _, info = assets.get(ALICE, saved.asset_id)
     assert info.kind == "output" and info.mime == "image/png" and (info.width, info.height) == (2016, 864)
     assert info.meta["prompt"] == "a red barn" and info.meta["schema_version"] == 1

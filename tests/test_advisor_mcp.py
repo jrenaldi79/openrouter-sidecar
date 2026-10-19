@@ -9,13 +9,12 @@ import pytest
 from mcp import Client
 from mcp.client import advertise
 
-from openrouter_image_mcp import keystore
 from openrouter_image_mcp.advisor import AdvisorService
 from openrouter_image_mcp.advisor_client import AdvisorClient
 from openrouter_image_mcp.advisor_store import AdvisorStore
 from openrouter_image_mcp.client import OpenRouterClient
-from openrouter_image_mcp.config import COHORT_WORKSPACES, Settings
-from openrouter_image_mcp.server import build_server
+from openrouter_image_mcp.config import COHORT_WORKSPACES
+from tests.tool_harness import build_tool_server
 
 TOOLS = {
     "list_chat_models", "start_advisor_chat", "send_advisor_message",
@@ -24,7 +23,7 @@ TOOLS = {
 }
 
 PUBLIC_RESULT_TOOLS = {"get_advisor_job", "open_advisor_result"}
-APP_RESULT_TOOLS = {"get_advisor_result", "summarize_advisor_result", "export_advisor_result"}
+APP_RESULT_TOOLS = {"get_advisor_result", "summarize_advisor_result"}
 APP_EXTENSION = [advertise("io.modelcontextprotocol/ui", {"mimeTypes": ["text/html;profile=mcp-app"]})]
 
 
@@ -42,9 +41,9 @@ def decoded(result):
 
 
 @pytest.fixture
-async def rig(tmp_path, memory_keyring):
+async def rig(tmp_path, keys):
     workspace = COHORT_WORKSPACES["2028"]
-    keystore.set_key("synthetic-key-A", workspace_id=workspace)
+    keys.set("synthetic-key-A", workspace_id=workspace)
     requests = []
 
     async def handle(request):
@@ -70,12 +69,12 @@ async def rig(tmp_path, memory_keyring):
             return httpx.Response(200, json=body)
         pytest.fail("Unexpected HTTP operation")
 
-    settings = Settings(workspace, tmp_path / "out", 2048, 30, 0.03)
     transport = httpx.MockTransport(handle)
-    image_client = OpenRouterClient(30, transport=transport, workspace_id=workspace)
+    image_client = OpenRouterClient(30, transport=transport, credentials=keys.credentials(workspace))
     advisor_client = AdvisorClient(workspace, 30, transport=transport)
-    service = AdvisorService(workspace, AdvisorStore(tmp_path / "advisor.sqlite3"), advisor_client)
-    server = build_server(settings, image_client, advisor=service)
+    service = AdvisorService(workspace, AdvisorStore(tmp_path / "advisor.sqlite3"), advisor_client,
+                             credentials=keys.credentials(workspace))
+    server = build_tool_server(image_client, service)
     yield server, workspace, requests, service
     await image_client.aclose()
     await advisor_client.aclose()
@@ -96,13 +95,13 @@ async def test_advisor_tools_expose_only_chat_handles_and_skill_text(rig):
     "get_advisor_chat", "send_advisor_message", "reset_advisor_sandbox",
     "delete_advisor_chat", "retry_advisor_cleanup",
 ])
-async def test_account_b_is_denied_known_a_handle_through_mcp(rig, operation):
+async def test_account_b_is_denied_known_a_handle_through_mcp(keys, rig, operation):
     server, workspace, requests, _ = rig
     async with Client(server, mode="legacy") as client:
         started = await client.call_tool("start_advisor_chat", {"model": "openai/test-model", "title": "A"})
         chat_id = decoded(started)["chat_id"]
         requests.clear()
-        keystore.set_key("synthetic-key-B", workspace_id=workspace)
+        keys.set("synthetic-key-B", workspace_id=workspace)
         arguments = {"chat_id": chat_id}
         if operation == "send_advisor_message":
             arguments["prompt"] = "Fetch the other student's files"
@@ -173,14 +172,14 @@ async def test_answer_lives_only_in_app_metadata_and_never_status_or_public_hist
 
 
 @pytest.mark.parametrize("operation", ["get_advisor_job", "open_advisor_result", *APP_RESULT_TOOLS])
-async def test_result_handles_do_not_authorize_a_different_student(rig, operation):
+async def test_result_handles_do_not_authorize_a_different_student(keys, rig, operation):
     server, workspace, requests, _ = rig
     async with Client(server, mode="legacy", extensions=APP_EXTENSION) as client:
         chat = decoded(await client.call_tool("start_advisor_chat", {"model": "openai/test-model"}))
         started = decoded(await client.call_tool("send_advisor_message", {"chat_id": chat["chat_id"], "prompt": "Original brief"}))
         assert (await finished(client, started["job_id"]))["status"] == "completed"
         requests.clear()
-        keystore.set_key("synthetic-key-B", workspace_id=workspace)
+        keys.set("synthetic-key-B", workspace_id=workspace)
         result = await client.call_tool(operation, {"job_id": started["job_id"]})
         assert result.is_error
         assert "Original brief" not in result.model_dump_json()

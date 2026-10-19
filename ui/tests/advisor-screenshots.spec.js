@@ -56,7 +56,7 @@ test('capture completed and follow-up states', async ({ page }) => {
   const { viewer } = await openAdvisor(page, { responses: { 'get_advisor_result:result-1': [result({ answer })] } });
   await expect(viewer.locator('#answer')).toContainText('Start with interviews');
   await capture(page, viewer, 'completed');
-  await moreAction(viewer, 'Save as file');
+  await moreAction(viewer, 'Copy answer');
   await capture(page, viewer, 'more-menu');
   await viewer.getByText('More', { exact: true }).click();
   await viewer.getByLabel(/advisor/i).and(viewer.locator('textarea')).first().fill('What would the survey ask?');

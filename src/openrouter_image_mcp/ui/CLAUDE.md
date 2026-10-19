@@ -16,4 +16,4 @@ read_when: "Changing or adding files in src/openrouter_image_mcp/ui/."
 
 - `uploader.html` carries a `__SIDECAR_ORIGIN__` placeholder that `apps.register_uploader` replaces with the server origin for CSP `connect-src`. Keep the placeholder in `ui/src/uploader.html`.
 
-**Tests:** Playwright specs in `ui/tests/` load these bundles. Python tests cover how they are served (`tests/test_hosted_apps.py`, `tests/test_server.py`).
+**Tests:** Playwright specs in `ui/tests/` load these bundles. Python tests cover how they are served (`tests/test_hosted_apps.py`, `tests/test_apps.py`).

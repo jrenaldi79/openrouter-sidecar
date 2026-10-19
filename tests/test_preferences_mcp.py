@@ -9,13 +9,12 @@ import pytest
 from mcp import Client
 from mcp.client import advertise
 
-from openrouter_image_mcp import keystore
 from openrouter_image_mcp.advisor import AdvisorService
 from openrouter_image_mcp.advisor_client import AdvisorClient
 from openrouter_image_mcp.advisor_store import AdvisorStore
 from openrouter_image_mcp.client import OpenRouterClient
-from openrouter_image_mcp.config import COHORT_WORKSPACES, Settings
-from openrouter_image_mcp.server import build_server
+from openrouter_image_mcp.config import COHORT_WORKSPACES
+from tests.tool_harness import build_tool_server
 
 APPS = [advertise("io.modelcontextprotocol/ui", {"mimeTypes": ["text/html;profile=mcp-app"]})]
 PUBLIC = {"open_sidecar_settings", "get_sidecar_preferences", "set_sidecar_preferences", "resolve_advisor_model"}
@@ -28,9 +27,9 @@ def data(result):
 
 
 @pytest.fixture
-async def rig(tmp_path, memory_keyring):
+async def rig(tmp_path, keys):
     workspace = COHORT_WORKSPACES["2027"]
-    keystore.set_key("synthetic-owner-A", workspace_id=workspace)
+    keys.set("synthetic-owner-A", workspace_id=workspace)
     seen = []
 
     async def handle(request):
@@ -61,11 +60,11 @@ async def rig(tmp_path, memory_keyring):
         pytest.fail("Unexpected HTTP operation")
 
     transport = httpx.MockTransport(handle)
-    settings = Settings(workspace, tmp_path / "out", 2048, 30, 0.03)
-    http = OpenRouterClient(30, transport=transport, workspace_id=workspace)
+    http = OpenRouterClient(30, transport=transport, credentials=keys.credentials(workspace))
     advisor_client = AdvisorClient(workspace, 30, transport=transport)
-    advisors = AdvisorService(workspace, AdvisorStore(tmp_path / "advisor.sqlite3"), advisor_client)
-    server = build_server(settings, http, advisor=advisors)
+    advisors = AdvisorService(workspace, AdvisorStore(tmp_path / "advisor.sqlite3"), advisor_client,
+                              credentials=keys.credentials(workspace))
+    server = build_tool_server(http, advisors)
     yield server, workspace, seen, advisors
     await http.aclose()
     await advisor_client.aclose()
@@ -150,12 +149,12 @@ async def test_demo_is_limited_idempotent_and_keeps_answer_out_of_parent(rig):
         assert "Synthetic answer" in result.meta["advisorResult"]["answer"]
 
 
-async def test_old_settings_context_cannot_mutate_or_spend_under_another_sign_in(rig):
+async def test_old_settings_context_cannot_mutate_or_spend_under_another_sign_in(keys, rig):
     server, workspace, seen, _ = rig
     async with Client(server, mode="legacy", extensions=APPS) as client:
         prefs = await save(client)
         seen.clear()
-        keystore.set_key("synthetic-owner-B", workspace_id=workspace)
+        keys.set("synthetic-owner-B", workspace_id=workspace)
         for name, extras in [("set_sidecar_preferences", {"general_default": "google/demo"}),
                              ("run_sidecar_demo", {"demo": "hello"})]:
             result = await client.call_tool(name, {"settings_id": prefs["settings_id"],
@@ -165,9 +164,9 @@ async def test_old_settings_context_cannot_mutate_or_spend_under_another_sign_in
         assert data(await client.call_tool("get_sidecar_preferences", {}))["general_default"] is None
 
 
-async def test_opening_signed_out_settings_and_walking_steps_does_not_infer(rig):
+async def test_opening_signed_out_settings_and_walking_steps_does_not_infer(keys, rig):
     server, workspace, seen, _ = rig
-    keystore.delete_key(workspace_id=workspace)
+    keys.delete(workspace_id=workspace)
     async with Client(server, mode="legacy", extensions=APPS) as client:
         opened = data(await client.call_tool("open_sidecar_settings", {}))
         assert opened["signed_in"] is False

@@ -8,13 +8,13 @@ import httpx
 import pytest
 from mcp import Client
 
-from openrouter_image_mcp import headless, keystore
+from openrouter_image_mcp import headless
 from openrouter_image_mcp.advisor import AdvisorService
 from openrouter_image_mcp.advisor_client import AdvisorClient
 from openrouter_image_mcp.advisor_store import AdvisorStore
 from openrouter_image_mcp.client import OpenRouterClient
-from openrouter_image_mcp.config import COHORT_WORKSPACES, Settings
-from openrouter_image_mcp.server import build_server
+from openrouter_image_mcp.config import COHORT_WORKSPACES
+from tests.tool_harness import build_tool_server
 
 MODEL = "openai/test-model"
 
@@ -25,9 +25,9 @@ def decoded(result):
 
 
 @pytest.fixture
-async def rig(tmp_path, memory_keyring):
+async def rig(tmp_path, keys):
     workspace = COHORT_WORKSPACES["2028"]
-    keystore.set_key("synthetic-key-A", workspace_id=workspace)
+    keys.set("synthetic-key-A", workspace_id=workspace)
     state = {"delay": 0.0, "bodies": []}
 
     async def handle(request):
@@ -47,12 +47,12 @@ async def rig(tmp_path, memory_keyring):
         pytest.fail("Unexpected HTTP operation " + request.url.path)
 
     transport = httpx.MockTransport(handle)
-    image_client = OpenRouterClient(30, transport=transport, workspace_id=workspace)
+    image_client = OpenRouterClient(30, transport=transport, credentials=keys.credentials(workspace))
     advisor_client = AdvisorClient(workspace, 30, transport=transport)
     service = AdvisorService(workspace, AdvisorStore(tmp_path / "advisor.sqlite3"), advisor_client,
+                             credentials=keys.credentials(workspace),
                              sandbox_default=False, sandbox_allowed=False)
-    server = build_server(Settings(workspace, tmp_path / "out", 2048, 30, 0.03), image_client,
-                          advisor=service)
+    server = build_tool_server(image_client, service)
     yield server, state, workspace
     await image_client.aclose()
     await advisor_client.aclose()
@@ -123,11 +123,11 @@ async def test_progress_notifications_while_waiting(rig, monkeypatch):
         assert updates and all(total == 5 for _, total, _ in updates)
 
 
-async def test_other_account_cannot_wait_on_job(rig):
+async def test_other_account_cannot_wait_on_job(keys, rig):
     server, _, workspace = rig
     async with Client(server, mode="legacy") as client:
         done = decoded(await client.call_tool("ask_advisor", {"prompt": "Mine", "model": MODEL}))
-        keystore.set_key("synthetic-key-B", workspace_id=workspace)
+        keys.set("synthetic-key-B", workspace_id=workspace)
         denied = await client.call_tool("wait_advisor_job", {"job_id": done["job_id"]})
         assert denied.is_error and "unavailable" in denied.content[0].text
 

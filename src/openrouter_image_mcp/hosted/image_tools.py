@@ -13,7 +13,8 @@ from typing import Any, Literal
 from mcp.server.mcpserver import Context, MCPServer
 
 from ..apps import IMAGE_TOOLS, UI_URI, UPLOADER_UI_URI, app_icons
-from ..server import _progress, catalog_tools
+from ..catalog_tools import catalog_tools
+from ..tool_support import progress_reporter
 from .image_results import download_result, image_result, remask_result, upload_result
 from .images import HostedImages
 
@@ -76,7 +77,7 @@ def register_image_tools(server: MCPServer, hosted: HostedImages, catalog, tool_
         """
         with tool_errors():
             result, links = await hosted.generate(
-                prompt, model, progress=_progress(ctx), n=n, aspect_ratio=aspect_ratio,
+                prompt, model, progress=progress_reporter(ctx), n=n, aspect_ratio=aspect_ratio,
                 resolution=resolution, size=size, quality=quality, seed=seed,
                 background=background, output_format=output_format,
                 filename_prefix=filename_prefix, provider_options=provider_options)
@@ -130,7 +131,7 @@ def register_image_tools(server: MCPServer, hosted: HostedImages, catalog, tool_
         with tool_errors():
             result, links = await hosted.edit(
                 prompt, model, images, mask_id=mask_id, filename_prefix=filename_prefix,
-                progress=_progress(ctx), mask_feather_px=mask_feather_px, fit=fit, n=n,
+                progress=progress_reporter(ctx), mask_feather_px=mask_feather_px, fit=fit, n=n,
                 aspect_ratio=aspect_ratio, resolution=resolution, size=size, quality=quality,
                 seed=seed, background=background, output_format=output_format,
                 provider_options=provider_options)

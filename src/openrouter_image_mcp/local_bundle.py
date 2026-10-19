@@ -1,7 +1,9 @@
 """The local-to-hosted migration bundle: export on this computer, validate on import.
 
-A bundle carries a cohort's advisor chats (title, model, transcript, session files)
-and preference defaults. It never carries keys, chat or container ids, the
+The retired local stdio Sidecar kept chats in a SQLite file on the student's computer,
+owned by the SHA-256 of that cohort's OpenRouter key in the OS keyring. `export-local`
+reads both, read-only. A bundle carries a cohort's advisor chats (title, model,
+transcript, session files) and preference defaults. It never carries keys, chat or container ids, the
 credential fingerprint, job rows or skill uploads, and key-shaped text is redacted.
 The hosted import creates new chats under the signed-in student (`hosted/imports.py`).
 """
@@ -18,10 +20,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from . import storage
-from .advisor_store import AdvisorStore, Scope, default_store_path
+from . import keystore, storage
+from .advisor_store import AdvisorStore, Scope
 from .config import COHORT_WORKSPACES
-from .credentials import KeyringCredentials
 from .errors import AuthRequiredError, BadRequestError
 from .logs import redact
 from .preferences import _MODEL_ID, FAMILIES, ensure_table
@@ -37,6 +38,12 @@ FORMAT = "openrouter-sidecar-local-export"
 MAX_BUNDLE_BYTES = 20 * 1024 * 1024
 MAX_CHATS = 500
 _STRICT = ConfigDict(extra="forbid", strict=True)
+
+
+def local_store_path() -> Path:
+    """Where the retired local Sidecar kept its chats and preferences."""
+    base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / ".local" / "share")
+    return base / "Northwestern AI" / "advisor.sqlite3"
 
 
 class BundleError(ValueError):
@@ -126,14 +133,13 @@ def export_bundle(target, scope: Scope, *, cohort: str) -> dict:
 
 
 def run_export(cohort: str, out: Path) -> str:
-    """`export-local`: this cohort's chats for the locally signed-in credential."""
-    try:
-        _, scope = KeyringCredentials(COHORT_WORKSPACES[cohort]).resolve()
-    except AuthRequiredError:
+    """`export-local`: this cohort's chats for the key the local Sidecar signed in with."""
+    scope = keystore.local_scope(COHORT_WORKSPACES[cohort])
+    if scope is None:
         raise AuthRequiredError(
-            f"No local sign-in for the Class of {cohort}, so there is nothing to export. Run "
-            f"`openrouter-image-mcp login` with OPENROUTER_IMAGE_COHORT={cohort} first.") from None
-    path = default_store_path()
+            f"No local sign-in for the Class of {cohort} on this computer, so there is nothing "
+            "to export. Check the class year.")
+    path = local_store_path()
     if not path.exists():
         raise AuthRequiredError(f"No local Sidecar data at {path}; nothing to export.")
     bundle = export_bundle(path, scope, cohort=cohort)

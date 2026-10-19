@@ -1,19 +1,14 @@
-"""Owned durable job records and server-selected Markdown export paths."""
+"""Owned durable advisor job records."""
 
 from __future__ import annotations
 
-import hashlib
 import json
-import os
-import re
 import secrets
-import stat
 import time
 from contextlib import contextmanager
 from datetime import UTC, datetime
 
 from .advisor_store import OPERATION_LEASE_S, AdvisorAccessError
-from .errors import BadRequestError, ProviderError
 
 ACTIVE = ("queued", "running")
 HEARTBEAT_S = 60
@@ -184,66 +179,3 @@ class AdvisorResults:
                        (chat_id, scope.owner, scope.workspace))
             db.execute("DELETE FROM advisor_chats WHERE id=? AND owner=? AND workspace=?",
                        (chat_id, scope.owner, scope.workspace))
-
-    def export(self, scope, row):
-        if row["status"] in ACTIVE:
-            raise BadRequestError("Wait for advisor work to finish before exporting.")
-        if not re.fullmatch(r"job_[0-9a-f]{32}", row["id"]):
-            raise ProviderError("Advisor export rejected an invalid result identifier.")
-        if self.store.path is None:
-            raise BadRequestError("Saving results to this computer is unavailable on the hosted server.")
-        base = self.store.path.absolute().parent
-        # A single compact owner/workspace hash also fits Windows MAX_PATH with
-        # the default DB directory (including longer test/application roots).
-        directory_id = hashlib.sha256((scope.owner + "\0" + scope.workspace).encode()).hexdigest()[:32]
-        destination = base / "advisor-exports" / directory_id
-
-        def reject_link(path):
-            try:
-                info = path.lstat()
-            except FileNotFoundError:
-                return
-            if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
-                raise ProviderError("Advisor export refused a linked path.")
-
-        # Never follow a symlink/junction in existing export ancestors, including
-        # the configured DB parent. Creation stays on this server-selected path.
-        for ancestor in reversed([destination, *destination.parents]):
-            reject_link(ancestor)
-            if not ancestor.exists():
-                ancestor.mkdir()
-            reject_link(ancestor)
-        path = destination / (row["id"] + ".md")
-        reject_link(path)
-        if path.exists():
-            if not path.is_file():
-                raise ProviderError("Advisor export refused an invalid destination.")
-            # Durable exports are immutable/idempotent and never overwrite files.
-            return {"job_id": row["id"], "path": str(path), "exported": True}
-        label = "Completed" if row["status"] == "completed" else "Partial / " + row["status"]
-        text = (f"# Advisor result\n\nModel: {row['model']}\n\nResult: {row['id']}\n\n"
-                f"Status: {label}\n\nCreated: {row['created_at']}\n\n"
-                f"## Original prompt\n\n{row['prompt']}\n\n## Answer\n\n{row['answer']}\n")
-        # Fully flush a private temporary file, then publish with an atomic,
-        # non-overwriting hard link. A failed write cannot leave an apparently
-        # successful immutable export. Temporary names stay short on Windows.
-        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
-        temporary = destination / ("tmp_" + secrets.token_hex(8) + ".tmp")
-        try:
-            descriptor = os.open(temporary, flags, 0o600)
-            with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as output:
-                output.write(text)
-                output.flush()
-                os.fsync(output.fileno())
-            reject_link(path)
-            try:
-                os.link(temporary, path)
-            except FileExistsError:
-                reject_link(path)
-                if not path.is_file():
-                    raise ProviderError("Advisor export refused an invalid destination.") from None
-        except OSError:
-            raise ProviderError("Advisor export could not be saved locally.") from None
-        finally:
-            temporary.unlink(missing_ok=True)
-        return {"job_id": row["id"], "path": str(path), "exported": True}

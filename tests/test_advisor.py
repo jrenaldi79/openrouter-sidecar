@@ -9,7 +9,6 @@ from contextlib import contextmanager
 import httpx
 import pytest
 
-from openrouter_image_mcp import keystore
 from openrouter_image_mcp.advisor_store import AdvisorAccessError, AdvisorStore
 from openrouter_image_mcp.errors import OpenRouterError
 
@@ -19,12 +18,12 @@ KEY_B = "sk-or-v1-synthetic-account-b"
 MODEL = "test/advisor"
 
 
-async def test_advisor_defaults_exclude_image_outputs_but_keep_vision_chat(tmp_path, memory_keyring):
+async def test_advisor_defaults_exclude_image_outputs_but_keep_vision_chat(tmp_path, keys):
     from openrouter_image_mcp.advisor import AdvisorService
     from openrouter_image_mcp.advisor_client import AdvisorClient
     from openrouter_image_mcp.preferences import PreferenceService
 
-    keystore.set_key(KEY_A, workspace_id=WORKSPACE)
+    keys.set(KEY_A, workspace_id=WORKSPACE)
     rows = [
         {"id": "google/chat", "architecture": {"input_modalities": ["text"], "output_modalities": ["text"]}},
         {"id": "google/vision-chat", "architecture": {"input_modalities": ["text", "image"], "output_modalities": ["text"]}},
@@ -40,7 +39,8 @@ async def test_advisor_defaults_exclude_image_outputs_but_keep_vision_chat(tmp_p
 
     client = AdvisorClient(WORKSPACE, 30, transport=httpx.MockTransport(handle))
     try:
-        service = AdvisorService(WORKSPACE, AdvisorStore(tmp_path / "advisor.sqlite3"), client)
+        service = AdvisorService(WORKSPACE, AdvisorStore(tmp_path / "advisor.sqlite3"), client,
+                                 credentials=keys.credentials(WORKSPACE))
         preferences = PreferenceService(service)
         expected = {"google/chat", "google/vision-chat"}
         assert {row["id"] for row in await service.models()} == expected
@@ -70,9 +70,9 @@ def modules():
 
 
 @pytest.fixture
-async def rig(modules, tmp_path, memory_keyring):
+async def rig(modules, tmp_path, keys):
     service_mod, client_mod = modules
-    keystore.set_key(KEY_A, workspace_id=WORKSPACE)
+    keys.set(KEY_A, workspace_id=WORKSPACE)
     seen = []
     state = {"cleanup_fail": False, "inference_fail": False}
 
@@ -96,23 +96,23 @@ async def rig(modules, tmp_path, memory_keyring):
             if state.get("foreign_reply"):
                 container = "another_students_container"
             if state.get("switch_account"):
-                keystore.set_key(KEY_B, workspace_id=WORKSPACE)
+                keys.set(KEY_B, workspace_id=WORKSPACE)
             return httpx.Response(200, json=answer(container))
         pytest.fail(f"Unexpected provider operation: {request.method} {path}")
 
     client = client_mod.AdvisorClient(WORKSPACE, 30, transport=httpx.MockTransport(handle))
     store = AdvisorStore(tmp_path / "advisor.sqlite3")
-    service = service_mod.AdvisorService(WORKSPACE, store, client)
+    service = service_mod.AdvisorService(WORKSPACE, store, client, credentials=keys.credentials(WORKSPACE))
     yield service, store, seen, state, service_mod
     await client.aclose()
 
 
 @pytest.mark.parametrize("operation", ["get", "reset", "delete", "send"])
-async def test_account_b_known_a_handle_denied_before_http(rig, operation):
+async def test_account_b_known_a_handle_denied_before_http(keys, rig, operation):
     service, _, seen, _, _ = rig
     chat = await service.start(MODEL, "A")
     seen.clear()
-    keystore.set_key(KEY_B, workspace_id=WORKSPACE)
+    keys.set(KEY_B, workspace_id=WORKSPACE)
     with pytest.raises(AdvisorAccessError, match="unavailable"):
         if operation == "send":
             await service.send(chat["chat_id"], "Read the other student's files")
@@ -185,7 +185,7 @@ async def test_cleanup_failure_blocks_inference_until_receipt_is_deleted(rig):
     assert any(r.url.path.endswith("/responses") for r in seen)
 
 
-async def test_mid_request_account_switch_does_not_reveal_or_save_answer(rig):
+async def test_mid_request_account_switch_does_not_reveal_or_save_answer(keys, rig):
     service, _, seen, state, mod = rig
     chat = await service.start(MODEL, "A")
     state["switch_account"] = True
@@ -194,7 +194,7 @@ async def test_mid_request_account_switch_does_not_reveal_or_save_answer(rig):
     assert service.list() == []
     deletion = next(r for r in seen if r.method == "DELETE")
     assert deletion.headers["authorization"] == "Bearer " + KEY_A
-    keystore.set_key(KEY_A, workspace_id=WORKSPACE)
+    keys.set(KEY_A, workspace_id=WORKSPACE)
     assert service.get(chat["chat_id"])["messages"] == []
 
 
@@ -206,10 +206,10 @@ async def test_malformed_handles_never_reach_http(rig, handle):
     assert not seen
 
 
-async def test_no_key_means_no_catalog_or_inference(rig):
+async def test_no_key_means_no_catalog_or_inference(keys, rig):
     service, _, seen, _, _ = rig
-    keystore.delete_key(workspace_id=WORKSPACE)
-    with pytest.raises(OpenRouterError, match="sign"):
+    keys.delete(workspace_id=WORKSPACE)
+    with pytest.raises(OpenRouterError, match="not linked"):
         await service.start(MODEL, "A")
     assert not seen
 
