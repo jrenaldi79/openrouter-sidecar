@@ -55,7 +55,7 @@ with mpd-class-mcp and class-identity). The sidecar consumes only its contract:
 - Permission `sidecar:use`, included in roles `mpd-student` (default for every
   roster student) and `mpd-admin`.
 - Claim `https://mpd.northwestern.edu/profile` =
-  `{email, cohort, workspace_id, team, program}`, set by one post-login Action from
+  `{email, cohort, workspace_id, team, team_id, program}` (contract: `mpd-auth/docs/CONTRACT.md`), set by one post-login Action from
   `app_metadata` synced from the roster sheet.
 
 Verifier (Python, PyJWT + cached JWKS): exact `iss`, `aud` equal to our resource,
