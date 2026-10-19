@@ -29,6 +29,7 @@ from ..assets import AssetStore, LocalDirBlobs
 from ..auth import AUTH_URL
 from ..preference_tools import register_preference_tools
 from ..server import SERVER_NAME, _tool_errors
+from .guidance import INSTRUCTIONS, register_guidance
 from .health import MAINTENANCE, Health
 from .image_tools import register_image_tools
 from .images import HostedImages
@@ -168,6 +169,7 @@ def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transpor
 
     server = MCPServer(
         SERVER_NAME, version=__version__, lifespan=lifespan, icons=app_icons(),
+        instructions=INSTRUCTIONS,
         extensions=[ImageApps()], middleware=[enforce_advisor_arguments, negotiate_apps],
         auth=AuthSettings(issuer_url=settings.issuer, resource_server_url=settings.resource,
                           required_scopes=[settings.permission], validate_token_resource=True),
@@ -190,6 +192,7 @@ def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transpor
     for route in link_routes(links, exchange=exchange, verify=verify, auth_url=auth_url):
         server.custom_route(route.path, sorted(route.methods - {"HEAD"}))(route.endpoint)
     _register_imports(server, settings, target, gate)
+    register_guidance(server)
     if settings.asset_dir:
         images.update(_register_images(server, settings, target, services, gate, admission))
     health.register(server)

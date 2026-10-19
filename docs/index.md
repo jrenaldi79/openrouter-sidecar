@@ -136,6 +136,7 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/hosted/app.py](../src/openrouter_image_mcp/hosted/app.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/credentials.py](../src/openrouter_image_mcp/hosted/credentials.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/devproxy.py](../src/openrouter_image_mcp/hosted/devproxy.py)
+- [src/openrouter&#95;image&#95;mcp/hosted/guidance.py](../src/openrouter_image_mcp/hosted/guidance.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/health.py](../src/openrouter_image_mcp/hosted/health.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/image&#95;results.py](../src/openrouter_image_mcp/hosted/image_results.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/image&#95;tools.py](../src/openrouter_image_mcp/hosted/image_tools.py)
@@ -154,6 +155,12 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/hosted/vault.py](../src/openrouter_image_mcp/hosted/vault.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/verifier.py](../src/openrouter_image_mcp/hosted/verifier.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/workspaces.py](../src/openrouter_image_mcp/hosted/workspaces.py)
+
+### [src/openrouter&#95;image&#95;mcp/hosted/skills](../src/openrouter_image_mcp/hosted/skills/CLAUDE.md): Hosted variants of the class skills, served to claude.ai and Desktop as MCP prompts and skill:// resources.
+
+- [src/openrouter&#95;image&#95;mcp/hosted/skills/architectural-render-polish.md](../src/openrouter_image_mcp/hosted/skills/architectural-render-polish.md)
+- [src/openrouter&#95;image&#95;mcp/hosted/skills/architectural-render-polish.prompt-template.md](../src/openrouter_image_mcp/hosted/skills/architectural-render-polish.prompt-template.md)
+- [src/openrouter&#95;image&#95;mcp/hosted/skills/openrouter-image.md](../src/openrouter_image_mcp/hosted/skills/openrouter-image.md)
 
 ### [src/openrouter&#95;image&#95;mcp/ui](../src/openrouter_image_mcp/ui/CLAUDE.md): Generated MCP App bundles: one self-contained HTML file per app, built from ui/src by ui/build.mjs, (preview, advisor, settings, uploader), plus the Northwestern logo. Never edit by hand.
 

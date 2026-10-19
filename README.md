@@ -42,6 +42,8 @@ https://sidecar-production-e110.up.railway.app/mcp
 
 **Per-person limits** (server defaults): 2 concurrent advisor jobs, 20 requests per minute and $5.00 per day of reported advisor cost; image calls are limited to 2 at a time and 20 per minute. The advisor sandbox (a shell for the advisor) is disabled on the hosted server, so hosted advisor sessions are inline: files go into the prompt and the advisor has no tools.
 
+The connector brings its own workflow guide (server instructions) and the class skills, adapted for hosted use, as prompts and `skill://` resources: `openrouter-image` and `architectural-render-polish`. Nothing needs installing in claude.ai or Claude Desktop, and Claude can pass these skills to an advisor.
+
 Operators: see [docs/HOSTED_OPERATIONS.md](docs/HOSTED_OPERATIONS.md) for configuration, Auth0, Railway setup, deployment, key rotation and retention.
 
 ## Tools
