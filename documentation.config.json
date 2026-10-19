@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "sourceRoots": [
+    "src",
+    "scripts",
+    "ui"
+  ],
+  "docsRoot": "docs",
+  "instruction": "CLAUDE.md",
+  "index": "docs/index.md",
+  "strict": false,
+  "folderNotes": true,
+  "exclude": [
+    "scripts/self-documentation"
+  ]
+}

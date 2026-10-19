@@ -52,6 +52,16 @@ jobs:
       - uses: actions/checkout@v4
       - run: docker build -t openrouter-sidecar:ci .
 
+  docs:
+    # Generated docs/index.md and the CLAUDE.md AUTO block must match the tree; folder notes must exist.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/self-documentation/generate.js --check
+
   ui:
     # MCP Apps: the committed HTML must match ui/src, and the Playwright suites must pass.
     runs-on: ubuntu-latest
@@ -67,6 +77,9 @@ jobs:
           cache-dependency-path: ui/package-lock.json
       - run: npm ci
       - run: npm run build
-      - run: git diff --exit-code -- ../src/openrouter_image_mcp/ui
+      - name: Bundles are committed and current
+        run: |
+          stale="$(git status --porcelain -- '../src/openrouter_image_mcp/ui/*.html')"
+          if [ -n "$stale" ]; then echo "Rebuild and commit the bundles:"; echo "$stale"; exit 1; fi
       - run: npx playwright install --with-deps chromium
       - run: npm test

@@ -1,4 +1,4 @@
-"""OpenRouter HTTP client. The only module that talks to the network."""
+"""OpenRouter HTTP client for image generation, editing and the model catalog."""
 
 from __future__ import annotations
 

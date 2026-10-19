@@ -1,0 +1,12 @@
+{
+  "version": "0.2.0",
+  "hashes": {
+    "filesystem.js": "748c2bb30b3ebbf9770b9400cea8d6bf3082ff0fabac76cb5df7683b4dcf9449",
+    "metadata.js": "31aa97f1137825d33f4cc04bbfd0ee94f74bb80571b8f7e7da675934f7867555",
+    "render.js": "78993eb34c699c2dcb9b0309a49ef39472596fe6c3229917d20bb31fde86d1fd",
+    "generate.js": "016c24622ef0501abb4bb0e048993f4061061f835a30d6e86c542b07d0af34af",
+    "install.js": "fd7f8951a38c7a14933f58e96bfa4a485bd91be94468e9330dcf6c86b05d1c39",
+    "migrate.js": "a82149a6eda7c84ca828da24b15fe6523c090deb7ccdbc43297e1f226930b0cf",
+    "install-hook.js": "17b42c1eec3a62d7bb06868609c163c107fda83b5097524927f63c1bebdf4e8c"
+  }
+}

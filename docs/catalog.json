@@ -1,0 +1,219 @@
+{
+  "E2E_LOCAL.md": {
+    "title": "Local end-to-end run (synthetic)",
+    "description": "How to run the synthetic local end-to-end stack: fake identity, fake OpenRouter, Postgres and the hosted sidecar driven as test users.",
+    "type": "guidance",
+    "status": "maintained",
+    "read_when": "Running or changing scripts/dev, or verifying hosted changes end to end before deploy."
+  },
+  "HOSTED_OPERATIONS.md": {
+    "title": "Hosted Sidecar operations",
+    "description": "Operating the hosted sidecar on Railway: configuration, the shared Auth0 tenant, one-time setup, deploys, key rotation, retention purge and incidents.",
+    "type": "guidance",
+    "status": "maintained",
+    "read_when": "Deploying, configuring or operating the hosted sidecar, or changing hosted settings."
+  },
+  "superpowers/plans/2026-10-03-openrouter-image-mcp.md": {
+    "title": "openrouter-image-mcp Implementation Plan",
+    "description": "Task-by-task implementation plan: openrouter-image-mcp Implementation Plan.",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Tracing why the implemented feature was built this way."
+  },
+  "superpowers/plans/2026-10-05-advisor-ownership.md": {
+    "title": "Advisor Ownership Implementation Plan",
+    "description": "Task-by-task implementation plan: Advisor Ownership Implementation Plan.",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Tracing why the implemented feature was built this way."
+  },
+  "superpowers/plans/2026-10-05-inline-image-gallery.md": {
+    "title": "Inline Image Gallery Implementation Plan",
+    "description": "Task-by-task implementation plan: Inline Image Gallery Implementation Plan.",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Tracing why the implemented feature was built this way."
+  },
+  "superpowers/plans/2026-10-05-northwestern-cohorts.md": {
+    "title": "Northwestern cohort implementation plan",
+    "description": "Task-by-task implementation plan: Northwestern cohort implementation plan.",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Tracing why the implemented feature was built this way."
+  },
+  "superpowers/plans/2026-10-05-student-isolation-probe.md": {
+    "title": "Student Isolation Probe Implementation Plan",
+    "description": "Task-by-task implementation plan: Student Isolation Probe Implementation Plan.",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Tracing why the implemented feature was built this way."
+  },
+  "superpowers/plans/2026-10-06-advisor-follow-up.md": {
+    "title": "Advisor follow-up and bounded reading Implementation Plan",
+    "description": "Task-by-task implementation plan: Advisor follow-up and bounded reading Implementation Plan.",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Tracing why the implemented feature was built this way."
+  },
+  "superpowers/plans/2026-10-06-advisor-result-viewer.md": {
+    "title": "Advisor result viewer implementation plan",
+    "description": "Task-by-task implementation plan: Advisor result viewer implementation plan.",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Tracing why the implemented feature was built this way."
+  },
+  "superpowers/plans/2026-10-06-advisor-timeouts.md": {
+    "title": "Advisor timeouts implementation plan",
+    "description": "Task-by-task implementation plan: Advisor timeouts implementation plan.",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Tracing why the implemented feature was built this way."
+  },
+  "superpowers/plans/2026-10-06-sidecar-onboarding.md": {
+    "title": "Sidecar onboarding implementation plan",
+    "description": "Task-by-task implementation plan: Sidecar onboarding implementation plan.",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Tracing why the implemented feature was built this way."
+  },
+  "superpowers/plans/2026-10-06-sidecar-rename.md": {
+    "title": "OpenRouter Sidecar rename implementation plan",
+    "description": "Task-by-task implementation plan: OpenRouter Sidecar rename implementation plan.",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Tracing why the implemented feature was built this way."
+  },
+  "superpowers/plans/2026-10-18-hosted-sidecar-m0-m1.md": {
+    "title": "Hosted Sidecar M0–M1 Implementation Plan",
+    "description": "Task-by-task implementation plan: Hosted Sidecar M0–M1 Implementation Plan.",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Tracing why the implemented feature was built this way."
+  },
+  "superpowers/plans/2026-10-18-hosted-sidecar-m2-m5.md": {
+    "title": "Hosted Sidecar M2–M5 Implementation Plan (outline)",
+    "description": "Task-by-task implementation plan: Hosted Sidecar M2–M5 Implementation Plan (outline).",
+    "type": "proposal",
+    "status": "pending",
+    "read_when": "Tracing why the implementation looks the way it does, or continuing this plan."
+  },
+  "superpowers/specs/2026-10-03-openrouter-image-mcp-design.md": {
+    "title": "openrouter-image-mcp — Design Spec",
+    "description": "Design spec: openrouter-image-mcp — Design Spec.",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Revisiting the design decisions behind this feature."
+  },
+  "superpowers/specs/2026-10-05-advisor-preferences-design.md": {
+    "title": "Advisor model preferences",
+    "description": "Design spec: Advisor model preferences.",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Revisiting the design decisions behind this feature."
+  },
+  "superpowers/specs/2026-10-05-inline-image-gallery-design.md": {
+    "title": "Inline image gallery (approved October 5, 2026)",
+    "description": "Design spec: Inline image gallery (approved October 5, 2026).",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Revisiting the design decisions behind this feature."
+  },
+  "superpowers/specs/2026-10-05-northwestern-advisor-mcp-design.md": {
+    "title": "Northwestern image and advisor MCP",
+    "description": "Design spec: Northwestern image and advisor MCP.",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Revisiting the design decisions behind this feature."
+  },
+  "superpowers/specs/2026-10-05-northwestern-cohorts-design.md": {
+    "title": "Northwestern cohort configuration",
+    "description": "Design spec: Northwestern cohort configuration.",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Revisiting the design decisions behind this feature."
+  },
+  "superpowers/specs/2026-10-06-advisor-result-viewer-design.md": {
+    "title": "Local advisor result viewer",
+    "description": "Design spec: Local advisor result viewer.",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Revisiting the design decisions behind this feature."
+  },
+  "superpowers/specs/2026-10-06-advisor-timeouts-design.md": {
+    "title": "Longer local advisor calls",
+    "description": "Design spec: Longer local advisor calls.",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Revisiting the design decisions behind this feature."
+  },
+  "superpowers/specs/2026-10-06-prompt-cache-findings.md": {
+    "title": "Prompt caching: measured findings and local policy",
+    "description": "Design spec: Prompt caching: measured findings and local policy.",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Revisiting the design decisions behind this feature."
+  },
+  "superpowers/specs/2026-10-06-sidecar-autosave-design.md": {
+    "title": "Model selection and automatic saving",
+    "description": "Design spec: Model selection and automatic saving.",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Revisiting the design decisions behind this feature."
+  },
+  "superpowers/specs/2026-10-06-sidecar-icons-images-rich-text.md": {
+    "title": "Sidecar onboarding and result-viewer refinement",
+    "description": "Design spec: Sidecar onboarding and result-viewer refinement.",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Revisiting the design decisions behind this feature."
+  },
+  "superpowers/specs/2026-10-06-sidecar-model-policy-design.md": {
+    "title": "Recent models and compact inline setup",
+    "description": "Design spec: Recent models and compact inline setup.",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Revisiting the design decisions behind this feature."
+  },
+  "superpowers/specs/2026-10-06-sidecar-onboarding-design.md": {
+    "title": "Sidecar onboarding and editable model defaults",
+    "description": "Design spec: Sidecar onboarding and editable model defaults.",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Revisiting the design decisions behind this feature."
+  },
+  "superpowers/specs/2026-10-06-sidecar-onboarding-polish-design.md": {
+    "title": "Sidecar onboarding polish",
+    "description": "Design spec: Sidecar onboarding polish.",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Revisiting the design decisions behind this feature."
+  },
+  "superpowers/specs/2026-10-06-sidecar-outcome-onboarding.md": {
+    "title": "Outcome-focused Sidecar walkthrough",
+    "description": "Design spec: Outcome-focused Sidecar walkthrough.",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Revisiting the design decisions behind this feature."
+  },
+  "superpowers/specs/2026-10-06-sidecar-rename-design.md": {
+    "title": "OpenRouter Sidecar name",
+    "description": "Design spec: OpenRouter Sidecar name.",
+    "type": "history",
+    "status": "completed",
+    "read_when": "Revisiting the design decisions behind this feature."
+  },
+  "superpowers/specs/2026-10-18-hosted-decision-record.md": {
+    "title": "Decision record: hosting the OpenRouter Sidecar",
+    "description": "Design spec: Decision record: hosting the OpenRouter Sidecar.",
+    "type": "reference",
+    "status": "maintained",
+    "read_when": "Changing hosted-mode architecture, auth, storage or deployment."
+  },
+  "superpowers/specs/2026-10-18-hosted-sidecar-design.md": {
+    "title": "Hosted OpenRouter Sidecar: headless advisor, unified auth, hosted images",
+    "description": "Design spec: Hosted OpenRouter Sidecar: headless advisor, unified auth, hosted images.",
+    "type": "reference",
+    "status": "maintained",
+    "read_when": "Changing hosted-mode architecture, auth, storage or deployment."
+  }
+}
