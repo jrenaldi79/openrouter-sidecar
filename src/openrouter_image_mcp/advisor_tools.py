@@ -104,7 +104,10 @@ def register_advisor_tools(server: MCPServer, service: AdvisorService, jobs: Adv
     async def send_advisor_message(chat_id: str, prompt: str, skills: list[SkillPacket] | None = None,
                                    files: list[FilePacket] | None = None,
                                    replace_files: bool = False) -> CallToolResult:
-        """Consult an existing side advisor outside the main Claude context.
+        """Consult a side advisor in the viewer, where the user can watch and read the reply.
+
+        Use this (after start_advisor_chat) when the user wants to follow along; use
+        ask_advisor when you need the answer yourself.
 
         Sends only this deliberate brief, this advisor's saved history, and optional
         shareable skill text to OpenRouter. This costs inference and possibly sandbox
@@ -114,10 +117,9 @@ def register_advisor_tools(server: MCPServer, service: AdvisorService, jobs: Adv
         The sandbox shell has no outbound network and receives no API credentials.
         Starts a background job and returns status and its job_id only. The full
         answer appears in the advisor MCP App, not here. When the user shares it from
-        the viewer, check the app on screen (its widget context) to read what they shared. Check get_advisor_job for status or call
-        open_advisor_result to reopen the viewer. App shutdown can interrupt work.
-        No raw
-        container/file selectors, arbitrary HTTP requests, or provider options exist.
+        the viewer, check the app on screen (its widget context) to read what they shared.
+        Check get_advisor_job for status or call open_advisor_result to reopen the
+        viewer. App shutdown can interrupt work. No raw container/file selectors, arbitrary HTTP requests, or provider options exist.
         Generated container files can remain for 30 days. No automatic inference retry.
         files: [{path, content}] UTF-8 text saved with the chat (see ask_advisor).
         """
@@ -131,6 +133,9 @@ def register_advisor_tools(server: MCPServer, service: AdvisorService, jobs: Adv
                           replace_files: bool = False, skills: list[SkillPacket] | None = None,
                           wait_s: float | None = None) -> CallToolResult:
         """Ask a side advisor (another model) and get its answer back, like a subagent.
+
+        Use this when you need the answer yourself. If the user wants to read or watch
+        the advisor's reply, use start_advisor_chat and send_advisor_message instead.
 
         Omit chat_id to start a new session; reuse the returned chat_id for follow-ups.
         The session keeps its transcript and files, so later calls (from any client
@@ -231,7 +236,7 @@ def register_advisor_tools(server: MCPServer, service: AdvisorService, jobs: Adv
         """Open the advisor result viewer without sending its answer into this chat.
 
         Reading or scrolling in the MCP App does not share the result with the parent
-        model. The user can share a selection, the full answer or a summary; after they
+        model. The user can share the answer (a summary when it is long); after they
         do, check the app on screen (its widget context) to read it.
         """
         with tool_errors():

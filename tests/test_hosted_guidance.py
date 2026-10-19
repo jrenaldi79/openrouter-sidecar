@@ -87,3 +87,15 @@ async def test_app_handoff_tools_tell_claude_to_check_the_app(db_target, tmp_pat
     assert CHECK_APP.search(opened.content[0].text)
     assert "chooses what to send to the parent chat" not in listed["send_advisor_message"]
     assert CHECK_APP.search(guidance.INSTRUCTIONS.replace("\n", " "))
+
+
+async def test_advisor_tools_say_which_one_lets_the_user_follow_along(db_target):
+    async with running_server(db_target) as server, server.client(server.token()) as client:
+        listed = {tool.name: " ".join((tool.description or "").split()) for tool in (await client.list_tools()).tools}
+    follow_along = re.compile(r"see|read|watch|follow along", re.IGNORECASE)
+    assert "start_advisor_chat" in listed["ask_advisor"] and follow_along.search(listed["ask_advisor"])
+    assert follow_along.search(listed["send_advisor_message"].split(".")[0])
+    instructions = " ".join(guidance.INSTRUCTIONS.split())
+    assert "send_advisor_message" in instructions and "start_advisor_chat" in instructions
+    # The viewer shares the answer or its summary; selection sharing is gone.
+    assert "selection" not in listed["open_advisor_result"]
