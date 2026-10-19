@@ -2,7 +2,8 @@
 
 Clients without MCP Apps (Claude Code, Claude Tag) only see the text, so it carries
 everything needed to continue: asset ids for the next call and download links for
-the user. Structured content mirrors it for the gallery app.
+the user. Structured content mirrors it for the gallery app; hosts may show it to the
+model, so the preview JPEGs go only in the result `_meta` (`apps.preview_meta`).
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ import base64
 
 from mcp.types import CallToolResult, ImageContent, TextContent
 
+from ..apps import preview_meta
 from ..logs import redact
 
 LINK_NOTE = ("Download links work for 24 hours (call get_image_download for fresh ones); "
@@ -23,13 +25,9 @@ def asset_lines(link: dict) -> list[str]:
             f"  Metadata: {link['metadata_url']}"]
 
 
-def _data_uri(jpeg: bytes | None) -> str | None:
-    return "data:image/jpeg;base64," + base64.b64encode(jpeg).decode("ascii") if jpeg else None
-
-
 def _structured_image(saved, link: dict) -> dict:
     return {"assetId": saved.asset_id, "filename": link["filename"], "downloadUrl": link["image_url"],
-            "metadataUrl": link["metadata_url"], "dataUri": _data_uri(saved.preview_jpeg)}
+            "metadataUrl": link["metadata_url"]}
 
 
 def _content(lines: list[str], images) -> list[TextContent | ImageContent]:
@@ -61,7 +59,7 @@ def image_result(result, links: dict) -> CallToolResult:
         "usageLine": redact(result.usage_line),
         "notes": [redact(note) for note in result.notes],
         "failures": [redact(failure) for failure in result.failures],
-    })
+    }, meta=preview_meta(img.preview_jpeg for img in result.images))
 
 
 def remask_result(saved, links: dict) -> CallToolResult:
@@ -69,7 +67,8 @@ def remask_result(saved, links: dict) -> CallToolResult:
     lines = [*asset_lines(links[saved.asset_id]), usage, LINK_NOTE]
     return CallToolResult(content=_content(lines, [saved]), structured_content={
         "images": [_structured_image(saved, links[saved.asset_id])], "model": "Re-blend",
-        "provider": None, "callCostUsd": 0, "usageLine": usage, "notes": [], "failures": []})
+        "provider": None, "callCostUsd": 0, "usageLine": usage, "notes": [], "failures": []},
+        meta=preview_meta([saved.preview_jpeg]))
 
 
 def download_result(link: dict) -> CallToolResult:

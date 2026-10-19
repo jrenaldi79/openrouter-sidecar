@@ -237,8 +237,8 @@ async def test_image_background_first_model_wins_view_owned_and_restart(rig):
         entered.set()
         await release.wait()
         guard()
-        return {'images': [{'dataUri': 'data:image/jpeg;base64,YQ==', 'filename': 'demo.jpg',
-                            'path': None}], 'cost_usd': .02}
+        return {'images': [{'filename': 'demo.jpg', 'path': None}], 'cost_usd': .02,
+                '_meta': {'sidecarPreviews': ['data:image/jpeg;base64,YQ==']}}
     demos.image_runner = image_runner
     saved = prefs.get()
     result = await demos.run_image(saved['settings_id'], saved['revision'], 'test/image')
@@ -387,7 +387,7 @@ async def test_preference_edit_after_paid_image_request_keeps_owned_result(rig):
         entered.set()
         await release.wait()
         guard()
-        return {'images': [{'dataUri': 'data:image/jpeg;base64,YQ==', 'filename': 'demo.jpg'}]}
+        return {'images': [{'filename': 'demo.jpg'}], '_meta': {'sidecarPreviews': ['data:image/jpeg;base64,YQ==']}}
     demos.image_runner = image_runner
     saved = prefs.get()
     job = await demos.run_image(saved['settings_id'], saved['revision'], 'test/image')
@@ -404,7 +404,7 @@ async def test_image_metadata_with_other_credentials_is_not_persisted(rig):
     demos, prefs, _, advisors, _ = rig
     async def image_runner(model, guard):
         guard.before_request()
-        return {'images': [{'dataUri': 'data:image/jpeg;base64,YQ==', 'filename': KEY_B}]}
+        return {'images': [{'filename': KEY_B}], '_meta': {'sidecarPreviews': ['data:image/jpeg;base64,YQ==']}}
     demos.image_runner = image_runner
     saved = prefs.get()
     result = await demos.run_image(saved['settings_id'], saved['revision'], 'test/image')
@@ -418,7 +418,7 @@ async def test_image_close_does_not_replace_completed_receipt(rig):
     demos, prefs, _, _, _ = rig
     async def image_runner(model, guard):
         guard.before_request()
-        return {'images': [{'dataUri': 'data:image/jpeg;base64,YQ==', 'filename': 'demo.jpg'}]}
+        return {'images': [{'filename': 'demo.jpg'}], '_meta': {'sidecarPreviews': ['data:image/jpeg;base64,YQ==']}}
     demos.image_runner = image_runner
     saved = prefs.get()
     result = await demos.run_image(saved['settings_id'], saved['revision'], 'test/image')

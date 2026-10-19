@@ -6,11 +6,14 @@ const html = await readFile(new URL('../../src/openrouter_image_mcp/ui/preview.h
   .catch(error => { if (error.code === 'ENOENT') return '<!doctype html><body></body>'; throw error; });
 const jpeg = `data:image/jpeg;base64,${(await readFile(new URL('./fixtures/grid-jpeg.txt', import.meta.url), 'utf8')).trim()}`;
 const sample = (overrides = {}) => ({
-  images: [{ dataUri: jpeg, filename: 'render.png', path: 'C:\\images\\render.png' }],
+  images: [{ filename: 'render.png', path: 'C:\\images\\render.png' }],
   model: 'example/image-model', provider: 'Example provider', callCostUsd: 0.01234,
   usageLine: 'Cost: $0.01234 (reported; estimates may differ from final billing).', notes: [], failures: [],
   ...overrides,
 });
+// Previews travel in the result's _meta (index-aligned with images), never in structuredContent.
+const toolResult = (structuredContent, extra = {}) => ({ content: [], structuredContent,
+  _meta: { sidecarPreviews: (structuredContent?.images ?? []).map(() => jpeg) }, ...extra });
 
 async function openViewer(page, { resultAtInitialize, theme = 'light', tools = {}, downloadDenied = false } = {}) {
   const requests = [];
@@ -47,9 +50,7 @@ async function openViewer(page, { resultAtInitialize, theme = 'light', tools = {
 
 async function result(page, structuredContent, extra = {}) {
   await expect.poll(() => page.evaluate(() => window.hostMessages.some(m => m.method === 'ui/notifications/initialized'))).toBe(true);
-  await page.evaluate(params => window.notify('ui/notifications/tool-result', params), {
-    content: [], structuredContent, ...extra,
-  });
+  await page.evaluate(params => window.notify('ui/notifications/tool-result', params), toolResult(structuredContent, extra));
 }
 
 test('initializes and waits for an image result', async ({ page }) => {
@@ -59,7 +60,7 @@ test('initializes and waits for an image result', async ({ page }) => {
 });
 
 test('receives immediate results, renders JPEG and reports its new size', async ({ page }) => {
-  const { viewer, requests } = await openViewer(page, { resultAtInitialize: { content: [], structuredContent: sample() } });
+  const { viewer, requests } = await openViewer(page, { resultAtInitialize: toolResult(sample()) });
   await expect(viewer.getByRole('img', { name: 'render.png' })).toBeVisible();
   await expect.poll(() => viewer.getByRole('img').evaluate(img => img.complete && img.naturalWidth)).toBe(40);
   await expect(viewer.getByText('C:\\images\\render.png', { exact: true })).toBeVisible();
@@ -101,7 +102,7 @@ test('keeps the original usage and cost disclosure without duplicating a total',
 
 test('preserves filename and path without a preview', async ({ page }) => {
   const { viewer } = await openViewer(page);
-  await result(page, sample({ images: [{ dataUri: null, filename: 'vector.svg', path: 'C:\\images\\vector.svg' }] }));
+  await result(page, sample({ images: [{ filename: 'vector.svg', path: 'C:\\images\\vector.svg' }] }), { _meta: { sidecarPreviews: [null] } });
   await expect(viewer.getByText('vector.svg', { exact: true })).toBeVisible();
   await expect(viewer.getByText('C:\\images\\vector.svg', { exact: true })).toBeVisible();
   await expect(viewer.getByText('Preview unavailable', { exact: true })).toBeVisible();
@@ -135,9 +136,9 @@ test('renders hostile fields literally and never requests hostile URLs', async (
   const { viewer, requests } = await openViewer(page);
   const hostile = '<img src="https://evil.test/pixel" onerror="window.pwned=true">';
   await result(page, sample({
-    images: ['https://evil.test/image.jpg', 'javascript:alert(1)', 'data:image/svg+xml;base64,PHN2Zz4=', 'data:image/jpeg;base64,!!!'].map(dataUri => ({ dataUri, filename: hostile, path: hostile })),
+    images: Array.from({ length: 4 }, () => ({ filename: hostile, path: hostile })),
     model: hostile, provider: hostile, usageLine: hostile, notes: [hostile], failures: [hostile],
-  }));
+  }), { _meta: { sidecarPreviews: ['https://evil.test/image.jpg', 'javascript:alert(1)', 'data:image/svg+xml;base64,PHN2Zz4=', 'data:image/jpeg;base64,!!!'] } });
   await expect(viewer.getByText(hostile, { exact: true }).first()).toBeVisible();
   await expect(viewer.getByRole('img')).toHaveCount(0);
   await expect(viewer.locator('a, svg')).toHaveCount(0);
@@ -152,7 +153,7 @@ test('follows host theme changes', async ({ page }) => {
   await expect(viewer.locator('html')).toHaveAttribute('data-theme', 'light');
 });
 
-const hosted = () => sample({ images: [{ dataUri: jpeg, filename: 'barn__sunburst_1.png', assetId: 'img_' + 'a'.repeat(32),
+const hosted = () => sample({ images: [{ filename: 'barn__sunburst_1.png', assetId: 'img_' + 'a'.repeat(32),
   downloadUrl: 'https://sidecar.example/assets/stale', metadataUrl: 'https://sidecar.example/assets/stale-json' }] });
 const fresh = { content: [], structuredContent: { asset_id: 'img_' + 'a'.repeat(32), filename: 'barn__sunburst_1.png',
   image_url: 'https://sidecar.example/assets/fresh', metadata_url: 'https://sidecar.example/assets/fresh-json', expires_in: 86400 } };
@@ -166,7 +167,7 @@ async function clickDownload(page, viewer) {
 const sent = (page, method) => page.evaluate(name => window.hostMessages.filter(m => m.method === name).map(m => m.params), method);
 
 test('hosted results show the asset id and download through the host with a fresh link', async ({ page }) => {
-  const { viewer, requests } = await openViewer(page, { resultAtInitialize: { content: [], structuredContent: hosted() },
+  const { viewer, requests } = await openViewer(page, { resultAtInitialize: toolResult(hosted()),
     tools: { get_image_download: fresh } });
   await expect(viewer.getByText('img_' + 'a'.repeat(32))).toBeVisible();
   await clickDownload(page, viewer);
@@ -179,21 +180,42 @@ test('hosted results show the asset id and download through the host with a fres
 });
 
 test('falls back to opening the link when the host declines the download', async ({ page }) => {
-  const { viewer } = await openViewer(page, { resultAtInitialize: { content: [], structuredContent: hosted() },
+  const { viewer } = await openViewer(page, { resultAtInitialize: toolResult(hosted()),
     tools: { get_image_download: fresh }, downloadDenied: true });
   await clickDownload(page, viewer);
   await expect.poll(() => sent(page, 'ui/open-link')).toEqual([{ url: 'https://sidecar.example/assets/fresh' }]);
 });
 
 test('shows an error when a fresh link cannot be had', async ({ page }) => {
-  const { viewer } = await openViewer(page, { resultAtInitialize: { content: [], structuredContent: hosted() } });
+  const { viewer } = await openViewer(page, { resultAtInitialize: toolResult(hosted()) });
   await clickDownload(page, viewer);
   await expect(viewer.getByText(/Download unavailable/)).toBeVisible();
   expect(await sent(page, 'ui/download-file')).toEqual([]);
 });
 
 test('local results keep the path and have no download button', async ({ page }) => {
-  const { viewer } = await openViewer(page, { resultAtInitialize: { content: [], structuredContent: sample() } });
+  const { viewer } = await openViewer(page, { resultAtInitialize: toolResult(sample()) });
   await expect(viewer.getByText('C:\\images\\render.png')).toBeVisible();
   await expect(viewer.getByRole('button')).toHaveCount(0);
+});
+
+test('reads previews only from _meta, never from structuredContent', async ({ page }) => {
+  const { viewer } = await openViewer(page);
+  await result(page, sample({ images: [{ dataUri: jpeg, filename: 'legacy.png', path: 'C:\\images\\legacy.png' }] }), { _meta: {} });
+  await expect(viewer.getByText('legacy.png', { exact: true })).toBeVisible();
+  await expect(viewer.getByText('Preview unavailable', { exact: true })).toBeVisible();
+  await expect(viewer.getByRole('img')).toHaveCount(0);
+});
+
+test('matches previews to images by index and tolerates malformed lists', async ({ page }) => {
+  const { viewer } = await openViewer(page);
+  const two = sample({ images: [{ filename: 'first.svg', path: 'a' }, { filename: 'second.png', path: 'b' }] });
+  await result(page, two, { _meta: { sidecarPreviews: [null, jpeg] } });
+  await expect(viewer.getByRole('img', { name: 'second.png' })).toBeVisible();
+  await expect(viewer.getByRole('img')).toHaveCount(1);
+  await result(page, two, { _meta: { sidecarPreviews: { 0: jpeg, 1: jpeg } } });
+  await expect(viewer.getByText('Preview unavailable', { exact: true })).toHaveCount(2);
+  await result(page, two, { _meta: { sidecarPreviews: [jpeg] } });
+  await expect(viewer.getByRole('img', { name: 'first.svg' })).toBeVisible();
+  await expect(viewer.getByText('Preview unavailable', { exact: true })).toHaveCount(1);
 });

@@ -22,6 +22,7 @@ read_when: "Changing or adding files in src/openrouter_image_mcp/."
 
 - Every advisor and preference query binds both the credential owner and the workspace.
 - Errors and logs go through `logs.redact` / `redact_log`; keys, JWTs and signed links never reach stderr or model-visible text.
+- Image tool results keep `structuredContent` small and model-safe (some hosts show it to the model). Preview JPEGs go only in the result `_meta["sidecarPreviews"]` (`apps.preview_meta`, a list index-aligned with `structuredContent.images`, `null` where there is no preview). Local and hosted results share this shape, and `negotiate_apps` drops both for clients without Apps.
 - Storage schema changes are additive (`CREATE ... IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`) in code; there are no migration files.
 
 **Tests:** flat `tests/test_<module>*.py`. Storage tests take the `db_target` fixture (SQLite, plus Postgres when `TEST_DATABASE_URL` is set).

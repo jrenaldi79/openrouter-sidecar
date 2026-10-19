@@ -14,6 +14,7 @@ read_when: "Changing or adding files in ui/src/."
 **Invariants:**
 
 - Apps talk to the host only through `@modelcontextprotocol/ext-apps`. The single exception is the uploader's PUT to its single-use upload URL, which is limited by CSP `connect-src` to the Sidecar origin. Apps never see bearer tokens.
+- The image preview reads its JPEGs only from the tool result's `_meta.sidecarPreviews` (index-aligned with `structuredContent.images`), never from `structuredContent`, and accepts only strict `data:image/jpeg;base64,` URIs.
 - Untrusted text renders through `renderMarkdown` or `textContent`, never `innerHTML`.
 - The advisor viewer never calls `app.sendMessage` (`ui/message`): hosts ask the user to approve it. Sharing uses `app.updateModelContext`, or copy when the host lacks it.
 - A new app needs `<app>.html` and `<app>.js`, its name in the list at the end of `ui/build.mjs`, a spec, and a host fixture.

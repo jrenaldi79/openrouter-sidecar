@@ -250,7 +250,7 @@ async def test_image_apps_fallback_client(session, keyed, images_route):
     assert all(not t.meta or "ui" not in t.meta for t in tools)
     images_route.mock(return_value=images_ok(64, 64))
     result = await session.call_tool("generate_image", {"prompt": "test", "model": SUNBURST})
-    assert result.structured_content is None
+    assert result.structured_content is None and "sidecarPreviews" not in (result.meta or {})
     assert any(isinstance(c, ImageContent) for c in result.content)
     assert "Saved:" in text_of(result)
 
@@ -274,7 +274,7 @@ async def test_image_apps_jpeg_result(session, keyed, images_route, sample_rende
     saved = Path(image["path"])
     assert saved.is_file() and image["filename"] == saved.name
     preview = next(c for c in result.content if isinstance(c, ImageContent))
-    assert image["dataUri"] == "data:image/jpeg;base64," + preview.data
+    assert "dataUri" not in image and result.meta["sidecarPreviews"] == ["data:image/jpeg;base64," + preview.data]
     assert "ui://" not in text_of(result)
 
 
@@ -301,7 +301,7 @@ def test_image_apps_unknown_cost_missing_preview_and_redaction(tmp_path):
     ))
     data = result.structured_content
     assert data["callCostUsd"] is None
-    assert data["images"][0]["dataUri"] is None
+    assert "dataUri" not in data["images"][0] and result.meta == {"sidecarPreviews": [None]}
     assert data["images"][0]["filename"].endswith(".svg")
     assert SECRET not in json.dumps(data)
     assert [type(c) for c in result.content] == [TextContent]
@@ -426,7 +426,7 @@ async def test_generate_without_preview_has_only_text(keyed, session, images_rou
 
     assert result.is_error is False
     assert [type(c) for c in result.content] == [TextContent]
-    assert result.structured_content["images"][0]["dataUri"] is None
+    assert "dataUri" not in result.structured_content["images"][0] and result.meta["sidecarPreviews"] == [None]
     assert result.structured_content["images"][0]["filename"].endswith(".svg")
 
 
@@ -504,7 +504,7 @@ async def test_remask_image_round_trip(keyed, session, mock, images_route, sampl
     assert data["callCostUsd"] == 0
     assert data["model"] == "Local re-blend"
     assert data["images"][0]["path"] == str(saved)
-    assert data["images"][0]["dataUri"] == "data:image/jpeg;base64," + imgs[0].data
+    assert "dataUri" not in data["images"][0] and result.meta["sidecarPreviews"] == ["data:image/jpeg;base64," + imgs[0].data]
     out = Image.open(saved).convert("RGB")
     layer = Image.open(source.with_suffix(".unmasked.png")).convert("RGB")
     original = Image.open(sample_render).convert("RGB")

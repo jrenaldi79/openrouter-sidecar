@@ -131,7 +131,8 @@ async def test_image_runner_fixed_prompt_single_image_and_scoped_local_preview(t
         assert "revision" in guards
         assert len(result["images"]) == 1
         preview = result["images"][0]
-        assert preview["dataUri"].startswith("data:image/jpeg;base64,")
+        assert "dataUri" not in preview  # same split as the image tools: bytes only in _meta
+        assert [p[:23] for p in result["_meta"]["sidecarPreviews"]] == ["data:image/jpeg;base64,"]
         assert "sidecar-demo-images" in preview["path"]
         assert "synthetic-demo-key" not in json.dumps(result)
         assert not settings.output_dir.exists()

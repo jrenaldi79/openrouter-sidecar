@@ -9,6 +9,7 @@ from contextlib import contextmanager
 
 from .advisor import SkillPacket
 from .advisor_store import AdvisorAccessError
+from .apps import PREVIEWS_META
 from .errors import BadRequestError
 from .logs import redact
 
@@ -39,6 +40,22 @@ TEACHING_SKILL = SkillPacket(
 AMBIGUOUS = 'Demo start was interrupted or is pending; no automatic retry was made.'
 FAILED = 'Demo failed locally; no automatic retry was made.'
 IMAGE_TIMEOUT_S = 600
+
+
+def _demo_images(result, withheld):
+    """The one stored demo image: the runner's model-safe entry plus its `_meta` JPEG preview.
+
+    Only the settings app reads it, through `get_sidecar_demo`'s own `_meta`.
+    """
+    images, meta = result.get('images'), result.get('_meta')
+    previews = meta.get(PREVIEWS_META) if isinstance(meta, dict) else None
+    serialized = json.dumps([images, previews], ensure_ascii=False)
+    if (not isinstance(images, list) or len(images) != 1 or not isinstance(images[0], dict)
+            or not isinstance(previews, list) or len(previews) != 1 or not isinstance(previews[0], str)
+            or not previews[0].startswith('data:image/jpeg;base64,') or len(serialized) > 2_000_000
+            or any(value in serialized for value in withheld) or redact(serialized) != serialized):
+        raise BadRequestError('Image demo returned an invalid preview.')
+    return [{'dataUri': previews[0], 'filename': images[0].get('filename'), 'path': images[0].get('path')}]
 
 
 class OnboardingDemos:
@@ -232,16 +249,7 @@ class OnboardingDemos:
             self._update_receipt(scope, row['id'], status='running')
             result = await asyncio.wait_for(self.image_runner(row['model'], guard), IMAGE_TIMEOUT_S)
             guard()
-            images = result.get('images')
-            serialized = json.dumps(images, ensure_ascii=False)
-            key, _ = self.advisors._credentials()
-            if (not isinstance(images, list) or len(images) != 1 or len(serialized) > 2_000_000
-                    or key in serialized or scope.owner in serialized or redact(serialized) != serialized
-                    or not isinstance(images[0], dict)
-                    or not isinstance(images[0].get('dataUri'), str)
-                    or not images[0]['dataUri'].startswith('data:image/jpeg;base64,')):
-                raise BadRequestError('Image demo returned an invalid preview.')
-            safe_images = [{name: images[0].get(name) for name in ('dataUri', 'filename', 'path')}]
+            safe_images = _demo_images(result, (self.advisors._credentials()[0], scope.owner))
             cost = result.get('cost_usd')
             self._update_receipt(scope, row['id'], status='completed',
                                  result_json=json.dumps(safe_images, ensure_ascii=False),

@@ -6,7 +6,7 @@ from dataclasses import replace
 
 import httpx
 
-from .apps import preview_image
+from .apps import preview_image, preview_meta
 from .catalog import Catalog, usable_demo_image
 from .client import OpenRouterClient
 from .errors import AuthRequiredError, BadRequestError, ProviderError
@@ -95,7 +95,8 @@ def image_runner(settings, advisors, *, transport=None):
             if len(result.images) != 1:
                 raise ProviderError("Image demo returned an unexpected image count; no retry was made.")
             image = result.images[0]
-            return {"images": [preview_image(image.path, image.preview_jpeg)],
+            # Same split as the image tools: model-safe fields, preview bytes in _meta.
+            return {"images": [preview_image(image.path)], "_meta": preview_meta([image.preview_jpeg]),
                     "cost_usd": result.call_cost_usd}
         finally:
             await client.aclose()
