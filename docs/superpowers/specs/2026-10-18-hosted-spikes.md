@@ -69,7 +69,12 @@ Live results only. The synthetic multi-user run (fakes for Auth0 and OpenRouter)
   - a free remask returned only ids and links;
   - a third advisor turn on the same chat, with nothing resent, recalled the codename and launch week ($0.0041).
 
+- **Gallery regression, fixed (`47aeccc`):** claude.ai delivers tool results to the app without `_meta`, so after `dfa2e3f` every preview read "Preview unavailable". The gallery now falls back to the result's JPEG image content blocks.
+- **claude.ai, checked by the agent in the user's browser after `47aeccc`:**
+  - a free `remask_image` rendered the gallery with its preview, filename, asset id and Download button;
+  - `open_image_uploader` rendered the drop zone.
+
 **Still open:**
 
-- **The MCP Apps uploader and gallery Download in claude.ai:** needs a person to click.
+- **Uploader drop and gallery Download in claude.ai:** needs a person. The app's sandboxed iframe isn't reachable by browser automation, and downloads need the user's OK. The same upload path (link, PUT, asset id) passes live through the connector.
 - **Two-account isolation, live:** needs a second rostered identity, which is an Auth0 tenant change awaiting approval. The synthetic two-principal and cross-cohort checks pass; live, there is only the unknown-id refusal above.
