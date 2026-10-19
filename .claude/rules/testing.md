@@ -33,6 +33,6 @@ values (one repeated character, very short).
 
 ## Checklist
 
-- [ ] Test written first and seen failing
+- [ ] Big features: test written first and seen failing (small changes: existing suites pass)
 - [ ] Error paths and limits covered (sizes, expiry, auth failures, retries)
 - [ ] No inter-test dependencies, real network or wall-clock sleeps

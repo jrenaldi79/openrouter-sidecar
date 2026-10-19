@@ -2,7 +2,7 @@ import { build } from 'esbuild';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
-const logo = await readFile(new URL('../src/openrouter_image_mcp/ui/northwestern-logo.png', import.meta.url));
+const logo = await readFile(new URL('../src/openrouter_image_mcp/ui/mpd-logo.png', import.meta.url));
 
 async function bundleViewer(name) {
   const source = new URL(`./src/${name}.js`, import.meta.url);

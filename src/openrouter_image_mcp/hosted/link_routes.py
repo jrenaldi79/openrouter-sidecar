@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-import base64
 import html
 import logging
 from functools import cache
-from importlib.resources import files
 
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.routing import Route
 
+from ..apps import logo_data_uri
 from ..auth import AUTH_URL, build_auth_url, challenge_for
 from ..config import APP_TITLE
 from ..errors import OpenRouterError
@@ -45,8 +44,7 @@ footer a{color:#4E2A84}
 
 @cache
 def _logo() -> str:
-    png = files("openrouter_image_mcp").joinpath("ui", "northwestern-logo.png").read_bytes()
-    return "data:image/png;base64," + base64.b64encode(png).decode("ascii")
+    return logo_data_uri()
 
 
 def _page(title: str, body: str, status: int = 200) -> HTMLResponse:
