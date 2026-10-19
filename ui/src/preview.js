@@ -29,6 +29,36 @@ function costLine(cost) {
   return `Call total: $${cost}`;
 }
 
+const MIME_BY_EXT = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', svg: 'image/svg+xml' };
+
+// Hosted assets: ask the server for a fresh signed link (stored ones expire after 24 h),
+// then let the host download it. The iframe itself never fetches the image.
+async function download(image, button, caption) {
+  button.disabled = true;
+  try {
+    const result = await app.callServerTool({ name: 'get_image_download', arguments: { asset_id: image.assetId } });
+    const url = result.structuredContent?.image_url;
+    if (result.isError || typeof url !== 'string' || !/^https?:\/\//.test(url)) throw new Error('no link');
+    const name = typeof image.filename === 'string' ? image.filename : `${image.assetId}.png`;
+    const mimeType = MIME_BY_EXT[name.split('.').pop().toLowerCase()] ?? 'image/png';
+    const saved = await app.downloadFile({ contents: [{ type: 'resource_link', uri: url, name, mimeType }] })
+      .catch(() => ({ isError: true }));
+    if (saved?.isError) await app.openLink({ url });
+  } catch {
+    caption.append(textElement('p', 'Download unavailable; ask for get_image_download in the chat.', 'path'));
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function downloadButton(image, caption) {
+  const button = textElement('button', 'Download', 'download');
+  button.type = 'button';
+  button.setAttribute('aria-label', `Download ${typeof image.filename === 'string' ? image.filename : 'image'}`);
+  button.addEventListener('click', () => download(image, button, caption));
+  return button;
+}
+
 function setTheme(context) {
   if (context?.theme === 'light' || context?.theme === 'dark') document.documentElement.dataset.theme = context.theme;
 }
@@ -67,7 +97,10 @@ function render(result) {
       figure.append(placeholder());
     }
     const caption = document.createElement('figcaption');
-    caption.append(textElement('p', image?.filename, 'filename'), textElement('p', image?.path, 'path'));
+    const hostedAsset = typeof image?.assetId === 'string' && /^img_[0-9a-f]{32}$/.test(image.assetId);
+    caption.append(textElement('p', image?.filename, 'filename'),
+      textElement('p', hostedAsset ? image.assetId : image?.path, 'path'));
+    if (hostedAsset) caption.append(downloadButton(image, caption));
     figure.append(caption);
     gallery.append(figure);
   }

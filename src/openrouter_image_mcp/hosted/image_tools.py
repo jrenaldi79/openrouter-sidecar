@@ -12,6 +12,7 @@ from typing import Any, Literal
 
 from mcp.server.mcpserver import Context, MCPServer
 
+from ..apps import IMAGE_TOOLS, UI_URI, UPLOADER_UI_URI, app_icons
 from ..server import _progress, catalog_tools
 from .image_results import download_result, image_result, remask_result, upload_result
 from .images import HostedImages
@@ -168,6 +169,20 @@ def register_image_tools(server: MCPServer, hosted: HostedImages, catalog, tool_
         with tool_errors():
             return download_result(hosted.download(asset_id))
 
+    async def open_image_uploader() -> str:
+        """Open a drop zone where the user can upload image files from their computer.
+
+        For clients with MCP Apps (Claude Desktop, claude.ai). Each uploaded file
+        becomes an image asset; its asset_id is added to the conversation, ready for
+        `edit_image` (as an input image or mask_id). No cost.
+        """
+        return ("The image uploader is open. When the user has uploaded a file, its asset id "
+                "appears in the conversation: pass it to edit_image as an input image or mask_id.")
+
+    uis = {name: UI_URI for name in IMAGE_TOOLS} | {"open_image_uploader": UPLOADER_UI_URI}
     for fn in (list_image_models, get_image_model, create_image_upload, generate_image,
-               edit_image, remask_image, get_image_download):
-        server.add_tool(fn, description=inspect.cleandoc(fn.__doc__ or ""), structured_output=False)
+               edit_image, remask_image, get_image_download, open_image_uploader):
+        ui = uis.get(fn.__name__)
+        server.add_tool(fn, description=inspect.cleandoc(fn.__doc__ or ""), structured_output=False,
+                        meta={"ui": {"resourceUri": ui}} if ui else None,
+                        icons=app_icons() if ui else None)

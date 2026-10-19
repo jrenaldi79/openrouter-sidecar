@@ -12,14 +12,15 @@ const sample = (overrides = {}) => ({
   ...overrides,
 });
 
-async function openViewer(page, { resultAtInitialize, theme = 'light' } = {}) {
+async function openViewer(page, { resultAtInitialize, theme = 'light', tools = {}, downloadDenied = false } = {}) {
   const requests = [];
   page.on('pageerror', error => console.error('Viewer error:', error.message));
   page.on('console', message => { if (message.type() === 'error') console.error('Viewer console:', message.text()); });
   await page.route('**/*', route => { requests.push(route.request().url()); return route.abort(); });
   await page.setContent('<iframe title="Image preview" sandbox="allow-scripts" style="width:700px;height:100px;border:0"></iframe>');
-  await page.evaluate(({ html, resultAtInitialize, theme }) => {
+  await page.evaluate(({ html, resultAtInitialize, theme, tools, downloadDenied }) => {
     window.hostMessages = [];
+    const reply = (id, result) => document.querySelector('iframe').contentWindow.postMessage({ jsonrpc: '2.0', id, result }, '*');
     const iframe = document.querySelector('iframe');
     window.notify = (method, params) => iframe.contentWindow.postMessage({ jsonrpc: '2.0', method, params }, '*');
     window.addEventListener('message', event => {
@@ -35,9 +36,12 @@ async function openViewer(page, { resultAtInitialize, theme = 'light' } = {}) {
       if (event.data.method === 'ui/notifications/size-changed') {
         iframe.style.height = `${event.data.params.height}px`;
       }
+      if (event.data.method === 'tools/call') reply(event.data.id, tools[event.data.params.name] ?? { isError: true, content: [] });
+      if (event.data.method === 'ui/download-file') reply(event.data.id, downloadDenied ? { isError: true } : {});
+      if (event.data.method === 'ui/open-link') reply(event.data.id, {});
     });
     iframe.srcdoc = html;
-  }, { html, resultAtInitialize, theme });
+  }, { html, resultAtInitialize, theme, tools, downloadDenied });
   return { viewer: page.frameLocator('iframe'), requests };
 }
 
@@ -146,4 +150,50 @@ test('follows host theme changes', async ({ page }) => {
   await expect(viewer.locator('html')).toHaveAttribute('data-theme', 'dark');
   await page.evaluate(() => window.notify('ui/notifications/host-context-changed', { theme: 'light' }));
   await expect(viewer.locator('html')).toHaveAttribute('data-theme', 'light');
+});
+
+const hosted = () => sample({ images: [{ dataUri: jpeg, filename: 'barn__sunburst_1.png', assetId: 'img_' + 'a'.repeat(32),
+  downloadUrl: 'https://sidecar.example/assets/stale', metadataUrl: 'https://sidecar.example/assets/stale-json' }] });
+const fresh = { content: [], structuredContent: { asset_id: 'img_' + 'a'.repeat(32), filename: 'barn__sunburst_1.png',
+  image_url: 'https://sidecar.example/assets/fresh', metadata_url: 'https://sidecar.example/assets/fresh-json', expires_in: 86400 } };
+async function clickDownload(page, viewer) {
+  // Let the preview load first: its arrival reflows the figure under the button. The
+  // button sits near the bottom of a 720px page, so give the page room to click it.
+  await page.setViewportSize({ width: 1280, height: 1200 });
+  await expect.poll(() => viewer.getByRole('img').evaluate(img => img.complete && img.naturalWidth)).toBe(40);
+  await viewer.getByRole('button', { name: 'Download barn__sunburst_1.png' }).click();
+}
+const sent = (page, method) => page.evaluate(name => window.hostMessages.filter(m => m.method === name).map(m => m.params), method);
+
+test('hosted results show the asset id and download through the host with a fresh link', async ({ page }) => {
+  const { viewer, requests } = await openViewer(page, { resultAtInitialize: { content: [], structuredContent: hosted() },
+    tools: { get_image_download: fresh } });
+  await expect(viewer.getByText('img_' + 'a'.repeat(32))).toBeVisible();
+  await clickDownload(page, viewer);
+  await expect.poll(() => sent(page, 'ui/download-file')).toHaveLength(1);
+  expect((await sent(page, 'tools/call'))[0]).toMatchObject({ name: 'get_image_download', arguments: { asset_id: 'img_' + 'a'.repeat(32) } });
+  const [download] = await sent(page, 'ui/download-file');
+  expect(download.contents).toEqual([{ type: 'resource_link', uri: 'https://sidecar.example/assets/fresh',
+    name: 'barn__sunburst_1.png', mimeType: 'image/png' }]);
+  expect(requests.filter(url => url.includes('sidecar.example'))).toEqual([]);  // the iframe never fetches
+});
+
+test('falls back to opening the link when the host declines the download', async ({ page }) => {
+  const { viewer } = await openViewer(page, { resultAtInitialize: { content: [], structuredContent: hosted() },
+    tools: { get_image_download: fresh }, downloadDenied: true });
+  await clickDownload(page, viewer);
+  await expect.poll(() => sent(page, 'ui/open-link')).toEqual([{ url: 'https://sidecar.example/assets/fresh' }]);
+});
+
+test('shows an error when a fresh link cannot be had', async ({ page }) => {
+  const { viewer } = await openViewer(page, { resultAtInitialize: { content: [], structuredContent: hosted() } });
+  await clickDownload(page, viewer);
+  await expect(viewer.getByText(/Download unavailable/)).toBeVisible();
+  expect(await sent(page, 'ui/download-file')).toEqual([]);
+});
+
+test('local results keep the path and have no download button', async ({ page }) => {
+  const { viewer } = await openViewer(page, { resultAtInitialize: { content: [], structuredContent: sample() } });
+  await expect(viewer.getByText('C:\\images\\render.png')).toBeVisible();
+  await expect(viewer.getByRole('button')).toHaveCount(0);
 });

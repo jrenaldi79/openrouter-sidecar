@@ -23,6 +23,7 @@ from ..apps import (
     register_advisor_viewer,
     register_gallery,
     register_settings,
+    register_uploader,
 )
 from ..assets import AssetStore, LocalDirBlobs
 from ..auth import AUTH_URL
@@ -113,6 +114,7 @@ def _register_images(server: MCPServer, settings: HostedSettings, target, servic
     hosted = HostedImages(assets, transfers, services["images"], scope_for, max_input_edge=2048,
                           admit=admission.image_call)
     register_image_tools(server, hosted, services["catalog"], _tool_errors)
+    register_uploader(server, settings.public_origin)
     for route in transfer_routes(transfers, assets):
         server.custom_route(route.path, sorted(route.methods - {"HEAD"}))(route.endpoint)
     # Only the instance holding the single-owner lock (serving, or in maintenance) sweeps.

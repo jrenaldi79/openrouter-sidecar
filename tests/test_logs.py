@@ -66,7 +66,9 @@ def test_redact_withholds_bearer_jwts():
     assert jwt not in out and "[token withheld]" in out and out.endswith("end")
 
 
-LINK = "http://127.0.0.1:8000/link/openrouter/start?t=lnk_fd716396cba4899cec1fa4ac6c26f4ee.1792372091.2KIhRlCvT2VK9k-kKJIRRXmdDvLdJ7fWbTLNUswL_Bs"
+# Token-shaped but plainly synthetic (low entropy), so secret scanners stay quiet.
+FAKE_SIG = "SYNTHETIC-signature-not-a-secret"
+LINK = f"http://127.0.0.1:8000/link/openrouter/start?t=lnk_{'0' * 32}.1792372091.{FAKE_SIG}"
 
 
 def test_logs_withhold_link_tokens_and_oauth_codes(capsys):
@@ -74,7 +76,7 @@ def test_logs_withhold_link_tokens_and_oauth_codes(capsys):
         log.info('"GET %s HTTP/1.1" 302', LINK)
         log.info('"GET /link/openrouter/callback?code=abc123XYZ&state=lnk_x HTTP/1.1" 200')
     err = capsys.readouterr().err
-    assert "2KIhRlCvT2VK9k" not in err and "lnk_[link withheld]" in err
+    assert FAKE_SIG not in err and "lnk_[link withheld]" in err
     assert "abc123XYZ" not in err and "code=[withheld]&state" in err
 
 
@@ -84,12 +86,12 @@ def test_tool_text_redaction_keeps_link_urls():
 
 
 def test_logs_withhold_image_transfer_tokens(capsys):
-    upload = "/uploads/upl_0123456789abcdef0123456789abcdef.1792372091.Zm9vYmFyLXNpZw"
-    download = "/assets/img_0123456789abcdef0123456789abcdef.1792372091.image.c2lnbmF0dXJl"
+    upload = f"/uploads/upl_{'a' * 32}.1792372091.{FAKE_SIG}-up"
+    download = f"/assets/img_{'b' * 32}.1792372091.image.{FAKE_SIG}-dl"
     with _configured_logging() as log:
         log.info('"PUT %s HTTP/1.1" 200', upload)
         log.info('"GET %s HTTP/1.1" 200', download)
     err = capsys.readouterr().err
-    assert "Zm9vYmFyLXNpZw" not in err and "c2lnbmF0dXJl" not in err
+    assert FAKE_SIG not in err
     assert "/uploads/[withheld]" in err and "/assets/[withheld]" in err
     assert logs.redact(download) == download  # tool output keeps the link

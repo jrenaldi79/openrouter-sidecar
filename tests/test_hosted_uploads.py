@@ -122,3 +122,21 @@ def test_upload_filename_is_made_header_safe(rig):
     assert not set(name) & set('"\r\n\\/') and name.endswith(".png")
     got = client.get(path_of(tokens.download_links(ALICE, assets.info(ALICE, asset_id))["image_url"]))
     assert got.status_code == 200 and "x-injected" not in got.headers
+
+
+def test_upload_endpoint_allows_cross_origin_put_from_app_iframes(rig):
+    # The uploader app runs in a sandboxed iframe; the single-use URL is the only credential.
+    _, tokens, client = rig
+    data = png()
+    url = path_of(tokens.issue_upload(ALICE, "a.png", "image/png", len(data))["upload_url"])
+    preflight = client.options(url, headers={"Origin": "null", "Access-Control-Request-Method": "PUT",
+                                             "Access-Control-Request-Headers": "content-type"})
+    assert preflight.status_code == 204
+    assert preflight.headers["access-control-allow-origin"] == "*"
+    assert "PUT" in preflight.headers["access-control-allow-methods"]
+    assert "content-type" in preflight.headers["access-control-allow-headers"].lower()
+    done = client.put(url, content=data, headers={"Origin": "null", "Content-Type": "image/png"})
+    assert done.status_code == 200 and done.headers["access-control-allow-origin"] == "*"
+    again = client.put(url, content=data, headers={"Origin": "null"})
+    assert again.headers["access-control-allow-origin"] == "*"  # errors are readable too
+    assert "access-control-allow-credentials" not in done.headers

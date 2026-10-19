@@ -15,13 +15,15 @@ from .logs import redact
 UI_URI = "ui://openrouter-sidecar/preview.html"
 ADVISOR_UI_URI = "ui://openrouter-sidecar/advisor.html"
 SETTINGS_UI_URI = "ui://openrouter-sidecar/settings.html"
+UPLOADER_UI_URI = "ui://openrouter-sidecar/uploader.html"
 UI_MIME = "text/html;profile=mcp-app"
 UI_EXTENSION = "io.modelcontextprotocol/ui"
 IMAGE_TOOLS = frozenset({"generate_image", "edit_image", "remask_image"})
 ADVISOR_UI_TOOLS = frozenset({"send_advisor_message", "open_advisor_result"})
 SETTINGS_UI_TOOLS = frozenset({"open_sidecar_settings"})
 APP_ONLY_TOOLS = frozenset({"get_advisor_result", "summarize_advisor_result", "export_advisor_result",
-                            "get_sidecar_settings", "run_sidecar_demo", "get_sidecar_demo"})
+                            "get_sidecar_settings", "run_sidecar_demo", "get_sidecar_demo",
+                            "open_image_uploader"})
 
 
 def app_icons() -> list[Icon]:
@@ -67,6 +69,17 @@ def register_settings(server: MCPServer) -> None:
     )
     def settings() -> str:
         return files("openrouter_image_mcp").joinpath("ui", "settings.html").read_text(encoding="utf-8")
+
+
+def register_uploader(server: MCPServer, origin: str) -> None:
+    """Hosted only: the drop-zone app may connect to our own origin and nowhere else."""
+    @server.resource(
+        UPLOADER_UI_URI, name="OpenRouter Sidecar image uploader", mime_type=UI_MIME, icons=app_icons(),
+        meta={"ui": {"csp": {"connectDomains": [origin], "resourceDomains": []}, "prefersBorder": True}},
+    )
+    def uploader() -> str:
+        html = files("openrouter_image_mcp").joinpath("ui", "uploader.html").read_text(encoding="utf-8")
+        return html.replace("__SIDECAR_ORIGIN__", origin)
 
 
 async def negotiate_apps(ctx: ServerRequestContext, call_next: CallNext) -> HandlerResult:

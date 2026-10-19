@@ -81,6 +81,7 @@ Tell the "MPD MCP Interview Coach tool" session before any tenant change. Each r
    - run `ask_advisor` with a file, then a follow-up with the same `chat_id`;
    - confirm a second test account can't see the first account's chats;
    - images: `create_image_upload`, `curl -T` the file, `edit_image` with a mask, `remask_image`, then open the download link. A second account must get "unavailable" for the first account's asset id.
+   - MCP Apps (claude.ai and Desktop): `open_image_uploader`, drop a PNG, confirm the asset id reaches the chat, `edit_image` it, then use the gallery's **Download** button.
    
    Record the results under "M1 acceptance" in `docs/superpowers/specs/2026-10-18-hosted-spikes.md` (create it on first use).
 

@@ -35,6 +35,11 @@ TICKET_GRACE_S = 86400
 DOWNLOAD_TTL_S = 86400
 FORMATS = {"image/png": "PNG", "image/jpeg": "JPEG", "image/webp": "WEBP"}
 _HEADERS = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
+# The uploader app PUTs from a sandboxed iframe (opaque origin). The single-use URL is
+# the only credential (no cookies), so any origin may use it.
+_CORS = {"Access-Control-Allow-Origin": "*"}
+_PREFLIGHT = _CORS | {"Access-Control-Allow-Methods": "PUT", "Access-Control-Allow-Headers": "Content-Type",
+                      "Access-Control-Max-Age": "600"}
 
 
 class TransferError(Exception):
@@ -173,11 +178,14 @@ def transfer_routes(tokens: TransferTokens, assets: AssetStore) -> list[Route]:
             asset = assets.put(Scope(row["owner"], row["workspace"]), data, kind="input",
                                mime=row["mime"], filename=row["filename"], width=width, height=height)
         except TransferError as exc:
-            return JSONResponse({"error": str(exc)}, exc.status, headers=_HEADERS)
+            return JSONResponse({"error": str(exc)}, exc.status, headers=_HEADERS | _CORS)
         except AssetError as exc:
-            return JSONResponse({"error": exc.message}, 400, headers=_HEADERS)
+            return JSONResponse({"error": exc.message}, 400, headers=_HEADERS | _CORS)
         return JSONResponse({"asset_id": asset.id, "width": width, "height": height,
-                             "mime": asset.mime, "filename": asset.filename}, headers=_HEADERS)
+                             "mime": asset.mime, "filename": asset.filename}, headers=_HEADERS | _CORS)
+
+    async def preflight(_request: Request):
+        return Response(status_code=204, headers=_PREFLIGHT)
 
     async def download(request: Request):
         try:
@@ -194,4 +202,5 @@ def transfer_routes(tokens: TransferTokens, assets: AssetStore) -> list[Route]:
             "Content-Disposition": f'attachment; filename="{asset.filename}"'})
 
     return [Route("/uploads/{token}", upload, methods=["PUT"]),
+            Route("/uploads/{token}", preflight, methods=["OPTIONS"]),
             Route("/assets/{token}", download, methods=["GET"])]

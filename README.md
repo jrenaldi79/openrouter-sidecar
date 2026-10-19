@@ -198,6 +198,11 @@ On the hosted server, images are asset ids, never paths:
 
 Assets are private to the signed-in person and kept for 30 days, up to 2 GB each.
 
+In Claude Desktop and claude.ai (clients with MCP Apps), `open_image_uploader` shows a
+drop zone instead: it uploads straight to the Sidecar and adds the new asset ids to the
+conversation. The image gallery gets a **Download** button that fetches a fresh link
+and lets the host save the file; the app never sees a sign-in token.
+
 Use `get_advisor_job` to check status, or `open_advisor_result` to reopen a viewer.
 The three App-only operations are omitted for clients without MCP Apps capability.
 The UI never receives API credentials or directly accesses provider files. Every
