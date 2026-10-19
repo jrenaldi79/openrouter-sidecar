@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import base64
 import html
 import logging
+from functools import cache
+from importlib.resources import files
 
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse
@@ -19,13 +22,48 @@ COOKIE = "sidecar_link"
 BASE = "/link/openrouter"
 
 
+# Matches the "MPD Class Tools" Auth0 sign-in page and code email (mpd-auth/tenant).
+_STYLE = """
+body{margin:0;background:#F4F1F8;color:#1F1F1F;font:15px/1.5 Arial,Helvetica,sans-serif}
+main{max-width:480px;margin:40px auto;padding:0 16px}
+.card{background:#FFF;border:1px solid #E4DCEF;border-radius:8px;overflow:hidden}
+.inner{padding:32px 32px 24px}
+header{text-align:center;margin-bottom:24px}
+header img{width:64px;height:64px;border-radius:4px;background:#4E2A84;display:block;margin:0 auto 12px}
+.brand{margin:0;font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:#4E2A84;font-weight:bold}
+h1{margin:4px 0 0;font-size:22px;line-height:30px}
+p{margin:0 0 14px;color:#4A4A4A} b{color:#1F1F1F}
+.warn{background:#F4F1F8;border-left:3px solid #4E2A84;padding:10px 12px;border-radius:4px}
+button{background:#4E2A84;color:#FFF;border:0;border-radius:6px;padding:12px 20px;
+font:bold 15px Arial,Helvetica,sans-serif;width:100%;cursor:pointer;margin-top:8px}
+button:hover{background:#401F75} button:focus-visible{outline:3px solid #B6ACD1;outline-offset:2px}
+.bar{height:6px;background:#4E2A84}
+footer{text-align:center;font-size:13px;color:#6B6B6B;margin-top:16px}
+footer a{color:#4E2A84}
+"""
+
+
+@cache
+def _logo() -> str:
+    png = files("openrouter_image_mcp").joinpath("ui", "northwestern-logo.png").read_bytes()
+    return "data:image/png;base64," + base64.b64encode(png).decode("ascii")
+
+
 def _page(title: str, body: str, status: int = 200) -> HTMLResponse:
-    text = (f"<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'>"
-            f"<title>{html.escape(title)}</title><body style='font:16px system-ui;max-width:36rem;"
-            f"margin:3rem auto;padding:0 1rem'><h1>{html.escape(title)}</h1>{body}</body>")
+    text = (f"<!doctype html><html lang=en><meta charset=utf-8>"
+            f"<meta name=viewport content='width=device-width,initial-scale=1'>"
+            f"<title>{html.escape(title)} · MPD Class Tools</title><style>{_STYLE}</style>"
+            f"<main><div class=card><div class=inner><header>"
+            f"<img src=\"{_logo()}\" alt=\"Northwestern MPD\">"
+            f"<p class=brand>MPD Class Tools</p><h1>{html.escape(title)}</h1></header>"
+            f"{body}</div><div class=bar></div></div>"
+            f"<footer>Trouble linking? Contact John Renaldi at "
+            f"<a href='mailto:jrenaldi@northwestern.edu'>jrenaldi@northwestern.edu</a>.</footer>"
+            f"</main></html>")
     return HTMLResponse(text, status_code=status, headers={
         "Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
-        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'"})
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; "
+                                   "form-action 'self'"})
 
 
 def _fail(message: str) -> HTMLResponse:
@@ -73,7 +111,7 @@ def link_routes(links: LinkStore, *, exchange, verify, auth_url: str = AUTH_URL)
         form = (f"<p>Link the OpenRouter key <b>{html.escape(label)}</b> to the Sidecar "
                 f"account <b>{account}</b>? Claude will use it for that account's advisor "
                 f"chats and images, and charge this key.</p>"
-                f"<p><b>If {account} is not you, do not continue</b>: someone may have "
+                f"<p class=warn><b>If {account} is not you, do not continue</b>: someone may have "
                 f"forwarded you their link. Close this page instead.</p>"
                 f"<form method=post action='{BASE}/confirm'>"
                 f"<input type=hidden name=state value='{html.escape(state)}'>"
@@ -88,7 +126,8 @@ def link_routes(links: LinkStore, *, exchange, verify, auth_url: str = AUTH_URL)
                                   str(form.get("csrf", "")))
         except LinkError as exc:
             return _fail(str(exc))
-        response = _page("Linked", f"<p>Linked {html.escape(label)}. Return to Claude and retry.</p>")
+        response = _page("Linked", f"<p>Linked {html.escape(label)}. You can close this tab and go back to "
+                                    f"Claude.</p>")
         response.delete_cookie(COOKIE, path=BASE)
         return response
 
