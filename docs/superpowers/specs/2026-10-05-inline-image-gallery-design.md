@@ -24,6 +24,10 @@ Image tools return CallToolResult with structuredContent:
 ```
 
 `dataUri` is null when no JPEG preview is available (SVG or preview limit).
+
+> Changed October 19, 2026: some hosts (Claude Code) show `structuredContent` to the
+> model, so the previews moved out of it. `images[]` no longer has `dataUri`; the
+> result's `_meta["sidecarPreviews"]` holds the data URIs (or null) in the same order.
 Display saved filename and path even without a preview. Display the call total
 once, with null meaning unavailable and zero meaning free; do not invent per-image
 prices. Remask has callCostUsd=0 and model=Local re-blend. No prompt or credentials

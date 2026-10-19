@@ -35,6 +35,7 @@ from .apps import (
     app_icons,
     negotiate_apps,
     preview_image,
+    preview_meta,
     register_advisor_viewer,
     register_gallery,
     register_settings,
@@ -307,18 +308,17 @@ def _image_result(result: ServiceResult) -> ImageResult:
             type="image", data=base64.b64encode(img.preview_jpeg).decode("ascii"),
             mime_type="image/jpeg",
         )
-        for img in result.images
-        if img.preview_jpeg is not None
+        for img in result.images if img.preview_jpeg is not None
     ]
     return CallToolResult(content=content, structured_content={
-        "images": [preview_image(img.path, img.preview_jpeg) for img in result.images],
+        "images": [preview_image(img.path) for img in result.images],
         "model": redact(result.model),
         "provider": redact(result.provider) if result.provider else None,
         "callCostUsd": result.call_cost_usd,
         "usageLine": redact(result.usage_line),
         "notes": [redact(note) for note in result.notes],
         "failures": [redact(failure) for failure in result.failures],
-    })
+    }, meta=preview_meta(img.preview_jpeg for img in result.images))
 
 
 def _add(server: MCPServer, fn: Callable[..., Any]) -> None:
@@ -693,14 +693,14 @@ def build_server(
                 mime_type="image/jpeg",
             ),
         ], structured_content={
-            "images": [preview_image(done.path, done.preview_jpeg)],
+            "images": [preview_image(done.path)],
             "model": "Local re-blend",
             "provider": None,
             "callCostUsd": 0,
             "usageLine": lines[1],
             "notes": [redact(note) for note in done.notes],
             "failures": [],
-        })
+        }, meta=preview_meta([done.preview_jpeg]))
 
     for fn in (
         account_status, auth_login, auth_logout, list_image_models, get_image_model,

@@ -86,7 +86,9 @@ async def test_upload_edit_remask_download_round_trip(running):
                                                        "images": [source], "mask_id": mask})
         assert not edited.is_error, _text(edited)
         image = edited.structured_content["images"][0]
-        assert image["assetId"].startswith("img_") and image["dataUri"].startswith("data:image/jpeg")
+        assert image["assetId"].startswith("img_") and "dataUri" not in image
+        assert edited.meta["sidecarPreviews"][0].startswith("data:image/jpeg;base64,")
+        assert "base64" not in json.dumps(edited.structured_content)
         assert image["assetId"] in _text(edited) and image["downloadUrl"] in _text(edited)
         calls = len(running.fake.bodies("/images"))
         remasked = await client.call_tool("remask_image", {"image_id": image["assetId"],
@@ -113,6 +115,7 @@ async def test_generate_text_carries_asset_ids_and_links_without_apps(running):
     assert "Asset: img_" in text and "a-red-barn__" in text
     assert f"http://127.0.0.1:{running.port}/assets/img_" in text
     assert result.structured_content is None
+    assert "sidecarPreviews" not in (result.meta or {})  # app-only data stays with Apps clients
 
 
 async def test_assets_are_private_to_their_owner(running):

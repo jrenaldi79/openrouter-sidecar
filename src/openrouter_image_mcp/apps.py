@@ -1,6 +1,7 @@
 """Packaged MCP Apps gallery and per-client progressive enhancement."""
 
 import base64
+from collections.abc import Iterable
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,9 @@ UPLOADER_UI_URI = "ui://openrouter-sidecar/uploader.html"
 UI_MIME = "text/html;profile=mcp-app"
 UI_EXTENSION = "io.modelcontextprotocol/ui"
 IMAGE_TOOLS = frozenset({"generate_image", "edit_image", "remask_image"})
+# Gallery previews ride in the result `_meta`, index-aligned with structuredContent.images.
+# Hosts may hand structuredContent to the model, so it never carries image bytes.
+PREVIEWS_META = "sidecarPreviews"
 ADVISOR_UI_TOOLS = frozenset({"send_advisor_message", "open_advisor_result"})
 SETTINGS_UI_TOOLS = frozenset({"open_sidecar_settings"})
 APP_ONLY_TOOLS = frozenset({"get_advisor_result", "summarize_advisor_result", "export_advisor_result",
@@ -112,14 +116,22 @@ async def negotiate_apps(ctx: ServerRequestContext, call_next: CallNext) -> Hand
             tools.append(copied)
         return {**result, "tools": tools}
     if isinstance(result, dict) and ctx.method == "tools/call" and (ctx.params or {}).get("name") in IMAGE_TOOLS:
-        return {k: v for k, v in result.items() if k != "structuredContent"}
+        return _without_gallery_data(result)
     return result
 
 
-def preview_image(path: Path, jpeg: bytes | None) -> dict[str, Any]:
-    """Use an existing bounded JPEG preview; never embed SVG or full originals."""
-    return {
-        "filename": redact(path.name),
-        "path": redact(str(path)),
-        "dataUri": "data:image/jpeg;base64," + base64.b64encode(jpeg).decode("ascii") if jpeg else None,
-    }
+def _without_gallery_data(result: dict[str, Any]) -> dict[str, Any]:
+    stripped = {k: v for k, v in result.items() if k not in ("structuredContent", "_meta")}
+    meta = {k: v for k, v in (result.get("_meta") or {}).items() if k != PREVIEWS_META}
+    return {**stripped, "_meta": meta} if meta else stripped
+
+
+def preview_image(path: Path) -> dict[str, Any]:
+    """Model-safe gallery entry for a saved image; its preview goes in `preview_meta`."""
+    return {"filename": redact(path.name), "path": redact(str(path))}
+
+
+def preview_meta(jpegs: Iterable[bytes | None]) -> dict[str, list[str | None]]:
+    """Result `_meta` with existing bounded JPEG previews; never SVG or full originals."""
+    return {PREVIEWS_META: ["data:image/jpeg;base64," + base64.b64encode(jpeg).decode("ascii") if jpeg else None
+                            for jpeg in jpegs]}

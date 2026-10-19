@@ -59,6 +59,16 @@ function downloadButton(image, caption) {
   return button;
 }
 
+// Preview JPEGs arrive in the result's _meta, index-aligned with structuredContent.images:
+// hosts may show structuredContent to the model, so it never carries image bytes.
+// No remote URLs, SVG, or result HTML is ever inserted into the page.
+const JPEG_DATA_URI = /^data:image\/jpeg;base64,(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+function previewAt(result, index) {
+  const previews = result._meta?.sidecarPreviews;
+  const uri = Array.isArray(previews) ? previews[index] : null;
+  return typeof uri === 'string' && JPEG_DATA_URI.test(uri) && uri.length > 'data:image/jpeg;base64,'.length ? uri : null;
+}
+
 function setTheme(context) {
   if (context?.theme === 'light' || context?.theme === 'dark') document.documentElement.dataset.theme = context.theme;
 }
@@ -82,16 +92,15 @@ function render(result) {
     textList(failures, 'Failures', imageFailures);
   }
 
-  for (const image of images) {
+  for (const [index, image] of images.entries()) {
     const figure = document.createElement('figure');
     const placeholder = () => textElement('p', 'Preview unavailable', 'no-preview');
-    // No remote URLs, SVG, or result HTML is ever inserted into the page.
-    if (typeof image?.dataUri === 'string' && /^data:image\/jpeg;base64,(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(image.dataUri)
-      && image.dataUri.length > 'data:image/jpeg;base64,'.length) {
+    const source = previewAt(result, index);
+    if (source) {
       const preview = document.createElement('img');
-      preview.alt = typeof image.filename === 'string' ? image.filename : 'Saved image';
+      preview.alt = typeof image?.filename === 'string' ? image.filename : 'Saved image';
       preview.addEventListener('error', () => preview.replaceWith(placeholder()), { once: true });
-      preview.src = image.dataUri;
+      preview.src = source;
       figure.append(preview);
     } else {
       figure.append(placeholder());
