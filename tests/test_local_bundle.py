@@ -102,7 +102,9 @@ def _chat_with(**changes):
                                     "onboarding_completed": False})).encode(),
     json.dumps(_bundle(preferences={"general_default": None, "family_defaults": {"nope": None},
                                     "onboarding_completed": False})).encode(),
-])
+], ids=["not-json", "not-object", "format", "version", "workspace-type", "model-id", "long-title",
+        "role", "content-type", "file-path", "extra-field", "too-many-chats", "default-model",
+        "family"])  # explicit ids: byte-string ids overflow PYTEST_CURRENT_TEST on Windows
 def test_parse_rejects_malformed_bundles(bad):
     with pytest.raises(lb.BundleError):
         lb.parse_bundle(bad)
