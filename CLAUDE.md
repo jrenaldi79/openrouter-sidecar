@@ -58,8 +58,8 @@ Path-scoped rules live in `.claude/rules/` (TDD, code quality, testing, Python, 
   SQLite and, with `TEST_DATABASE_URL`, Postgres via the `db_target` fixture.
 - **Auth0 and class identity are managed outside this repo** (`../mpd-auth`); don't change them from here.
 - **Hosted single owner:** one replica holds the advisory lock (`hosted/health.py`) for sweeps and background work.
-- **Oversized files are grandfathered, not blessed:** before adding to `server.py`, `service.py`, `auth.py`,
-  `imaging.py` or `ui/src/advisor.js`, extract a sibling module.
+- **Oversized files are grandfathered, not blessed:** before adding to `server.py`, `service.py`, `auth.py` or
+  `imaging.py`, extract a sibling module.
 
 ## Key docs
 

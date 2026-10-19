@@ -182,6 +182,7 @@ Filenames grouped by folder; each heading links that folder's note.
 
 - [ui/src/advisor-handoff.js](../ui/src/advisor-handoff.js)
 - [ui/src/advisor-progress.js](../ui/src/advisor-progress.js)
+- [ui/src/advisor-share.js](../ui/src/advisor-share.js)
 - [ui/src/advisor.html](../ui/src/advisor.html)
 - [ui/src/advisor.js](../ui/src/advisor.js)
 - [ui/src/markdown.js](../ui/src/markdown.js)

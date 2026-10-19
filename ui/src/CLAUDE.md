@@ -9,7 +9,7 @@ read_when: "Changing or adding files in ui/src/."
 **Owns:**
 
 - Apps: `preview.*` (image preview), `advisor.*` (advisor results and handoff), `settings.*` (preferences and onboarding), `uploader.*` (hosted drop-zone: gets a single-use link through `create_image_upload` and PUTs bytes straight to the Sidecar origin).
-- Helpers: `markdown.js` (marked, plus DOMPurify sanitizing, with raw HTML escaped), `provider-logos.js`, and the advisor's `advisor-progress.js` (live running state, elapsed time, poll backoff) and `advisor-handoff.js` (share text framing, model-context update, copy fallback, More menu).
+- Helpers: `markdown.js` (marked, plus DOMPurify sanitizing, with raw HTML escaped), `provider-logos.js`, and the advisor's `advisor-progress.js` (live running state, elapsed time, poll backoff), `advisor-handoff.js` (share text framing, status strings, model-context update, copy fallback, More menu) and `advisor-share.js` (one-click share flow: summary for answers over `FULL_ANSWER_LIMIT`, ownership recheck, delivery).
 
 **Invariants:**
 
@@ -21,4 +21,4 @@ read_when: "Changing or adding files in ui/src/."
 
 **Tests:** `ui/tests/<app>*.spec.js` (Playwright). Build first.
 
-**Gotchas:** `advisor.js` is over the 300-line ratchet. Extract helpers before adding to it.
+**Gotchas:** `advisor.js` is close to the 300-line limit. Put new advisor behavior in a sibling helper (as `advisor-share.js` does).

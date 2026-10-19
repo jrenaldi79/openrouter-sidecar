@@ -51,11 +51,10 @@ test('follow-up continues same chat and privately streams the new result', async
     'get_advisor_result:result-2': [result({ ...next, status: 'running', prompt: 'What should I test first?', answer: 'Start with' }), result({ ...next, status: 'completed', prompt: 'What should I test first?', answer: 'Start with user interviews.' })],
   } });
   await expect(viewer.locator('#answer')).toContainText('Last paragraph.');
-  await viewer.getByRole('button', { name: 'Share with Claude', exact: true }).click();
   await viewer.getByLabel('Message advisor').fill('What should I test first?');
   await viewer.getByRole('button', { name: 'Send follow-up', exact: true }).click();
   await expect(viewer.getByRole('button', { name: 'Send follow-up', exact: true })).toBeDisabled();
-  await expect(viewer.locator('#preview-section')).toBeHidden();
+  await expect(viewer.getByRole('button', { name: 'Share with Claude', exact: true })).toBeDisabled();
   await expect(viewer.locator('#answer')).toHaveText('Start with user interviews.');
   await expect(viewer.getByLabel('Message advisor')).toHaveValue('');
   const sends = await page.evaluate(() => window.hostMessages.filter(m => m.method === 'tools/call' && m.params.name === 'send_advisor_message'));

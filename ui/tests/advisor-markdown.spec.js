@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
-import { result, openAdvisor, assertNoHandoff, assertNoChatMessage } from './fixtures/advisor-host.js';
+import { result, openAdvisor, assertNoChatMessage, contexts, shareButton, SHARED_FULL } from './fixtures/advisor-host.js';
 
 test.afterEach(async ({ page }) => assertNoChatMessage(page));
 
-test('formats markdown as rich text while keeping raw Markdown in the reviewed handoff', async ({ page }) => {
+test('formats markdown as rich text while sharing the raw Markdown', async ({ page }) => {
   const markdown = '# A product idea\n\n**Strong evidence** and *a caveat*.\n\n1. Interview users\n2. Test a prototype\n\n```python\nprint("hello")\n```\n\n| Option | Cost |\n| --- | --- |\n| A | Low |';
   const { viewer } = await openAdvisor(page, { responses: { 'get_advisor_result:result-1': [result({ answer: markdown })] } });
   await expect(viewer.locator('#answer h1')).toHaveText('A product idea');
@@ -11,9 +11,9 @@ test('formats markdown as rich text while keeping raw Markdown in the reviewed h
   await expect(viewer.locator('#answer ol li')).toHaveCount(2);
   await expect(viewer.locator('#answer pre code')).toContainText('print("hello")');
   await expect(viewer.locator('#answer table')).toBeVisible();
-  await viewer.getByRole('button', { name: 'Share with Claude', exact: true }).click();
-  await expect(viewer.getByLabel('Text to share')).toHaveValue(markdown);
-  await assertNoHandoff(page);
+  await shareButton(viewer).click();
+  await expect(viewer.locator('#handoff-status')).toHaveText(SHARED_FULL);
+  expect((await contexts(page))[0].params.content[0].text).toBe(`Advisor answer from example/advisor (result result-1):\n\n${markdown}`);
 });
 
 test('markdown cannot execute HTML or load remote images or javascript links', async ({ page }) => {

@@ -244,7 +244,7 @@ def register_advisor_tools(server: MCPServer, service: AdvisorService, jobs: Adv
             return status_result(jobs.status(job_id), meta={"advisorResult": view})
 
     async def summarize_advisor_result(job_id: str) -> CallToolResult:
-        """App-only: create a paid summary job for review before an explicit parent-chat send.
+        """App-only: create a paid summary job the viewer shares, on an explicit click, in place of a long answer.
 
         Uses this result's owned advisor model; never sends the summary automatically.
         """

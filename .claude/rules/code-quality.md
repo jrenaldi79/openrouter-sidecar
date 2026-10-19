@@ -12,7 +12,7 @@ globs: ['src/**', 'ui/src/**', 'ui/tests/**', 'scripts/**', 'tests/**']
 | **Any function** | 50 | Code review |
 
 The file limit is a **ratchet**: a new file may not exceed 300 lines, and a file already over it
-(`server.py`, `service.py`, `auth.py`, `imaging.py`, `ui/src/advisor.js`, several test files) may
+(`server.py`, `service.py`, `auth.py`, `imaging.py`, several test files) may
 shrink or hold steady but never grow. Adding to one of those means extracting something first, into a
 sibling module (`advisor_tools.py`, `image_results.py` show the pattern). `--all` lists them.
 Generated bundles in `src/openrouter_image_mcp/ui/` and `reference/` are not checked.

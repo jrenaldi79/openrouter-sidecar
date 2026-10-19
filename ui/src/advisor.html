@@ -30,8 +30,8 @@
     .meta > span:not(:first-child):not(:empty)::before { content: "·"; margin-right: 8px; }
     .model-identity { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--color-text-primary, var(--fg)); }
     .provider-logo { width: 18px; height: 18px; object-fit: contain; padding: 1px; background: #fff; border-radius: 4px; }
-    #error, #summary-error { color: var(--error); }
-    #error:empty, #summary-error:empty, #cleanup:empty, #export-status:empty, #handoff-status:empty, #follow-up-status:empty, #summary-status:empty { display: none; }
+    #error, #share-error { color: var(--error); }
+    #error:empty, #cleanup:empty, #export-status:empty, #handoff-status:empty, #follow-up-status:empty { display: none; }
     details.quiet { font-size: 12px; } details.quiet summary { cursor: pointer; color: var(--color-text-secondary, var(--muted)); width: max-content; }
     pre { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; margin: 6px 0 0; }
 
@@ -59,7 +59,7 @@
     /* Answer toolbar: one share action and a small More menu. */
     .toolbar { display: flex; align-items: center; gap: 2px; margin-top: -6px; }
     /* The call to action: share the answer with Claude. */
-    #prepare-full { display: inline-flex; gap: 6px; align-items: center; margin-right: 6px; padding: 8px 14px; font-size: 14px; }
+    #share { display: inline-flex; gap: 6px; align-items: center; margin-right: 6px; padding: 8px 14px; font-size: 14px; }
     .more { position: relative; }
     .more > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
     .more > summary::-webkit-details-marker { display: none; }
@@ -67,19 +67,16 @@
     .more-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 2; min-width: 210px; display: flex; flex-direction: column; padding: 6px; border: 1px solid var(--color-border-primary, var(--line)); border-radius: 10px; background: var(--color-background-primary, var(--bg)); box-shadow: 0 6px 20px rgb(0 0 0 / .14); }
     .more-menu button { border: 0; background: transparent; text-align: left; font-weight: 500; padding: 8px 10px; }
     .more-menu button:not(:disabled):hover { background: var(--color-background-secondary, var(--card)); }
-    .more-menu .help { padding: 4px 10px 2px; }
-    #export-status, #handoff-status { font-size: 13px; }
+    #share-note { margin-top: -6px; }
+    #export-status, #handoff-status, #share-error { font-size: 13px; }
 
-    /* Share review: appears only after choosing to share. */
-    .preview-card { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--color-border-primary, var(--line)); }
+    /* Share outcome: a summary failure offers the full answer; a blocked clipboard shows the text. */
+    .share-fallback { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     label { font-weight: 600; font-size: 13px; }
     textarea { display: block; width: 100%; min-height: 140px; resize: vertical; padding: 10px; border: 1px solid var(--color-border-primary, var(--line)); border-radius: 8px; background: var(--color-background-primary, var(--bg)); color: var(--color-text-primary, var(--fg)); font: inherit; }
-    .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    #send { background: var(--purple); border-color: var(--purple); color: #fff; }
     button.secondary { background: transparent; border-color: var(--purple); color: var(--purple); }
     @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) button.secondary { color: #c9b8e8; } }
     :root[data-theme="dark"] button.secondary { color: #c9b8e8; }
-    #summary-text:empty { display: none; }
 
     /* Follow-up composer. */
     .composer { border: 1px solid var(--color-border-primary, var(--line)); border-radius: 12px; padding: 8px 8px 8px 12px; background: var(--color-background-primary, var(--bg)); }
@@ -102,7 +99,7 @@
     .rich-text table { display:block; max-width:100%; overflow:auto; border-collapse:collapse; font-size:12px; }
     .rich-text th,.rich-text td { border:1px solid var(--line); padding:7px 10px; text-align:left; }
     .rich-text a { color:var(--focus); text-decoration:underline; }
-    @media (max-width: 420px) { body { padding: 12px; } #answer { max-height: 280px; } .answer-card, .preview-card { padding: 12px; } .composer-row { align-items: flex-end; } }
+    @media (max-width: 420px) { body { padding: 12px; } #answer { max-height: 280px; } .answer-card { padding: 12px; } .composer-row { align-items: flex-end; } }
   </style>
 </head>
 <body>
@@ -131,36 +128,27 @@
       <p id="answer-state" hidden></p>
     </section>
     <div class="toolbar" role="group" aria-label="Answer actions">
-      <button class="primary" id="prepare-full" disabled><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M10 5 4 11l6 6M4 11h10a6 6 0 0 1 6 6v2"/></svg><span id="share-label">Share with Claude</span></button>
+      <button class="primary" id="share" disabled aria-describedby="share-note"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M10 5 4 11l6 6M4 11h10a6 6 0 0 1 6 6v2"/></svg>Share with Claude</button>
       <details class="more" id="more">
         <summary>More</summary>
         <div class="more-menu" id="more-menu">
-          <button id="summarize" disabled aria-describedby="summary-cost-note">Share a summary</button>
+          <button id="share-full" disabled>Share full answer</button>
+          <button id="copy-answer" disabled>Copy answer</button>
           <button id="export" disabled>Save as file</button>
-          <p class="help" id="summary-cost-note">Summaries use OpenRouter credits.</p>
         </div>
       </details>
     </div>
+    <p class="help" id="share-note">Long answers are shared as a summary, which uses OpenRouter credits.</p>
+    <p id="handoff-status" role="status" aria-live="polite"></p>
+    <div class="share-fallback" id="share-fallback" hidden>
+      <p id="share-error" role="alert"></p>
+      <button class="secondary" id="share-full-instead">Share full answer instead</button>
+    </div>
+    <div id="copy-section" hidden>
+      <label for="copy-text">Copyable message</label>
+      <textarea id="copy-text" readonly spellcheck="false"></textarea>
+    </div>
     <p id="export-status" role="status" aria-live="polite"></p>
-    <section class="preview-card" id="preview-section" aria-labelledby="preview-title" hidden>
-      <h2 id="preview-title">Share with Claude</h2>
-      <p id="preview-context" class="help"></p>
-      <p id="summary-status" role="status" aria-live="polite"></p>
-      <p id="summary-error" role="alert"></p>
-      <div class="rich-text" id="summary-text" aria-label="Summary in progress"></div>
-      <label for="preview">Text to share</label>
-      <textarea id="preview" spellcheck="false"></textarea>
-      <div class="actions">
-        <button id="send" disabled hidden>Add to Claude's context</button>
-        <button id="copy" hidden>Copy message</button>
-        <button class="quiet-button" id="cancel-share">Cancel</button>
-      </div>
-      <p id="handoff-status" role="status" aria-live="polite"></p>
-      <div id="copy-section" hidden>
-        <label for="copy-text">Copyable message</label>
-        <textarea id="copy-text" readonly spellcheck="false"></textarea>
-      </div>
-    </section>
     <section class="follow-up" aria-label="Continue advisor conversation">
       <div class="composer">
         <label for="follow-up" class="visually-hidden">Message advisor</label>

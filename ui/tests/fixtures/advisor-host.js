@@ -92,6 +92,22 @@ export async function moreAction(viewer, name) {
   return viewer.getByRole('button', { name, exact: true });
 }
 
+// A long answer (over FULL_ANSWER_LIMIT in ui/src/advisor-share.js) and its paid summary job.
+export const FULL_ANSWER_LIMIT = 3000;
+export const longAnswer = 'L'.repeat(FULL_ANSWER_LIMIT + 1);
+export const summaryJob = job({ job_id: 'summary-1', kind: 'summary', source_job_id: 'result-1', status: 'queued' });
+export const summaryResult = (overrides = {}) => result({ ...summaryJob, status: 'completed', answer: 'Short summary', cost_usd: 0.005, ...overrides });
+export const longWithSummary = (summaries = [summaryResult()]) => ({
+  'get_advisor_result:result-1': [result({ answer: longAnswer })],
+  'summarize_advisor_result:result-1': [{ content: [], structuredContent: summaryJob }],
+  'get_advisor_result:summary-1': summaries,
+});
+
+export const SHARED_SUMMARY = 'Shared a summary. Ask Claude to check the advisor viewer for it.';
+export const SHARED_FULL = 'Shared the full answer. Ask Claude to check the advisor viewer for it.';
+export const shareButton = viewer => viewer.getByRole('button', { name: 'Share with Claude', exact: true });
+export const toolCount = (page, key) => page.evaluate(name => window.toolCounts[name] ?? 0, key);
+
 export const contexts = page => page.evaluate(() => window.hostMessages.filter(message =>
   message.method === 'ui/update-model-context'));
 
@@ -103,22 +119,4 @@ export async function assertNoChatMessage(page) {
 export async function assertNoHandoff(page) {
   expect(await page.evaluate(() => window.hostMessages.filter(message =>
     message.method === 'ui/message' || message.method === 'ui/update-model-context'))).toEqual([]);
-}
-
-export async function selectAnswer(viewer, text) {
-  await viewer.locator('#answer').evaluate((element, selectedText) => {
-    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-    let node, start = -1;
-    while ((node = walker.nextNode())) {
-      start = node.textContent.indexOf(selectedText);
-      if (start >= 0) break;
-    }
-    if (!node) throw new Error('Test selection does not occur in answer');
-    const range = document.createRange();
-    range.setStart(node, start);
-    range.setEnd(node, start + selectedText.length);
-    window.getSelection().removeAllRanges();
-    window.getSelection().addRange(range);
-    document.dispatchEvent(new Event('selectionchange'));
-  }, text);
 }

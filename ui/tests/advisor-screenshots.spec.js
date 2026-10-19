@@ -17,7 +17,7 @@ test('capture real demo reply with provider logo, rich text and reviewed return 
     await page.locator('iframe').screenshot({ path: `../.venv/codex-install/advisor-chat-${width}.png` });
   }
   await viewer.getByRole('button', { name: 'Share with Claude', exact: true }).click();
-  await expect(viewer.locator('#preview-section')).toBeVisible();
+  await expect(viewer.locator('#handoff-status')).toContainText('Shared');
   await page.waitForTimeout(150);
   await page.setViewportSize({ width: 1000, height: Math.ceil(await viewer.locator('body').evaluate(body => body.getBoundingClientRect().height)) + 32 });
   await page.locator('iframe').screenshot({ path: '../.venv/codex-install/advisor-chat-return-900.png' });
@@ -56,14 +56,14 @@ test('capture completed and follow-up states', async ({ page }) => {
   const { viewer } = await openAdvisor(page, { responses: { 'get_advisor_result:result-1': [result({ answer })] } });
   await expect(viewer.locator('#answer')).toContainText('Start with interviews');
   await capture(page, viewer, 'completed');
-  await viewer.getByLabel(/advisor/i).and(viewer.locator('textarea')).first().fill('What would the survey ask?');
-  await capture(page, viewer, 'follow-up');
   await moreAction(viewer, 'Save as file');
   await capture(page, viewer, 'more-menu');
   await viewer.getByText('More', { exact: true }).click();
+  await viewer.getByLabel(/advisor/i).and(viewer.locator('textarea')).first().fill('What would the survey ask?');
+  await capture(page, viewer, 'follow-up');
   await viewer.getByRole('button', { name: 'Share with Claude', exact: true }).click();
-  await expect(viewer.locator('#preview-section')).toBeVisible();
-  await capture(page, viewer, 'share');
+  await expect(viewer.locator('#handoff-status')).toContainText('Shared');
+  await capture(page, viewer, 'shared');
 });
 
 test('capture failed state', async ({ page }) => {
