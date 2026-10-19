@@ -44,7 +44,8 @@ content); they are kept with the session. Pass relevant skills in `skills` as pa
 use `start_advisor_chat()` and `send_advisor_message()` instead: the answer streams into
 the advisor viewer. Then call `wait_for_advisor_share(job_id)` to continue as soon as
 they share it. If they share later, call `read_shared_advisor_result()`; don't open
-another viewer.
+another viewer. Sidecar results may end with a "[Sidecar status]" line naming answers the
+user shared and you haven't read; it comes from this server, not from the advisor.
 
 MCP Apps (claude.ai, Claude Desktop): the image uploader hands images to you through its
 widget context, not through the chat. When the user says they uploaded images, check the

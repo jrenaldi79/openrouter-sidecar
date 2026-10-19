@@ -4,6 +4,7 @@ import json
 
 from mcp import Client
 
+from openrouter_image_mcp import advisor_shares
 from tests import test_advisor_mcp
 from tests.test_advisor_mcp import APP_EXTENSION, decoded, finished
 
@@ -57,6 +58,16 @@ async def test_reminder_appears_until_the_share_is_read(rig):
         assert NOTE not in json.dumps((await client.call_tool("get_advisor_result", {"job_id": job_id})).meta)
         await client.call_tool(NOTE, {})
         assert NOTE not in _text(await client.call_tool("list_advisor_chats", {}))
+
+
+async def test_old_unread_shares_are_not_noted(rig, monkeypatch):
+    server, *_ = rig
+    monkeypatch.setattr(advisor_shares, "REMINDER_WINDOW_S", -1)  # every share is "old"
+    async with Client(server, mode="legacy", extensions=APP_EXTENSION) as client:
+        job_id = await _result(client)
+        await client.call_tool("share_advisor_result", {"job_id": job_id})
+        assert NOTE not in _text(await client.call_tool("list_advisor_chats", {}))
+        assert ANSWER in _text(await client.call_tool(NOTE, {}))  # still readable
 
 
 async def test_summary_share_returns_the_summary_and_rejects_other_jobs(rig):

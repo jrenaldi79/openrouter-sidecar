@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from mcp.server.context import CallNext, HandlerResult, ServerRequestContext
 from mcp.server.mcpserver import Context, MCPServer
@@ -33,8 +33,14 @@ NOT_YET = (f"The user hasn't shared this answer yet. Call {WAIT_TOOL} again to k
            "(about ten minutes in total), or end your turn and ask them to say when they've "
            "shared it; then call read_shared_advisor_result().")
 READ_TOOL = "read_shared_advisor_result"
-REMINDER = ("Note: the user shared an advisor answer with you from the advisor viewer. "
-            f"Call {READ_TOOL}() to read it before answering; don't open another viewer.")
+# Only recent shares are noted: one already read another way (claude.ai's app context)
+# shouldn't follow the student around. Worded as status, not an instruction.
+REMINDER_WINDOW_S = 30 * 60
+
+
+def reminder(job_ids: list[str]) -> str:
+    return (f"[Sidecar status] Unread advisor answer shared by the user from the viewer: "
+            f"{', '.join(job_ids)} (read with {READ_TOOL}).")
 
 
 def _now() -> str:
@@ -127,13 +133,15 @@ class AdvisorShares:
             await asyncio.sleep(min(POLL_S, start + wait_s - now))
         return text
 
-    def unread(self) -> int:
+    def unread(self) -> list[str]:
+        """Ids of results shared in the last REMINDER_WINDOW_S seconds and not yet read."""
         scope = self._scope()
+        since = (datetime.now(UTC) - timedelta(seconds=REMINDER_WINDOW_S)).isoformat()
         with self.jobs.results.connection() as db:
-            row = db.execute("SELECT COUNT(*) AS n FROM advisor_jobs WHERE owner=? AND workspace=? "
-                             "AND shared_at IS NOT NULL AND share_read_at IS NULL",
-                             (scope.owner, scope.workspace)).fetchone()
-        return row["n"]
+            rows = db.execute("SELECT id FROM advisor_jobs WHERE owner=? AND workspace=? AND shared_at>=? "
+                              "AND share_read_at IS NULL ORDER BY shared_at DESC LIMIT ?",
+                              (scope.owner, scope.workspace, since, READ_LIMIT)).fetchall()
+        return [row["id"] for row in rows]
 
 
 def register_share_tools(server: MCPServer, shares: AdvisorShares, tool_errors) -> None:
@@ -194,7 +202,7 @@ def share_reminder(shares: AdvisorShares):
             log.debug("share reminder skipped: %s", type(exc).__name__)
             return result
         if waiting:
-            note = {"type": "text", "text": REMINDER}
+            note = {"type": "text", "text": reminder(waiting)}
             if isinstance(result, dict) and isinstance(result.get("content"), list):
                 return {**result, "content": [*result["content"], note]}
             if isinstance(result, CallToolResult):
