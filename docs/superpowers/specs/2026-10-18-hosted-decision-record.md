@@ -1,0 +1,37 @@
+# Decision record: hosting the OpenRouter Sidecar
+
+**Date:** 2026-10-18 · **Status:** accepted by the user in the hosted-sidecar design review. Items marked *open* need the user before launch.
+
+## Decisions
+
+1. **Hosted remote MCP on Railway** for every Claude client (claude.ai, Desktop, Claude Code, Claude Tag). This supersedes the "No remote deployment is authorized" clause in `2026-10-05-northwestern-advisor-mcp-design.md`. The preconditions it named are now met by design:
+   - authenticated per-user access (Auth0 RBAC, `sidecar:use`);
+   - server-side transcript storage with user isolation (every row is scoped by `(iss, sub)` principal and workspace);
+   - a hosted OpenRouter credential design (per-user PKCE link, AES-GCM vault).
+2. **Region** (*open*): one Railway region. US East is recommended (closest to Chicago); the user confirms it at deploy.
+3. **Single replica.** In-process advisor jobs, guarded by a Postgres advisory lock.
+4. **Stored data:**
+   - advisor transcripts (briefs and final answers);
+   - session files the caller chose to send;
+   - job metadata and costs;
+   - preferences;
+   - linked OpenRouter keys, AES-256-GCM sealed and bound to the principal;
+   - link attempts (short-lived).
+   
+   **Not stored:** Auth0 tokens, reasoning traces, provider container contents.
+5. **Retention.**
+   - Chats idle for 90 days are purged with their jobs and files. Expired link attempts go after 1 day.
+   - Provider-side container files follow OpenRouter's own expiry (30 days idle).
+   - Generated images and uploads (M3) will be kept for 30 days.
+6. **Sandbox mode stays disabled** (`SIDECAR_SANDBOX_ENABLED` unset). On 2026-10-05 a live test showed that another key in the shared cohort workspace could list and download uploads. Inline sessions send files in the prompt and offer no tools.
+7. **Spend.** Each student's own OpenRouter key is charged, within the cohort workspace. Server limits: 2 concurrent jobs, 20 requests/min, $5/day per principal.
+8. **Local stdio server** stays until M5 parity, then it is retired.
+
+## Student notice (*open*: the user approves wording before launch)
+
+> The Northwestern AI Sidecar runs on a university-managed cloud server. When you
+> use it, your advisor conversations and any files you choose to send are stored on
+> that server so you can continue them later, and deleted after 90 days without use.
+> Your OpenRouter key is stored encrypted and is only used for your own requests,
+> which are billed to your key. Instructors can disable access at any time. Don't
+> send confidential or personal information you wouldn't put in a class assignment.

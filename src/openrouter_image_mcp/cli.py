@@ -1,4 +1,4 @@
-"""Command-line entry point: serve (default), login, logout, status, print-config."""
+"""Command-line entry point: serve (default), login, logout, status, serve-http, purge, print-config."""
 
 from __future__ import annotations
 
@@ -170,6 +170,19 @@ def _serve_http(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _purge(args: argparse.Namespace) -> int:
+    retention = importlib.import_module("openrouter_image_mcp.hosted.retention")
+    report = retention.main_purge(os.environ, apply=args.apply, days=args.days)
+    print(json.dumps(report))
+    return 0
+
+
+def _active_jobs(_args: argparse.Namespace) -> int:
+    retention = importlib.import_module("openrouter_image_mcp.hosted.retention")
+    print(json.dumps({"active_jobs": retention.active_jobs(retention.target_from(os.environ))}))
+    return 0
+
+
 def _print_config(args: argparse.Namespace) -> int:
     project = Path(__file__).resolve().parents[2]
     print(render_local_config(project, Path(sys.executable), cohort=args.cohort))
@@ -204,6 +217,12 @@ def _parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "serve-http", help="run the hosted multi-user server over Streamable HTTP"
     ).set_defaults(func=_serve_http)
+    purge = sub.add_parser("purge", help="hosted: delete idle chats past retention (dry run by default)")
+    purge.add_argument("--apply", action="store_true", help="delete instead of only counting")
+    purge.add_argument("--days", type=int, help="retention window (default RETENTION_DAYS or 90)")
+    purge.set_defaults(func=_purge)
+    sub.add_parser("active-jobs", help="hosted: count running advisor jobs (deploy when 0)"
+                   ).set_defaults(func=_active_jobs)
     pc = sub.add_parser("print-config", help="print an MCP client config snippet")
     pc.add_argument("--cohort", required=True, choices=sorted(COHORT_WORKSPACES))
     pc.set_defaults(func=_print_config)

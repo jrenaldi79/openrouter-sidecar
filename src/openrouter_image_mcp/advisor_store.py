@@ -65,6 +65,8 @@ class AdvisorStore:
             )""")
             # Added for headless sessions; legacy rows keep the shell they were made with.
             db.ensure_column("advisor_chats", "sandbox", "INTEGER NOT NULL DEFAULT 1")
+            # Retention: 0 means "not yet stamped" (rows from before this column).
+            db.ensure_column("advisor_chats", "last_active", "REAL NOT NULL DEFAULT 0")
             db.commit()
             yield db
 
@@ -98,9 +100,10 @@ class AdvisorStore:
                     model, title, [], sandbox)
         with self._connection() as db:
             db.execute(
-                "INSERT INTO advisor_chats (id,owner,workspace,container_id,model,title,sandbox) "
-                "VALUES (?,?,?,?,?,?,?)",
-                (chat.id, scope.owner, scope.workspace, chat.container_id, model, title, sandbox),
+                "INSERT INTO advisor_chats (id,owner,workspace,container_id,model,title,sandbox,"
+                "last_active) VALUES (?,?,?,?,?,?,?,?)",
+                (chat.id, scope.owner, scope.workspace, chat.container_id, model, title, sandbox,
+                 time.time()),
             )
         return chat
 
@@ -141,8 +144,8 @@ class AdvisorStore:
                 {"role": "user", "content": prompt},
                 {"role": "assistant", "content": answer},
             ]
-            db.execute("UPDATE advisor_chats SET history=? WHERE id=?",
-                       (json.dumps(history), chat_id))
+            db.execute("UPDATE advisor_chats SET history=?, last_active=? WHERE id=?",
+                       (json.dumps(history), time.time(), chat_id))
 
     def reset(self, scope: Scope, chat_id: str) -> Chat:
         return self._remove_or_reset(scope, chat_id, delete=False)

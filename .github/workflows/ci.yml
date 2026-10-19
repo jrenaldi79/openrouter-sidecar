@@ -21,3 +21,33 @@ jobs:
       - run: uv sync
       - run: uv run ruff check
       - run: uv run pytest
+
+  postgres:
+    # Hosted storage runs on Postgres (Railway in production); this covers the pg-marked tests.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:test@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v10.2.0
+      - run: uv python install 3.12
+      - run: uv sync
+      - run: uv run pytest -m pg
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t openrouter-sidecar:ci .

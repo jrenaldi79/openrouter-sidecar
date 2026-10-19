@@ -74,7 +74,18 @@ class LinkStore:
             row = self._active_row(db, principal.key, principal.workspace_id)
         if row is None:
             raise LinkRequiredError(self.issue(principal))
-        return self.vault.open(row["sealed_key"], principal_key=principal.key)
+        key = self.vault.open(row["sealed_key"], principal_key=principal.key)
+        if self.vault.needs_rotation(row["sealed_key"]):
+            self._reseal(principal, row["sealed_key"], key)
+        return key
+
+    def _reseal(self, principal: Principal, old: str, key: str) -> None:
+        # Key rotation: move rows to the newest vault key as they are used, so an
+        # old key can be retired once every active link has been read once.
+        with self._db() as db:
+            db.execute("UPDATE openrouter_links SET sealed_key=? WHERE principal=? AND workspace=? "
+                       "AND sealed_key=?", (self.vault.seal(key, principal_key=principal.key),
+                                            principal.key, principal.workspace_id, old))
 
     def label_for(self, principal: Principal) -> str | None:
         with self._db() as db:

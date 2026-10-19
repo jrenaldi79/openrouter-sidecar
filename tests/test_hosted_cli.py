@@ -38,3 +38,39 @@ async def test_redirect_transport_rewrites_openrouter_only():
         with pytest.raises(httpx.ConnectError):
             await client.get("https://elsewhere.example/")
     assert seen == ["http://127.0.0.1:9500/api/v1/models?x=1"]
+
+
+def test_purge_dry_run_then_apply(monkeypatch, tmp_path, capsys):
+    import json
+    import time
+
+    from openrouter_image_mcp import storage
+    from openrouter_image_mcp.advisor_store import AdvisorStore, Scope
+
+    path = tmp_path / "db.sqlite3"
+    store = AdvisorStore(path)
+    chat = store.create(Scope("o", "w"), "m", "t")
+    with storage.connect(path) as db:
+        db.execute("UPDATE advisor_chats SET last_active=? WHERE id=?", (time.time() - 100 * 86400, chat.id))
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///" + str(path))
+    assert cli.main(["purge"]) == 0
+    dry = json.loads(capsys.readouterr().out)
+    assert dry["chats"] == 1 and dry["applied"] is False and chat.id not in json.dumps(dry)
+    assert cli.main(["purge", "--apply", "--days", "30"]) == 0
+    applied = json.loads(capsys.readouterr().out)
+    assert applied["chats"] == 1 and applied["applied"] is True and applied["retention_days"] == 30
+    assert store.list(Scope("o", "w")) == []
+
+
+def test_purge_requires_database_url(monkeypatch, capsys):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    assert cli.main(["purge"]) == 1
+    assert "DATABASE_URL" in capsys.readouterr().err  # message names the variable
+
+
+def test_active_jobs_command(monkeypatch, tmp_path, capsys):
+    import json
+
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///" + str(tmp_path / "db.sqlite3"))
+    assert cli.main(["active-jobs"]) == 0
+    assert json.loads(capsys.readouterr().out) == {"active_jobs": 0}

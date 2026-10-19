@@ -161,3 +161,13 @@ def test_confirmation_names_the_target_account_and_warns(client, links):
     _, _, callback = _complete(client, links)
     assert "alice@u.northwestern.edu" in callback.text
     assert "not you" in callback.text.lower()
+
+
+def test_rotated_vault_reseals_on_read(db_target):
+    old = "v1:" + base64.b64encode(os.urandom(32)).decode()
+    new = "v2:" + base64.b64encode(os.urandom(32)).decode()
+    LinkStore(db_target, Vault(old), "k" * 32, ORIGIN).save(ALICE, KEY, "Alice key")
+    rotated = LinkStore(db_target, Vault(f"{new},{old}"), "k" * 32, ORIGIN)
+    assert rotated.key_for(ALICE) == KEY
+    # After one read the row is sealed with v2, so the old key can be retired.
+    assert LinkStore(db_target, Vault(new), "k" * 32, ORIGIN).key_for(ALICE) == KEY

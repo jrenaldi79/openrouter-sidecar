@@ -1,0 +1,16 @@
+.git
+.venv
+.dev-state
+.claude
+.pytest_cache
+.ruff_cache
+.superpowers
+**/__pycache__
+*.sqlite3
+ui
+tests
+docs
+reference
+plugin
+skills
+scripts
