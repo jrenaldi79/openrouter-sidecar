@@ -79,6 +79,16 @@ class _Postgres:
         row = self.connection.execute("SELECT to_regclass(%s) AS t", (name,)).fetchone()
         return row["t"] is not None
 
+    def ensure_column(self, table: str, column: str, ddl: str) -> None:
+        key = (self.url, f"{table}.{column}")
+        with _schema_lock:
+            if key in _schema_done:
+                return
+        self.connection.execute("SELECT pg_advisory_xact_lock(%s)", (_WRITE_LOCK,))
+        self.connection.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {_translate(ddl)}")
+        with _schema_lock:
+            _schema_done.add(key)
+
     def commit(self):
         self.connection.commit()
 
@@ -101,6 +111,11 @@ class _Sqlite:
     def has_table(self, name: str) -> bool:
         return self.connection.execute("SELECT name FROM sqlite_master WHERE type='table' "
                                        "AND name=?", (name,)).fetchone() is not None
+
+    def ensure_column(self, table: str, column: str, ddl: str) -> None:
+        columns = {row["name"] for row in self.connection.execute(f"PRAGMA table_info({table})")}
+        if column not in columns:
+            self.connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
 
     def commit(self):
         self.connection.commit()

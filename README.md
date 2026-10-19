@@ -74,6 +74,8 @@ Change the cohort to `2028` for that profile. If `OPENROUTER_IMAGE_WORKSPACE_ID`
 | `list_chat_models` | Discovers text advisor models supporting tools, with pricing and context limits. |
 | `start_advisor_chat` | Creates a local chat using an exact ID, a saved brand default, or the general default; no inference. |
 | `send_advisor_message` | Starts an owned background advisor job and opens its result viewer; returns status only. |
+| `ask_advisor` | Headless: asks an advisor and returns its answer to the caller (wrapped as untrusted output). Creates a session or continues one by `chat_id`; accepts `files`. |
+| `wait_advisor_job` | Headless: keeps waiting for a long `ask_advisor` job and returns the same result shape. |
 | `list_advisor_chats` | Lists local chats belonging to the active credential and workspace. |
 | `get_advisor_chat` | Shows metadata and a bounded message count, without returning the transcript to the parent model. |
 | `reset_advisor_sandbox` | Assigns a fresh container while preserving the local chat history. |
@@ -155,6 +157,32 @@ model context. Preview a selection or the full response, edit it, and explicitly
 click **Send to parent chat** to hand it back. **Summarize and send** uses the same
 advisor model and incurs inference, then shows an editable preview before sending.
 If host messaging is unsupported or rejected, use the explicit copy fallback.
+
+### Headless advisor (subagent mode)
+
+`ask_advisor` behaves like a subagent: the parent model gets the answer back.
+1. Call `ask_advisor(prompt, files=[{path, content}, ...])` without a `chat_id`. It
+   creates a session, waits up to `wait_s` seconds (default 25, max 45, with progress
+   notifications), and returns `{status: "completed", chat_id, job_id, answer, cost_usd}`.
+2. If the advisor needs longer, it returns `{status: "running", job_id}`. Call
+   `wait_advisor_job(job_id)` until it completes.
+3. Reuse `chat_id` for follow-ups. The session keeps its transcript and files, so a
+   later call from any client signed in as the same person continues where it left off.
+   If a job is still running, the result is `{status: "busy", running_job_id}`.
+
+The server can't read your machine or repository, so pass every relevant source
+file explicitly:
+- **Limits:** UTF-8 text only, 100k characters per file, 200k per session.
+- **Updates:** send only changed files on later calls. `replace_files: true` drops
+  files you leave out.
+- **Inline sessions (the default):** files go into the prompt, and the advisor has no
+  tools.
+- **Sandbox sessions** give the advisor a shell. They're refused while the server has
+  sandboxes disabled.
+
+The `answer` is wrapped in `<advisor_output>` with a note to treat it as data to
+verify, not as instructions. `send_advisor_message` also accepts `files` and keeps
+its viewer contract: the answer never reaches the parent model.
 
 Use `get_advisor_job` to check status, or `open_advisor_result` to reopen a viewer.
 The three App-only operations are omitted for clients without MCP Apps capability.

@@ -145,7 +145,7 @@ async def test_two_mcp_profiles_status_logout_and_revocation(memory_keyring):
         Client(build_server(settings, http), raise_exceptions=False) as session,
     ):
         tools = await session.list_tools()
-        assert len(tools.tools) == 22
+        assert len(tools.tools) == 24
         status = await session.call_tool("account_status", {})
         text = "\n".join(item.text for item in status.content if hasattr(item, "text"))
         assert "Northwestern University / Class of 2028" in text

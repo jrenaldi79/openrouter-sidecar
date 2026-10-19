@@ -105,7 +105,8 @@ def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transpor
     services = {}
     admission = Limits(AdvisorStore(target), **(limits or {}))
     workspaces = build_workspaces(target, links, profile_claim=settings.profile_claim,
-                                  admit=admission.admit, transport=transport)
+                                  admit=admission.admit, transport=transport,
+                                  sandbox_enabled=settings.sandbox_enabled)
     health = Health(target, gate, maintenance=settings.maintenance)
 
     @asynccontextmanager

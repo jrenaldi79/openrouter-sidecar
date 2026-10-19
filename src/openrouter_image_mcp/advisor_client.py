@@ -71,9 +71,10 @@ class AdvisorClient:
                 and (item.get("architecture") or {}).get("output_modalities") == ["text"]
                 and "tools" in (item.get("supported_parameters") or [])]
 
-    async def upload_skills(self, key: str, filename: str, content: bytes) -> str:
+    async def upload_skills(self, key: str, filename: str, content: bytes, *,
+                            content_type: str = "application/json") -> str:
         body = await self._request("POST", "files", key,
-                                   files={"file": (filename, content, "application/json")})
+                                   files={"file": (filename, content, content_type)})
         file_id = body.get("id")
         if not isinstance(file_id, str) or not FILE_ID.fullmatch(file_id):
             raise ProviderError("Skill upload returned an invalid file identifier.")

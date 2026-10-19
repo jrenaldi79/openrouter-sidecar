@@ -93,6 +93,16 @@ class AdvisorResults:
             pending = bool(json.loads(chat["uploads"]))
             return [self.status(dict(row) | {"cleanup_pending": pending}) for row in rows]
 
+    def active_for_chat(self, scope, chat_id):
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            self.store._row(db, scope, chat_id)
+            self._recover(db, scope)
+            row = db.execute("SELECT id FROM advisor_jobs WHERE owner=? AND workspace=? AND chat_id=? "
+                             "AND status IN ('queued','running')",
+                             (scope.owner, scope.workspace, chat_id)).fetchone()
+            return row["id"] if row else None
+
     def create(self, scope, chat, prompt, process_id, *, kind="message", source_job_id=None):
         job_id, token = "job_" + secrets.token_hex(16), secrets.token_hex(16)
         with self.connection() as db:

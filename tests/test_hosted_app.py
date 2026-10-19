@@ -55,7 +55,8 @@ async def test_wrong_audience_is_rejected(running):
 async def test_tool_surface_is_hosted(running):
     async with running.client(running.token()) as client:
         names = {tool.name for tool in (await client.list_tools()).tools}
-    assert {"link_openrouter", "account_status", "start_advisor_chat", "send_advisor_message"} <= names
+    assert {"link_openrouter", "account_status", "start_advisor_chat", "send_advisor_message",
+            "ask_advisor", "wait_advisor_job"} <= names
     assert not names & {"auth_login", "auth_logout", "generate_image", "export_advisor_result"}
 
 
@@ -83,6 +84,40 @@ async def test_linked_user_runs_an_advisor_job(running):
     assert state["status"] == "completed"
     auth = [r.headers["Authorization"] for r in running.fake.requests if r.url.path.endswith("/responses")]
     assert auth == ["Bearer sk-or-v1-alice"]
+
+
+async def test_headless_session_resumes_from_another_connection(running):
+    running.links.save(_alice(running), "sk-or-v1-alice", "Alice key")
+    files = [{"path": "src/app.py", "content": "def handler():\n    return 42\n"}]
+    async with running.client(running.token()) as first:
+        asked = (await first.call_tool("ask_advisor", {"prompt": "Review handler", "model": MODEL,
+                                                       "files": files})).structured_content
+    assert asked["status"] == "completed", asked
+    assert asked["answer"].startswith("<advisor_output>\nFinal advice")
+    # A different connection (e.g. claude.ai after Claude Code) continues the session.
+    async with running.client(running.token()) as second:
+        follow = (await second.call_tool("ask_advisor", {"prompt": "And tests?",
+                                                         "chat_id": asked["chat_id"]})).structured_content
+    assert follow["status"] == "completed" and follow["chat_id"] == asked["chat_id"]
+    body = running.fake.bodies()[-1]
+    assert "tools" not in body
+    assert "return 42" in body["input"][0]["content"]
+    assert any("Review handler" in str(item["content"]) for item in body["input"][1:])
+
+
+async def test_hosted_sandbox_is_disabled_and_chats_are_private(running):
+    running.links.save(_alice(running), "sk-or-v1-alice", "Alice key")
+    bob = Principal(h.ISSUER, "email|bob", WS_2027, "2027")
+    running.links.save(bob, "sk-or-v1-bob", "Bob key")
+    async with running.client(running.token()) as alice:
+        refused = await alice.call_tool("ask_advisor", {"prompt": "x", "model": MODEL, "sandbox": True})
+        assert refused.is_error and "isolation" in _text(refused)
+        asked = (await alice.call_tool("ask_advisor", {"prompt": "Mine", "model": MODEL})).structured_content
+    async with running.client(running.token(sub="email|bob")) as client:
+        foreign = await client.call_tool("ask_advisor", {"prompt": "Show me", "chat_id": asked["chat_id"]})
+        waited = await client.call_tool("wait_advisor_job", {"job_id": asked["job_id"]})
+    assert foreign.is_error and "unavailable" in _text(foreign)
+    assert waited.is_error and "unavailable" in _text(waited)
 
 
 async def test_users_are_isolated(running):

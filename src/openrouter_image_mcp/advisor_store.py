@@ -39,6 +39,8 @@ class Chat:
     model: str
     title: str
     history: list[dict[str, str]]
+    # Sandbox chats get the hosted shell; inline chats get files in the prompt only.
+    sandbox: bool = True
 
 
 def default_store_path() -> Path:
@@ -61,6 +63,8 @@ class AdvisorStore:
                 history TEXT NOT NULL DEFAULT '[]', uploads TEXT NOT NULL DEFAULT '[]',
                 lease_token TEXT, lease_until REAL NOT NULL DEFAULT 0
             )""")
+            # Added for headless sessions; legacy rows keep the shell they were made with.
+            db.ensure_column("advisor_chats", "sandbox", "INTEGER NOT NULL DEFAULT 1")
             db.commit()
             yield db
 
@@ -77,7 +81,7 @@ class AdvisorStore:
     @staticmethod
     def _chat(row) -> Chat:
         return Chat(row["id"], row["container_id"], row["model"], row["title"],
-                    json.loads(row["history"]))
+                    json.loads(row["history"]), bool(row["sandbox"]))
 
     @staticmethod
     def _idle(row):
@@ -89,14 +93,14 @@ class AdvisorStore:
         if not token or row["lease_token"] != token or row["lease_until"] <= time.time():
             raise AdvisorAccessError("Advisor chat is unavailable for this operation.")
 
-    def create(self, scope: Scope, model: str, title: str) -> Chat:
+    def create(self, scope: Scope, model: str, title: str, *, sandbox: bool = True) -> Chat:
         chat = Chat("chat_" + secrets.token_hex(16), "nu_" + secrets.token_hex(16),
-                    model, title, [])
+                    model, title, [], sandbox)
         with self._connection() as db:
             db.execute(
-                "INSERT INTO advisor_chats (id,owner,workspace,container_id,model,title) "
-                "VALUES (?,?,?,?,?,?)",
-                (chat.id, scope.owner, scope.workspace, chat.container_id, model, title),
+                "INSERT INTO advisor_chats (id,owner,workspace,container_id,model,title,sandbox) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (chat.id, scope.owner, scope.workspace, chat.container_id, model, title, sandbox),
             )
         return chat
 
@@ -155,6 +159,8 @@ class AdvisorStore:
                 raise AdvisorAccessError("Skill upload cleanup is pending; send a message to retry.")
             if delete:
                 db.execute("DELETE FROM advisor_chats WHERE id=?", (chat_id,))
+                if db.has_table("session_files"):
+                    db.execute("DELETE FROM session_files WHERE chat_id=?", (chat_id,))
                 return None
             db.execute("UPDATE advisor_chats SET container_id=? WHERE id=?",
                        ("nu_" + secrets.token_hex(16), chat_id))

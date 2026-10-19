@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import secrets
 import time
 
 from .advisor import RETENTION
-from .advisor_results import HEARTBEAT_S, AdvisorResults
+from .advisor_results import ACTIVE, HEARTBEAT_S, AdvisorResults
 from .advisor_store import AdvisorAccessError
 from .errors import BadRequestError, OpenRouterError
 from .logs import redact
@@ -29,6 +30,7 @@ class AdvisorJobs:
         self.process_id = secrets.token_hex(16)
         self._tasks = {}
         self._records = {}
+        self._done = {}  # job_id -> Event set when its task finishes
         self._closed = False
 
     def _owned(self, job_id):
@@ -38,8 +40,8 @@ class AdvisorJobs:
         self.service._current(scope)
         return scope, row
 
-    async def start(self, chat_id, prompt, skills=None):
-        return self._start(chat_id, prompt, skills)
+    async def start(self, chat_id, prompt, skills=None, *, files=None, replace_files=False):
+        return self._start(chat_id, prompt, skills, files=files, replace_files=replace_files)
 
     async def start_demo(self, chat_id, prompt, skills=None, *, _context_guard=None,
                          _before_request=None):
@@ -47,8 +49,8 @@ class AdvisorJobs:
         return self._start(chat_id, prompt, skills, _demo_limits=(256, 1),
                            _context_guard=_context_guard, _before_request=_before_request)
 
-    def _start(self, chat_id, prompt, skills=None, *, source_job_id=None,
-               _demo_limits=None, _context_guard=None, _before_request=None):
+    def _start(self, chat_id, prompt, skills=None, *, source_job_id=None, files=None,
+               replace_files=False, _demo_limits=None, _context_guard=None, _before_request=None):
         key, scope = self.service._credentials()
         self.service._current(scope)
         if self.admit:
@@ -57,21 +59,24 @@ class AdvisorJobs:
             _context_guard()
         if _before_request:
             _before_request()
-        chat, skills, _, _ = self.service._prepare(chat_id, prompt, skills, key, scope)
+        chat, skills, _, _ = self.service._prepare(chat_id, prompt, skills, key, scope, files)
         if self._closed:
             raise BadRequestError("Advisor server is shutting down; no inference was requested.")
         row = self.results.create(scope, chat, redact(prompt), self.process_id,
                                   kind="summary" if source_job_id else "message",
                                   source_job_id=source_job_id)
         task = asyncio.create_task(self._run(scope, row, skills, _demo_limits, _context_guard,
-                                            _before_request),
+                                            _before_request, files=files,
+                                            replace_files=replace_files),
                                    name="advisor-" + row["id"])
         self._tasks[row["id"]] = task
         self._records[row["id"]] = (scope, row)
+        self._done[row["id"]] = asyncio.Event()
 
         def done(completed):
             self._tasks.pop(row["id"], None)
             self._records.pop(row["id"], None)
+            self._done.pop(row["id"]).set()
 
         task.add_done_callback(done)
         return self.results.status(row)
@@ -94,7 +99,7 @@ class AdvisorJobs:
         return bool(self.service.store.pending_uploads(scope, chat_id))
 
     async def _run(self, scope, row, skills, demo_limits=None, context_guard=None,
-                   before_request=None):
+                   before_request=None, *, files=None, replace_files=False):
         heartbeat = None
         job_id = row["id"]
 
@@ -117,7 +122,8 @@ class AdvisorJobs:
             source = (self.results.get(scope, row["source_job_id"])["answer"]
                       if row["source_job_id"] else None)
             reply = await self.service.send(
-                row["chat_id"], row["prompt"], skills, on_text=on_text, _scope=scope,
+                row["chat_id"], row["prompt"], skills, files=files, replace_files=replace_files,
+                on_text=on_text, _scope=scope,
                 _lease_token=row["lease_token"], _guard=guard,
                 _summary_answer=source, _demo_limits=demo_limits, _before_request=before_request,
             )
@@ -153,6 +159,32 @@ class AdvisorJobs:
     def status(self, job_id):
         _, row = self._owned(job_id)
         return self.results.status(row)
+
+    def active_job(self, chat_id):
+        _, scope = self.service._credentials()
+        self.service._current(scope)
+        return self.results.active_for_chat(scope, chat_id)
+
+    async def wait(self, job_id, wait_s, progress=None, progress_every=10.0):
+        """Owned job row once it finishes or wait_s elapses; progress(elapsed) periodically."""
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        deadline, next_progress = start + wait_s, start + progress_every
+        while True:
+            _, row = self._owned(job_id)
+            now = loop.time()
+            if row["status"] not in ACTIVE or now >= deadline:
+                return row
+            if progress and now >= next_progress:
+                await progress(now - start)
+                next_progress += progress_every
+            timeout = max(0.0, min(deadline, next_progress if progress else deadline, now + 1.0) - now)
+            event = self._done.get(job_id)
+            if event is None:
+                await asyncio.sleep(timeout)  # another process's job: poll the database
+                continue
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(event.wait(), timeout)
 
     def view(self, job_id):
         _, row = self._owned(job_id)

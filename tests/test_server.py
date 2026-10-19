@@ -224,7 +224,7 @@ async def test_build_server_returns_named_mcpserver(server):
 async def test_tool_names(session):
     tools = (await session.list_tools()).tools
     assert {t.name for t in tools} == TOOLS - APP_ONLY_TOOLS
-    assert len(tools) == 22
+    assert len(tools) == 24
 
 
 @pytest.mark.parametrize("session", [True], indirect=True)

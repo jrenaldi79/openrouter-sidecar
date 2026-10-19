@@ -76,7 +76,8 @@ class ByWorkspace:
 
 def build_workspaces(target, links, *, profile_claim: str, admit, timeout_s: float = 600.0,
                      advisor_timeout_s: float = ADVISOR_MAX_TIMEOUT_S,
-                     transport: httpx.AsyncBaseTransport | None = None) -> dict[str, WorkspaceServices]:
+                     transport: httpx.AsyncBaseTransport | None = None,
+                     sandbox_enabled: bool = False) -> dict[str, WorkspaceServices]:
     services = {}
     for workspace in COHORT_WORKSPACES.values():
         credentials = HostedCredentials(workspace, links, profile_claim)
@@ -85,7 +86,8 @@ def build_workspaces(target, links, *, profile_claim: str, admit, timeout_s: flo
                             advisor_timeout_s=advisor_timeout_s)
         advisors = AdvisorService(workspace, AdvisorStore(target),
                                   AdvisorClient(workspace, advisor_timeout_s, transport=transport),
-                                  credentials=credentials)
+                                  credentials=credentials, sandbox_default=False,
+                                  sandbox_allowed=sandbox_enabled)
         jobs = AdvisorJobs(advisors, admit=admit)
         preferences = PreferenceService(advisors)
         http = OpenRouterClient(timeout_s=timeout_s, transport=transport, workspace_id=workspace,
