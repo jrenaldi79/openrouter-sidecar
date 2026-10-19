@@ -96,6 +96,8 @@ Tell the "MPD MCP Interview Coach tool" session before any tenant change. Each r
 
 **One owner at a time.** `/ready` holds a Postgres advisory lock, so a second replica reports not ready. Advisor jobs run in-process. Replicas must stay at 1.
 
+**Database connections.** Store calls share one pool per `DATABASE_URL` (`storage.POOL_MAX` = 20 sessions; idle extras close after 5 minutes). The owner lock holds one more dedicated session, so the service needs at most 21 of Railway Postgres's 100. Each pooled session is pinged before reuse, so a Postgres restart costs a reconnect, not failed calls. If the pool is exhausted, a call waits up to 10 s and then fails as a database error. There is no environment knob; change `POOL_MAX` in code if replicas or load change. Advisor result polls take the write lock only when a job's heartbeat has lapsed.
+
 ## 4. Deploy procedure
 
 Railway restarts the service on every deploy, **and on every variable change**. A restart interrupts advisor jobs that are running in-process. They are marked "interrupted" and never retried automatically. So:

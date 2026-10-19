@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import logging
 from collections.abc import AsyncIterator
@@ -166,6 +167,7 @@ def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transpor
             for item in workspaces.values():
                 await item.close()
             await health.stop()
+            await asyncio.to_thread(storage.close_pool, target)
 
     server = MCPServer(
         SERVER_NAME, version=__version__, lifespan=lifespan, icons=app_icons(),

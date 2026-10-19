@@ -47,17 +47,28 @@ class AdvisorResults:
         return {"job_id": row["id"]} | {key: bool(row[key]) if key == "cleanup_pending"
                                             else row[key] for key in STATUS_FIELDS}
 
-    def _recover(self, db, scope):
-        rows = db.execute("SELECT * FROM advisor_jobs WHERE owner=? AND workspace=? "
+    @staticmethod
+    def _stale(db, scope):
+        return db.execute("SELECT * FROM advisor_jobs WHERE owner=? AND workspace=? "
                           "AND status IN ('queued','running') AND heartbeat_until<=?",
                           (scope.owner, scope.workspace, time.time())).fetchall()
-        for row in rows:
+
+    def _recover(self, db, scope):
+        """Interrupt lapsed jobs; the caller holds the write lock."""
+        for row in self._stale(db, scope):
             chat = self.store._row(db, scope, row["chat_id"])
             pending = bool(json.loads(chat["uploads"]))
             db.execute("UPDATE advisor_jobs SET status='interrupted', error=?,cleanup_pending=? WHERE id=?",
                        (("Advisor work was interrupted after its server heartbeat expired; "
                          "no automatic retry was made."), pending, row["id"]))
             self._release(db, scope, row)
+
+    def _recover_for_read(self, db, scope):
+        # Polls arrive every few seconds per open viewer. Only a lapsed job needs a
+        # write, so only then take the (on Postgres, server-wide) write lock.
+        if self._stale(db, scope):
+            db.execute("BEGIN IMMEDIATE")
+            self._recover(db, scope)
 
     @staticmethod
     def _release(db, scope, row):
@@ -78,15 +89,13 @@ class AdvisorResults:
 
     def get(self, scope, job_id):
         with self.connection() as db:
-            db.execute("BEGIN IMMEDIATE")
-            self._recover(db, scope)
+            self._recover_for_read(db, scope)
             return dict(self._row(db, scope, job_id))
 
     def for_chat(self, scope, chat_id, limit):
         with self.connection() as db:
-            db.execute("BEGIN IMMEDIATE")
             chat = self.store._row(db, scope, chat_id)
-            self._recover(db, scope)
+            self._recover_for_read(db, scope)
             rows = db.execute("SELECT * FROM advisor_jobs WHERE owner=? AND workspace=? "
                               "AND chat_id=? ORDER BY rowid DESC LIMIT ?",
                               (scope.owner, scope.workspace, chat_id, limit)).fetchall()
@@ -95,9 +104,8 @@ class AdvisorResults:
 
     def active_for_chat(self, scope, chat_id):
         with self.connection() as db:
-            db.execute("BEGIN IMMEDIATE")
             self.store._row(db, scope, chat_id)
-            self._recover(db, scope)
+            self._recover_for_read(db, scope)
             row = db.execute("SELECT id FROM advisor_jobs WHERE owner=? AND workspace=? AND chat_id=? "
                              "AND status IN ('queued','running')",
                              (scope.owner, scope.workspace, chat_id)).fetchone()
@@ -148,15 +156,20 @@ class AdvisorResults:
             if fields.get("status") not in (None, *ACTIVE):
                 self._release(db, scope, row)
 
-    def interrupt(self, scope, job_id, process_id, *, error, suppress=False, cleanup_pending=False):
-        """Shutdown/account-change bookkeeping uses captured ownership, no provider I/O."""
+    def interrupt(self, scope, job_id, process_id, *, error, suppress=False, cleanup_pending=False,
+                  answer=None):
+        """Shutdown/account-change bookkeeping uses captured ownership, no provider I/O.
+
+        ``answer`` is the newest streamed text when it is ahead of the saved row.
+        """
         with self.connection() as db:
             db.execute("BEGIN IMMEDIATE")
             row = self._row(db, scope, job_id)
             if row["process_id"] == process_id and row["status"] in ACTIVE:
                 db.execute("UPDATE advisor_jobs SET status='interrupted',error=?,answer=?,"
                            "cleanup_pending=? WHERE id=?",
-                           (error, "" if suppress else row["answer"], cleanup_pending, job_id))
+                           (error, "" if suppress else row["answer"] if answer is None else answer,
+                            cleanup_pending, job_id))
                 self._release(db, scope, row)
 
     def delete_chat(self, scope, chat_id):

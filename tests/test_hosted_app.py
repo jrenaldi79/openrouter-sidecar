@@ -167,3 +167,13 @@ async def test_link_tool_returns_single_use_url(running):
     async with running.client(running.token()) as client:
         text = _text(await client.call_tool("link_openrouter", {}))
     assert f"http://127.0.0.1:{running.port}/link/openrouter/start?t=" in text
+
+
+async def test_shutdown_closes_the_database_pool(db_target, monkeypatch):
+    from openrouter_image_mcp import storage
+
+    closed = []
+    monkeypatch.setattr(storage, "close_pool", closed.append)
+    async with running_server(db_target):
+        assert closed == []
+    assert [str(target) for target in closed] == [str(db_target)]

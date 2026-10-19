@@ -19,6 +19,7 @@ from openrouter_image_mcp.advisor import AdvisorService, SkillPacket
 from openrouter_image_mcp.advisor_client import AdvisorClient
 from openrouter_image_mcp.advisor_store import AdvisorAccessError, AdvisorStore
 from openrouter_image_mcp.errors import BadRequestError, OpenRouterError
+from tests.advisor_streams import SyntheticStream, event, final
 
 WORKSPACE = "jobs-workspace"
 KEY_A = "sk-or-v1-jobs-account-a"
@@ -28,47 +29,6 @@ MODEL = "openai/test-advisor"
 
 def test_jobs_backend_is_available():
     assert importlib.util.find_spec("openrouter_image_mcp.advisor_jobs"), "AdvisorJobs missing"
-
-
-def event(kind, **fields):
-    return ("data: " + json.dumps({"type": kind, **fields}) + "\n\n").encode()
-
-
-def final(text="Final advice", status="completed", container=None):
-    body = {"status": status, "output": [{"type": "message", "role": "assistant",
-            "phase": "final_answer", "status": "completed", "content": [
-                {"type": "output_text", "text": text}]}], "usage": {"cost": 0.002}}
-    if container:
-        body["output"].append({"type": "openrouter:shell", "container_id": container})
-    return body
-
-
-class SyntheticStream(httpx.AsyncByteStream):
-    def __init__(self, state):
-        self.state = state
-
-    async def __aiter__(self):
-        yield event("response.output_item.added", output_index=0, item={
-            "type": "message", "role": "assistant", "phase": "final_answer"})
-        yield event("response.reasoning_text.delta", delta="SECRET_REASONING")
-        yield event("response.output_text.delta", output_index=0, delta=self.state["partial"])
-        self.state["entered"].set()
-        try:
-            await self.state["release"].wait()
-            if self.state.get("raw"):
-                for raw in self.state["raw"]:
-                    yield raw
-            elif self.state.get("malformed"):
-                yield b"data: invalid JSON\n\n"
-            elif self.state.get("oversized"):
-                yield b"data: " + b"x" * 300_000 + b"\n\n"
-            elif not self.state.get("no_final"):
-                yield event("response.completed", response=final(
-                    self.state["answer"], self.state.get("final_status", "completed"),
-                    self.state.get("container")))
-        finally:
-            self.state["cancelled"] += 1
-
 
 
 def _sqlite_only(store):
