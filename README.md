@@ -46,8 +46,7 @@ The connector brings its own workflow guide (server instructions) and the class 
 
 **Tool permissions.** claude.ai asks before each connector tool call; a server can't turn that off. It does group the Sidecar's tools under Connectors → OpenRouter Sidecar → Tool permissions, using the tools' MCP annotations (`src/openrouter_image_mcp/tool_annotations.py`):
 - **Read-only tools** are free lookups; setting the whole group to *Always allow* is safe.
-- **Interactive tools** have an in-chat app. The `Open…` viewers and `remask_image` are free; `generate_image`, `edit_image` and `send_advisor_message` cost money.
-- **Write/delete tools** create or change something. `ask_advisor` costs money; `delete_advisor_chat` and `unlink_openrouter` delete things. `create_image_upload`, `start_advisor_chat`, `set_sidecar_preferences` and `link_openrouter` are free.
+- **Write/delete tools** create or change something, or open an in-chat app. `ask_advisor`, `send_advisor_message`, `generate_image` and `edit_image` cost money; `delete_advisor_chat` and `unlink_openrouter` delete things. The `Open…` viewers, `remask_image`, `create_image_upload`, `start_advisor_chat`, `set_sidecar_preferences` and `link_openrouter` are free. The viewers sit here because claude.ai doesn't render the app of a tool labelled read-only.
 
 Reconnect the connector after an update that changes tools: claude.ai keeps the tool list from when it was added. In Claude Code, allow the free tools with `permissions.allow` entries such as `mcp__openrouter-sidecar__account_status`.
 

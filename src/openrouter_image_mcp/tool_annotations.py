@@ -2,9 +2,10 @@
 
 Hosts (claude.ai, Claude Desktop) group a connector's tools by these hints, so a
 user can allow the free read-only tools at once and keep approval on calls that
-spend money or delete something. They are hints only: the server can't skip a
-host's approval prompt. All four hints are set explicitly, because the MCP
-defaults (destructive, open world) would mislabel most tools.
+spend money or delete something. Tools that open an MCP App for the user are not
+labelled read-only: claude.ai doesn't render a read-only tool's app. They are hints
+only: the server can't skip a host's approval prompt. All four hints are set
+explicitly, because the MCP defaults (destructive, open world) would mislabel most tools.
 """
 
 from __future__ import annotations
@@ -31,8 +32,11 @@ ANNOTATIONS: dict[str, ToolAnnotations] = {
                      "resolve_advisor_model"), _READ_OPENROUTER),
     **dict.fromkeys(("list_advisor_chats", "get_advisor_chat", "get_advisor_job", "wait_advisor_job",
                      "get_advisor_result", "get_sidecar_preferences", "get_sidecar_settings",
-                     "get_sidecar_demo", "get_image_download", "open_advisor_result",
-                     "open_sidecar_settings", "open_image_uploader"), _READ),
+                     "get_sidecar_demo", "get_image_download"), _READ),
+    # Free, but never read-only: claude.ai shows a read-only tool's result as a plain
+    # call and doesn't render its MCP App.
+    **dict.fromkeys(("open_advisor_result", "open_sidecar_settings", "open_image_uploader"),
+                    _hints(idempotent=True)),
     **dict.fromkeys(("ask_advisor", "send_advisor_message", "generate_image", "edit_image",
                      "summarize_advisor_result", "run_sidecar_demo"), _PAID),
     **dict.fromkeys(("create_image_upload", "remask_image", "export_advisor_result", "create_local_import",
