@@ -59,6 +59,7 @@ Operators: see [docs/HOSTED_OPERATIONS.md](docs/HOSTED_OPERATIONS.md) for config
 | `remask_image` | Re-blends a masked edit with a new mask by asset id. Free: no model call. |
 | `get_image_download` | Returns fresh 24-hour download links for one of your assets. |
 | `open_image_uploader` | MCP Apps clients only: opens a drop zone that uploads from your computer and adds the asset ids to the conversation. |
+| `create_local_import` | Returns a one-time link and the two commands that move your local Sidecar chats and settings here (see below). |
 
 ### Hosted and local
 
@@ -151,6 +152,26 @@ Hosts advertising MCP Apps HTML support receive a bundled gallery for `generate_
 `edit_image` and `remask_image`, with JPEG previews, filenames, reported usage/cost, notes
 and failures. Clients without that capability keep receiving ordinary text and image
 content. SVGs and files beyond the preview limit show their filenames without an inline preview.
+
+## Moving from the local Sidecar
+
+If you used the local (Claude Desktop) Sidecar, you can bring its advisor chats and
+settings to the hosted connector:
+
+1. In the hosted connector, ask Claude to import your local Sidecar chats. `create_local_import` returns a one-time link, valid for 10 minutes.
+2. On your computer, run the two commands it gives you:
+
+   ```bash
+   openrouter-image-mcp export-local --cohort 2027 --out sidecar-export.json
+   curl -T sidecar-export.json "<link>"
+   ```
+
+The export holds that cohort's chats (titles, models, transcripts, session files) and
+your default models. It never holds your OpenRouter key; link OpenRouter on the
+hosted connector separately. Imported chats get new chat ids and continue where they
+left off. Exports from another class year are refused, and the same export imports
+only once. Your hosted settings are only filled in if you haven't chosen any yet.
+Delete the export file afterwards, since it contains your transcripts.
 
 ## Cost and privacy
 

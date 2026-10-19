@@ -32,6 +32,7 @@ HOSTED_ONLY_TOOLS = {
     "create_image_upload",
     "get_image_download",
     "open_image_uploader",
+    "create_local_import",
 }
 
 

@@ -23,7 +23,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from .. import storage
+from .. import local_bundle, storage
 from ..advisor_store import Scope
 from ..assets import Asset, AssetError, AssetStore
 from ..imaging import InputError
@@ -34,6 +34,8 @@ UPLOAD_TTL_S = 600
 TICKET_GRACE_S = 86400
 DOWNLOAD_TTL_S = 86400
 FORMATS = {"image/png": "PNG", "image/jpeg": "JPEG", "image/webp": "WEBP"}
+# Import tickets share the table; the mime keeps the two kinds of link apart.
+BUNDLE_MIME = "application/vnd.sidecar-export+json"
 _HEADERS = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
 # The uploader app PUTs from a sandboxed iframe (opaque origin). The single-use URL is
 # the only credential (no cookies), so any origin may use it.
@@ -80,14 +82,22 @@ class TransferTokens:
             raise InputError(f"size_bytes must be 1 to {MAX_UPLOAD_BYTES} (20 MB).")
         # The name ends up in a Content-Disposition header: keep it to safe characters.
         name = re.sub(r"[^A-Za-z0-9._ -]", "_", filename or "image").strip(" .")[:200] or "image"
+        return self._ticket(scope, name, mime, size_bytes, "uploads")
+
+    def issue_import(self, scope: Scope) -> dict:
+        """A one-time link for a local export bundle (`PUT /imports/{token}`)."""
+        return self._ticket(scope, "local-export.json", BUNDLE_MIME, local_bundle.MAX_BUNDLE_BYTES,
+                            "imports")
+
+    def _ticket(self, scope: Scope, name: str, mime: str, size: int, path: str) -> dict:
         upload_id, expires = "upl_" + secrets.token_hex(16), int(self.clock()) + UPLOAD_TTL_S
         with self._db() as db:
             db.execute("INSERT INTO image_uploads (id,owner,workspace,filename,mime,size,expires_at) "
                        "VALUES (?,?,?,?,?,?,?)",
-                       (upload_id, scope.owner, scope.workspace, name, mime, size_bytes, expires))
+                       (upload_id, scope.owner, scope.workspace, name, mime, size, expires))
         token = f"{upload_id}.{expires}.{self._sign(f'up|{upload_id}|{expires}')}"
-        return {"upload_id": upload_id, "upload_url": f"{self.origin}/uploads/{token}",
-                "expires_in": UPLOAD_TTL_S, "max_bytes": size_bytes}
+        return {"upload_id": upload_id, "upload_url": f"{self.origin}/{path}/{token}",
+                "expires_in": UPLOAD_TTL_S, "max_bytes": size}
 
     def claim_upload(self, token: str) -> dict:
         """Single use: the first valid PUT consumes the token, even if its body is rejected."""
@@ -159,7 +169,7 @@ def check_image(data: bytes, mime: str) -> tuple[int, int]:
     return width, height
 
 
-async def _read_limited(request: Request, limit: int) -> bytes:
+async def read_limited(request: Request, limit: int) -> bytes:
     chunks, total = [], 0
     async for chunk in request.stream():
         total += len(chunk)
@@ -173,7 +183,9 @@ def transfer_routes(tokens: TransferTokens, assets: AssetStore) -> list[Route]:
     async def upload(request: Request):
         try:
             row = tokens.claim_upload(request.path_params["token"])
-            data = await _read_limited(request, row["size"])
+            if row["mime"] not in FORMATS:
+                raise TransferError("This link is not an image upload link.")
+            data = await read_limited(request, row["size"])
             width, height = check_image(data, row["mime"])
             asset = assets.put(Scope(row["owner"], row["workspace"]), data, kind="input",
                                mime=row["mime"], filename=row["filename"], width=width, height=height)

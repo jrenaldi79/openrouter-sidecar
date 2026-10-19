@@ -1,4 +1,5 @@
-"""Command-line entry point: serve (default), login, logout, status, serve-http, purge, print-config."""
+"""Command-line entry point: serve (default), login, logout, status, serve-http, purge,
+active-jobs, export-local, print-config."""
 
 from __future__ import annotations
 
@@ -183,6 +184,16 @@ def _active_jobs(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _export_local(args: argparse.Namespace) -> int:
+    bundles = importlib.import_module("openrouter_image_mcp.local_bundle")
+    try:
+        print(bundles.run_export(args.cohort, Path(args.out)))
+    except OpenRouterError as exc:
+        print(redact(exc.message), file=sys.stderr)
+        return 1
+    return 0
+
+
 def _print_config(args: argparse.Namespace) -> int:
     project = Path(__file__).resolve().parents[2]
     print(render_local_config(project, Path(sys.executable), cohort=args.cohort))
@@ -223,6 +234,10 @@ def _parser() -> argparse.ArgumentParser:
     purge.set_defaults(func=_purge)
     sub.add_parser("active-jobs", help="hosted: count running advisor jobs (deploy when 0)"
                    ).set_defaults(func=_active_jobs)
+    export = sub.add_parser("export-local", help="export local chats and settings for the hosted connector")
+    export.add_argument("--cohort", required=True, choices=sorted(COHORT_WORKSPACES))
+    export.add_argument("--out", required=True, help="where to write the JSON export")
+    export.set_defaults(func=_export_local)
     pc = sub.add_parser("print-config", help="print an MCP client config snippet")
     pc.add_argument("--cohort", required=True, choices=sorted(COHORT_WORKSPACES))
     pc.set_defaults(func=_print_config)

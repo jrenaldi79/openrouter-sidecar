@@ -88,10 +88,13 @@ def test_tool_text_redaction_keeps_link_urls():
 def test_logs_withhold_image_transfer_tokens(capsys):
     upload = f"/uploads/upl_{'a' * 32}.1792372091.{FAKE_SIG}-up"
     download = f"/assets/img_{'b' * 32}.1792372091.image.{FAKE_SIG}-dl"
+    imported = f"/imports/upl_{'c' * 32}.1792372091.{FAKE_SIG}-im"
     with _configured_logging() as log:
         log.info('"PUT %s HTTP/1.1" 200', upload)
         log.info('"GET %s HTTP/1.1" 200', download)
+        log.info('"PUT %s HTTP/1.1" 200', imported)
     err = capsys.readouterr().err
     assert FAKE_SIG not in err
     assert "/uploads/[withheld]" in err and "/assets/[withheld]" in err
+    assert "/imports/[withheld]" in err
     assert logs.redact(download) == download  # tool output keeps the link

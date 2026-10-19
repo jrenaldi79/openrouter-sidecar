@@ -32,6 +32,7 @@ from ..server import SERVER_NAME, _tool_errors
 from .health import MAINTENANCE, Health
 from .image_tools import register_image_tools
 from .images import HostedImages
+from .imports import LocalImports, import_routes, register_import_tool
 from .limits import Limits
 from .link_routes import link_routes
 from .links import LinkStore
@@ -53,6 +54,22 @@ def storage_target(database_url: str):
     if storage.is_postgres(database_url):
         return database_url
     return Path(database_url.removeprefix("sqlite:///"))
+
+
+def _scope_for(settings: HostedSettings, gate: Gate):
+    def scope_for() -> Scope:
+        gate.check()
+        who = current_principal(settings.profile_claim)
+        return Scope(who.key, who.workspace_id)
+    return scope_for
+
+
+def _register_imports(server: MCPServer, settings: HostedSettings, target, gate: Gate) -> None:
+    """Local-export import (M5); needs no blob volume."""
+    tokens = TransferTokens(target, settings.link_signing_key, settings.public_origin)
+    register_import_tool(server, tokens, _scope_for(settings, gate), _tool_errors)
+    for route in import_routes(tokens, LocalImports(target)):
+        server.custom_route(route.path, sorted(route.methods - {"HEAD"}))(route.endpoint)
 
 
 def transport_security(settings: HostedSettings) -> TransportSecuritySettings:
@@ -104,11 +121,7 @@ def _register_account_tools(server: MCPServer, links: LinkStore, settings: Hoste
 def _register_images(server: MCPServer, settings: HostedSettings, target, services: dict,
                      gate: Gate, admission: Limits) -> dict:
     """Image tools and transfer routes; only with a blob volume (ASSET_DIR)."""
-    def scope_for() -> Scope:
-        gate.check()
-        who = current_principal(settings.profile_claim)
-        return Scope(who.key, who.workspace_id)
-
+    scope_for = _scope_for(settings, gate)
     assets = AssetStore(target, LocalDirBlobs(settings.asset_dir))
     transfers = TransferTokens(target, settings.link_signing_key, settings.public_origin)
     hosted = HostedImages(assets, transfers, services["images"], scope_for, max_input_edge=2048,
@@ -176,6 +189,7 @@ def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transpor
     _register_account_tools(server, links, settings, gate)
     for route in link_routes(links, exchange=exchange, verify=verify, auth_url=auth_url):
         server.custom_route(route.path, sorted(route.methods - {"HEAD"}))(route.endpoint)
+    _register_imports(server, settings, target, gate)
     if settings.asset_dir:
         images.update(_register_images(server, settings, target, services, gate, admission))
     health.register(server)

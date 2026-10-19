@@ -1,3 +1,11 @@
+---
+title: "Hosted Sidecar acceptance results"
+description: "Live acceptance results for the deployed hosted Sidecar (real Auth0, Railway), kept apart from synthetic runs."
+type: "status"
+status: "maintained"
+read_when: "Recording or checking live acceptance of the hosted server."
+---
+
 # Hosted Sidecar acceptance results
 
 Live results only. The synthetic multi-user run (fakes for Auth0 and OpenRouter) is recorded in `docs/E2E_LOCAL.md`.

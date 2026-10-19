@@ -17,7 +17,8 @@ Those remain acceptance steps for you.
 | `scripts/dev/fake_identity.py` | Local issuer. It serves a JWKS on `127.0.0.1:9400` and mints contract-shaped RS256 tokens (`permissions`, profile claim). |
 | `scripts/dev/fake_openrouter.py` | Local OpenRouter on `127.0.0.1:9500`. It covers the PKCE page, code exchange, `/key`, `/models` and `/responses`. Replies describe the files and turns the advisor saw. |
 | `scripts/dev/run_sidecar.sh` | `serve-http` with dev flags. `SIDECAR_DEV_INSECURE_ISSUER` and `SIDECAR_DEV_OPENROUTER_URL` are accepted only for localhost. |
-| `scripts/dev/e2e_local.py` | Driver that runs 38 checks and prints PASS/FAIL. It never prints tokens or keys. |
+| `scripts/dev/e2e_local.py` | Driver that runs 46 checks and prints PASS/FAIL. It never prints tokens or keys. |
+| `scripts/dev/e2e_migration.py` | The M5 leg: builds a local advisor database, exports it, imports it as a new student and continues the chat. |
 | `.claude/launch.json` | Starts the three servers (`fake-identity`, `fake-openrouter`, `sidecar-http`). |
 
 ## Run it
@@ -74,3 +75,14 @@ uv run python scripts/dev/e2e_local.py --state .dev-state
 Access logs show `/uploads/[withheld]` and `/assets/[withheld]` in place of the signed tokens.
 
 A manual pass in the in-app browser of the link pages (fake sign-in → confirm page → "Linked") also succeeded, and the browser-linked user then completed `ask_advisor`.
+
+## Result: 2026-10-19, M5 local-to-hosted migration
+
+46/46 checks passed against Postgres 16, on a freshly created `sidecar_e2e` database. The new checks:
+- the export holds no local chat or container ids;
+- a new 2027 student links OpenRouter, gets a `create_local_import` link and uploads the export, which creates one chat;
+- uploading the same export again reports `already_imported`;
+- `ask_advisor` on the imported chat answers as turn 2 and sees `notes.md v1`, so the transcript and session files carried over;
+- a 2028 student's upload of the 2027 export is refused with 403.
+
+This run found that access logs printed `/imports/` link tokens. The fix withholds them like `/uploads/` and `/assets/`.

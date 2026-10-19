@@ -13,6 +13,7 @@ read_when: "Changing or adding files in src/openrouter_image_mcp/hosted/."
 - OpenRouter linking: `links.py` (single-use, browser-bound link attempts), `link_routes.py` (browser pages), `openrouter_keys.py` (exchange and verify), `vault.py` (keys encrypted at rest; associated data binds a ciphertext to its principal).
 - Images: `images.py` (the shared `ImageService` with asset ids in and out), `image_tools.py`, `image_results.py`, `uploads.py` (single-use upload URLs that answer CORS preflight, HMAC-signed download links). Hosted generate, edit and remask bind the gallery app, and Apps clients also get `open_image_uploader`.
 - Operations: `workspaces.py` (one service set per cohort), `limits.py` (per-principal admission for paid work), `sweeper.py` (hourly expiry sweep), `retention.py` (`purge`), `devproxy.py` (local development only).
+- Migration: `imports.py` (`create_local_import`, `PUT /imports/{token}` on the shared upload tickets; cohort-bound, imports once per content digest).
 
 **Invariants:**
 

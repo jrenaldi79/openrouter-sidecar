@@ -188,3 +188,28 @@ def test_login_ctrl_c_cancels(fake_login, monkeypatch, capsys):
     assert cli.main(["login"]) == 130
     assert cancelled == FakeLogin.instances
     assert capsys.readouterr().out.rstrip().endswith("Sign-in cancelled.")
+
+
+def test_export_local_writes_a_private_bundle(tmp_path, monkeypatch, memory_keyring, capsys):
+    from openrouter_image_mcp.advisor_store import AdvisorStore, default_store_path
+    from openrouter_image_mcp.config import COHORT_WORKSPACES
+    from openrouter_image_mcp.credentials import KeyringCredentials
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    workspace = COHORT_WORKSPACES["2027"]
+    keystore.set_key("sk-or-v1-alice", workspace_id=workspace)
+    _, scope = KeyringCredentials(workspace).resolve()
+    AdvisorStore(default_store_path()).create(scope, "openai/gpt-test", "Critic")
+    out = tmp_path / "export.json"
+    assert cli.main(["export-local", "--cohort", "2027", "--out", str(out)]) == 0
+    assert json.loads(out.read_text())["chats"][0]["title"] == "Critic"
+    assert "Exported 1 chat" in capsys.readouterr().out
+    if sys.platform != "win32":
+        assert out.stat().st_mode & 0o777 == 0o600
+
+
+def test_export_local_needs_this_cohorts_sign_in(tmp_path, monkeypatch, memory_keyring, capsys):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    assert cli.main(["export-local", "--cohort", "2028", "--out", str(tmp_path / "x.json")]) == 1
+    assert "login" in capsys.readouterr().err
+    assert not (tmp_path / "x.json").exists()

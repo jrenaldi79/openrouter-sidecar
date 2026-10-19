@@ -57,6 +57,15 @@ def six_month_cutoff(now):
                        day=min(now.day, monthrange(year, month)[1]))
 
 
+def ensure_table(db) -> None:
+    db.execute("""CREATE TABLE IF NOT EXISTS sidecar_preferences (
+        settings_id TEXT PRIMARY KEY, owner TEXT NOT NULL, workspace TEXT NOT NULL,
+        revision INTEGER NOT NULL DEFAULT 0, general_default TEXT,
+        family_defaults TEXT NOT NULL, onboarding_completed INTEGER NOT NULL DEFAULT 0,
+        UNIQUE(owner, workspace)
+    )""")
+
+
 class PreferenceService:
     def __init__(self, advisors, *, utcnow=None):
         self.advisors = advisors
@@ -66,12 +75,7 @@ class PreferenceService:
     @contextmanager
     def _connection(self):
         with storage.connect(self.target) as db:
-            db.execute("""CREATE TABLE IF NOT EXISTS sidecar_preferences (
-                settings_id TEXT PRIMARY KEY, owner TEXT NOT NULL, workspace TEXT NOT NULL,
-                revision INTEGER NOT NULL DEFAULT 0, general_default TEXT,
-                family_defaults TEXT NOT NULL, onboarding_completed INTEGER NOT NULL DEFAULT 0,
-                UNIQUE(owner, workspace)
-            )""")
+            ensure_table(db)
             db.commit()
             yield db
 

@@ -28,6 +28,22 @@ def b(module):
     return module.Scope("owner-b", "workspace-a")
 
 
+def test_import_chat_restores_history_under_a_new_identity(store, a, b):
+    history = [{"role": "user", "content": "Q"}, {"role": "assistant", "content": "A"}]
+    chat = store.import_chat(a, "test/model", "Imported", history, sandbox=False)
+    again = store.get(a, chat.id)
+    assert (again.history, again.sandbox, again.title) == (history, False, "Imported")
+    assert chat.id.startswith("chat_") and chat.container_id.startswith("nu_")
+    with pytest.raises(Exception, match="unavailable"):
+        store.get(b, chat.id)
+
+
+def test_all_lists_every_owned_chat_oldest_first(store, a, b):
+    ids = [store.create(a, "test/model", f"c{i}").id for i in range(3)]
+    store.create(b, "test/model", "foreign")
+    assert [chat.id for chat in store.all(a)] == ids
+
+
 def test_persists_owned_history_without_credentials(store, module, a):
     chat = store.create(a, "test/model", "Critic")
     with store.lease(a, chat.id) as token:

@@ -107,6 +107,22 @@ class AdvisorStore:
             )
         return chat
 
+    def import_chat(self, scope: Scope, model: str, title: str, history: list[dict[str, str]],
+                    *, sandbox: bool = False) -> Chat:
+        """A migrated chat: fresh ids and container, the transcript carried over."""
+        chat = self.create(scope, model, title, sandbox=sandbox)
+        with self._connection() as db:
+            db.execute("UPDATE advisor_chats SET history=? WHERE id=? AND owner=? AND workspace=?",
+                       (json.dumps(history), chat.id, scope.owner, scope.workspace))
+        return Chat(chat.id, chat.container_id, model, title, list(history), sandbox)
+
+    def all(self, scope: Scope) -> list[Chat]:
+        """Every owned chat, oldest first (exports; `list` caps at the newest 100)."""
+        with self._connection() as db:
+            rows = db.execute("SELECT * FROM advisor_chats WHERE owner=? AND workspace=? "
+                              "ORDER BY rowid", (scope.owner, scope.workspace)).fetchall()
+            return [self._chat(row) for row in rows]
+
     def get(self, scope: Scope, chat_id: str) -> Chat:
         with self._connection() as db:
             return self._chat(self._row(db, scope, chat_id))

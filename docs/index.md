@@ -11,6 +11,12 @@ Use maintained guidance, status, and reference documents for current decisions. 
 | [Local end-to-end run (synthetic)](E2E_LOCAL.md) | maintained | How to run the synthetic local end-to-end stack: fake identity, fake OpenRouter, Postgres and the hosted sidecar driven as test users. | Running or changing scripts/dev, or verifying hosted changes end to end before deploy. |
 | [Hosted Sidecar operations](HOSTED_OPERATIONS.md) | maintained | Operating the hosted sidecar on Railway: configuration, the shared Auth0 tenant, one-time setup, deploys, key rotation, retention purge and incidents. | Deploying, configuring or operating the hosted sidecar, or changing hosted settings. |
 
+## Status
+
+| Document | Status | Description | Read when |
+| --- | --- | --- | --- |
+| [Hosted Sidecar acceptance results](superpowers/specs/2026-10-18-hosted-spikes.md) | maintained | Live acceptance results for the deployed hosted Sidecar (real Auth0, Railway), kept apart from synthetic runs. | Recording or checking live acceptance of the hosted server. |
+
 ## Reference
 
 | Document | Status | Description | Read when |
@@ -55,12 +61,6 @@ Use maintained guidance, status, and reference documents for current decisions. 
 | [Outcome-focused Sidecar walkthrough](superpowers/specs/2026-10-06-sidecar-outcome-onboarding.md) | completed | Design spec: Outcome-focused Sidecar walkthrough. | Revisiting the design decisions behind this feature. |
 | [OpenRouter Sidecar name](superpowers/specs/2026-10-06-sidecar-rename-design.md) | completed | Design spec: OpenRouter Sidecar name. | Revisiting the design decisions behind this feature. |
 
-## Needs classification
-
-| Document | Status | Description | Read when |
-| --- | --- | --- | --- |
-| [superpowers/specs/2026-10-18-hosted-spikes.md](superpowers/specs/2026-10-18-hosted-spikes.md) | Unclassified |  |  |
-
 ## Source inventory
 
 Filenames grouped by folder; each heading links that folder's note.
@@ -84,6 +84,7 @@ Filenames grouped by folder; each heading links that folder's note.
 ### [scripts/dev](../scripts/dev/CLAUDE.md): Local development stack for the hosted sidecar: fake Auth0 identity, fake OpenRouter, a launcher that wires them to a local server, and the synthetic multi-user e2e driver.
 
 - [scripts/dev/e2e&#95;local.py](../scripts/dev/e2e_local.py)
+- [scripts/dev/e2e&#95;migration.py](../scripts/dev/e2e_migration.py)
 - [scripts/dev/fake&#95;identity.py](../scripts/dev/fake_identity.py)
 - [scripts/dev/fake&#95;openrouter.py](../scripts/dev/fake_openrouter.py)
 - [scripts/dev/run&#95;sidecar.sh](../scripts/dev/run_sidecar.sh)
@@ -116,6 +117,7 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/image&#95;onboarding.py](../src/openrouter_image_mcp/image_onboarding.py)
 - [src/openrouter&#95;image&#95;mcp/imaging.py](../src/openrouter_image_mcp/imaging.py)
 - [src/openrouter&#95;image&#95;mcp/keystore.py](../src/openrouter_image_mcp/keystore.py)
+- [src/openrouter&#95;image&#95;mcp/local&#95;bundle.py](../src/openrouter_image_mcp/local_bundle.py)
 - [src/openrouter&#95;image&#95;mcp/logs.py](../src/openrouter_image_mcp/logs.py)
 - [src/openrouter&#95;image&#95;mcp/onboarding.py](../src/openrouter_image_mcp/onboarding.py)
 - [src/openrouter&#95;image&#95;mcp/outputs.py](../src/openrouter_image_mcp/outputs.py)
@@ -138,6 +140,7 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/hosted/image&#95;results.py](../src/openrouter_image_mcp/hosted/image_results.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/image&#95;tools.py](../src/openrouter_image_mcp/hosted/image_tools.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/images.py](../src/openrouter_image_mcp/hosted/images.py)
+- [src/openrouter&#95;image&#95;mcp/hosted/imports.py](../src/openrouter_image_mcp/hosted/imports.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/limits.py](../src/openrouter_image_mcp/hosted/limits.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/link&#95;routes.py](../src/openrouter_image_mcp/hosted/link_routes.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/links.py](../src/openrouter_image_mcp/hosted/links.py)

@@ -24,6 +24,7 @@ from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 
 sys.path.insert(0, str(Path(__file__).parent))
+from e2e_migration import migration_checks
 from fake_identity import mint
 
 from openrouter_image_mcp.config import COHORT_WORKSPACES
@@ -215,6 +216,7 @@ async def run(stack: Stack) -> int:
     first = await headless_checks(stack, alice)
     await isolation_checks(stack, first)
     await image_checks(stack, alice)
+    await migration_checks(stack, check, link, text)
     await unlink_checks(stack, alice)
     failed = [name for name, ok, _ in RESULTS if not ok]
     print(f"\n{len(RESULTS) - len(failed)}/{len(RESULTS)} checks passed (synthetic local run)")

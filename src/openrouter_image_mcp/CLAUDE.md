@@ -8,12 +8,13 @@ read_when: "Changing or adding files in src/openrouter_image_mcp/."
 
 **Owns:**
 
-- Entry points: `cli.py` (`serve` default stdio, `login`, `logout`, `status`, `serve-http`, `purge`, `print-config`) and `server.py` (MCP tools as thin wrappers).
+- Entry points: `cli.py` (`serve` default stdio, `login`, `logout`, `status`, `serve-http`, `purge`, `active-jobs`, `export-local`, `print-config`) and `server.py` (MCP tools as thin wrappers).
 - Image pipeline: `service.py` (validate, prepare, call, fit, save), `catalog.py` (live model catalog, parameter validation), `client.py` (OpenRouter image HTTP; `advisor_client.py` is the advisor's), `imaging.py`, `remask.py`, `outputs.py`.
 - Credentials: `auth.py` (OAuth PKCE with a one-shot localhost listener), `keystore.py` (OS keyring, never plaintext), `credentials.py` (where the key and ownership scope come from for this call).
 - Advisor: `advisor*.py`, `headless.py`, `session_files.py`, `prompt_cache.py`.
 - Preferences and onboarding: `preferences.py`, `preference_tools.py`, `onboarding.py`, `image_onboarding.py`.
 - Shared seams: `storage.py` (SQLite locally, Postgres when hosted), `assets.py` (asset metadata plus blob store), `apps.py` (MCP App resources and per-client progressive enhancement, including `register_uploader`), `errors.py`, `logs.py`, `config.py`.
+- Migration: `local_bundle.py` (the `export-local` bundle: build, strict validation, content digest, preference seeding).
 
 **Does not own:** multi-tenant HTTP serving, Auth0 and key linking (`hosted/`); bundled app HTML (`ui/`, generated).
 
