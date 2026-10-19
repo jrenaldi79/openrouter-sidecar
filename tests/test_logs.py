@@ -59,3 +59,20 @@ def test_redact_withholds_bearer_jwts():
     jwt = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJlbWFpbHxhbGljZSJ9.c2lnbmF0dXJlLXZhbHVlLWhlcmU"
     out = logs.redact(f"Authorization: Bearer {jwt} end")
     assert jwt not in out and "[token withheld]" in out and out.endswith("end")
+
+
+LINK = "http://127.0.0.1:8000/link/openrouter/start?t=lnk_fd716396cba4899cec1fa4ac6c26f4ee.1792372091.2KIhRlCvT2VK9k-kKJIRRXmdDvLdJ7fWbTLNUswL_Bs"
+
+
+def test_logs_withhold_link_tokens_and_oauth_codes(capsys):
+    with _configured_logging() as log:
+        log.info('"GET %s HTTP/1.1" 302', LINK)
+        log.info('"GET /link/openrouter/callback?code=abc123XYZ&state=lnk_x HTTP/1.1" 200')
+    err = capsys.readouterr().err
+    assert "2KIhRlCvT2VK9k" not in err and "lnk_[link withheld]" in err
+    assert "abc123XYZ" not in err and "code=[withheld]&state" in err
+
+
+def test_tool_text_redaction_keeps_link_urls():
+    # Users must receive the link in tool output; only logs withhold it.
+    assert logs.redact(f"Open {LINK}") == f"Open {LINK}"

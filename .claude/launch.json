@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "fake-identity",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "uv run python scripts/dev/fake_identity.py serve --state \"${SIDECAR_DEV_STATE:-.dev-state}\" --port 9400"],
+      "port": 9400
+    },
+    {
+      "name": "fake-openrouter",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "python", "scripts/dev/fake_openrouter.py", "--port", "9500"],
+      "port": 9500
+    },
+    {
+      "name": "sidecar-http",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "DATABASE_URL=${DATABASE_URL:-postgresql://postgres:test@localhost:55433/sidecar_e2e} scripts/dev/run_sidecar.sh"],
+      "port": 8000
+    }
+  ]
+}

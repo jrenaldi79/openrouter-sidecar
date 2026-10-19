@@ -126,7 +126,8 @@ def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transpor
         auth=AuthSettings(issuer_url=settings.issuer, resource_server_url=settings.resource,
                           required_scopes=[settings.permission], validate_token_resource=True),
         token_verifier=Auth0Verifier(issuer=settings.issuer, resource=settings.resource,
-                                     jwks_uri=settings.jwks_uri, key_resolver=key_resolver),
+                                     jwks_uri=settings.jwks_uri, key_resolver=key_resolver,
+                                     profile_claim=settings.profile_claim),
     )
     for name in ("advisors", "jobs", "preferences", "demos", "catalog", "settings"):
         services[name] = ByWorkspace(workspaces, settings.profile_claim, gate, name)

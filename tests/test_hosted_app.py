@@ -44,6 +44,15 @@ async def test_token_without_permission_is_forbidden(running):
     assert response.status_code == 403
 
 
+async def test_token_without_workspace_is_forbidden_at_the_door(running):
+    token = running.token(**{h.PROFILE: {"email": "x@example.edu", "cohort": "2027"}})
+    async with httpx.AsyncClient() as http:
+        response = await http.post(running.url, json={"jsonrpc": "2.0", "id": 1, "method": "ping"},
+                                   headers={"Accept": "application/json, text/event-stream",
+                                            "Authorization": "Bearer " + token})
+    assert response.status_code == 403
+
+
 async def test_wrong_audience_is_rejected(running):
     async with httpx.AsyncClient() as http:
         response = await http.post(running.url, json={"jsonrpc": "2.0", "id": 1, "method": "ping"},

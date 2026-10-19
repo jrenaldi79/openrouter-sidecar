@@ -8,3 +8,4 @@ dist/
 ui/node_modules/
 ui/test-results/
 ui/playwright-report/
+.dev-state/

@@ -75,3 +75,14 @@ async def test_token_is_never_logged(verifier, caplog):
     bad = h.token(key=h.OTHER_KEY)
     await verifier.verify_token(bad)
     assert bad not in caplog.text
+
+
+@pytest.mark.parametrize("profile", [None, {"email": "x@y"}, {"workspace_id": ""}, {"workspace_id": 7}])
+async def test_profile_without_workspace_grants_no_scopes(profile):
+    # The SDK's required_scopes then answers 403 before any tool runs.
+    verifier = Auth0Verifier(issuer=h.ISSUER, resource=h.RESOURCE, key_resolver=h.resolver,
+                             profile_claim=h.PROFILE)
+    access = await verifier.verify_token(h.token(**{h.PROFILE: profile}))
+    assert access is not None and access.scopes == []
+    ok = await verifier.verify_token(h.token())
+    assert ok.scopes == ["sidecar:use"]
