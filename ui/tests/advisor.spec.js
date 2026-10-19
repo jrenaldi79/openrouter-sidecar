@@ -27,7 +27,7 @@ test('prepares only answer selection and sends the edited preview on explicit cl
   await assertNoHandoff(page);
   await viewer.getByLabel('Text to share').fill('Edited selected insight.');
   await viewer.getByRole('button', { name: "Add to Claude's context", exact: true }).click();
-  await expect(viewer.locator('#handoff-status')).toHaveText("Added. Ask Claude to use the advisor's answer.");
+  await expect(viewer.locator('#handoff-status')).toHaveText("Added. Ask Claude to check the advisor viewer for the answer.");
   const messages = await page.evaluate(() => window.hostMessages.filter(message => message.method === 'ui/update-model-context'));
   expect(messages).toHaveLength(1);
   expect(messages[0].params).toEqual({ content: [{ type: 'text', text: 'Advisor selection from example/advisor (result result-1):\n\nEdited selected insight.' }] });
@@ -86,7 +86,7 @@ test('separate charged summary job retains original and requires review before S
   await assertNoHandoff(page);
   await viewer.getByLabel('Text to share').fill('Reviewed short summary');
   await viewer.getByRole('button', { name: "Add to Claude's context", exact: true }).click();
-  await expect(viewer.locator('#handoff-status')).toContainText("Added. Ask Claude to use the advisor's answer.");
+  await expect(viewer.locator('#handoff-status')).toContainText("Added. Ask Claude to check the advisor viewer for the answer.");
   const messages = await page.evaluate(() => window.hostMessages.filter(message => message.method === 'ui/update-model-context'));
   expect(messages[0].params.content[0].text).toBe('Advisor summary from example/advisor (result result-1; summary summary-1):\n\nReviewed short summary');
 });
@@ -255,7 +255,7 @@ test('successful handoff revalidation preserves reviewed selection instead of re
   await viewer.getByRole('button', { name: 'Share selection with Claude', exact: true }).click();
   await viewer.getByLabel('Text to share').fill('My reviewed selected insight');
   await viewer.getByRole('button', { name: "Add to Claude's context", exact: true }).click();
-  await expect(viewer.locator('#handoff-status')).toHaveText("Added. Ask Claude to use the advisor's answer.");
+  await expect(viewer.locator('#handoff-status')).toHaveText("Added. Ask Claude to check the advisor viewer for the answer.");
   expect(await page.evaluate(() => window.toolCounts['get_advisor_result:result-1'])).toBe(2);
   const messages = await page.evaluate(() => window.hostMessages.filter(message => message.method === 'ui/update-model-context'));
   expect(messages[0].params.content[0].text).toBe('Advisor selection from example/advisor (result result-1):\n\nMy reviewed selected insight');

@@ -19,7 +19,7 @@ test('adds the reviewed answer to Claude\'s context on click', async ({ page }) 
   await assertNoHandoff(page);
   await viewer.getByLabel('Text to share').fill('Edited answer for Claude');
   await viewer.getByRole('button', { name: 'Add to Claude\'s context', exact: true }).click();
-  await expect(viewer.locator('#handoff-status')).toHaveText('Added. Ask Claude to use the advisor\'s answer.');
+  await expect(viewer.locator('#handoff-status')).toHaveText('Added. Ask Claude to check the advisor viewer for the answer.');
   const sent = await contexts(page);
   expect(sent).toHaveLength(1);
   expect(sent[0].params).toEqual({ content: [{ type: 'text',
@@ -76,7 +76,7 @@ test('the share button uses selected answer text when there is a selection', asy
   await viewer.getByRole('button', { name: 'Share selection with Claude', exact: true }).click();
   await expect(viewer.getByLabel('Text to share')).toHaveValue('Selected insight.');
   await viewer.getByRole('button', { name: 'Add to Claude\'s context', exact: true }).click();
-  await expect(viewer.locator('#handoff-status')).toHaveText('Added. Ask Claude to use the advisor\'s answer.');
+  await expect(viewer.locator('#handoff-status')).toHaveText('Added. Ask Claude to check the advisor viewer for the answer.');
   expect((await contexts(page))[0].params.content[0].text).toBe('Advisor selection from example/advisor (result result-1):\n\nSelected insight.');
 });
 

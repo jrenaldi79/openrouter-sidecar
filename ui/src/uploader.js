@@ -78,7 +78,8 @@ async function upload(item) {
     const id = textElement('code', body.asset_id);
     setState(item, 'Uploaded as ', 'done');
     item.state.append(id);
-    await tellModel().catch(() => item.state.append(' (copy this id into the chat)'));
+    await tellModel().then(() => { document.getElementById('hint').hidden = false; },
+      () => item.state.append(' (copy this id into the chat)'));
   } catch (error) {
     setState(item, error.message, 'error');
     if (error instanceof Retryable) {

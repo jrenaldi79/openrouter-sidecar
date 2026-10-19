@@ -40,6 +40,11 @@ advisor can't see the user's files: pass the text it needs in `files` (path and
 content); they are kept with the session. Pass relevant skills in `skills` as packets
 (name, content).
 
+MCP Apps (claude.ai, Claude Desktop): the advisor viewer and the image uploader hand
+things to you through their widget context, not through the chat. When the user says
+they shared an advisor answer or uploaded images, check the app on screen to read it
+before answering; don't say you can't see it.
+
 Class skills on this server, as prompts and resources: skill://openrouter-image (read it
 before image work) and skill://architectural-render-polish (render polishing, with its
 prompt template). Users moving from the local Sidecar can bring their chats over with

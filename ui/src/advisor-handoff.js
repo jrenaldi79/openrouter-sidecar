@@ -2,7 +2,8 @@
 // message as the user (hosts ask the user to approve that). It adds model
 // context when the host supports it; otherwise the user copies the text.
 
-export const ADDED = 'Added. Ask Claude to use the advisor\'s answer.';
+// claude.ai keeps added context until the model checks the app, so point the user there.
+export const ADDED = 'Added. Ask Claude to check the advisor viewer for the answer.';
 export const COPIED = 'Copied. Paste it into the chat.';
 export const COPY_BLOCKED = 'Clipboard access is unavailable. Select and copy the text below, then paste it into the chat.';
 

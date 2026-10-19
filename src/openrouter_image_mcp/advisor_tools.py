@@ -113,8 +113,8 @@ def register_advisor_tools(server: MCPServer, service: AdvisorService, jobs: Adv
         skill files. Claude selects the skills; a file path alone is not sufficient.
         The sandbox shell has no outbound network and receives no API credentials.
         Starts a background job and returns status and its job_id only. The full
-        answer stays with the Sidecar and appears in the advisor MCP App. The user chooses
-        what to send to the parent chat. Check get_advisor_job for status or call
+        answer appears in the advisor MCP App, not here. When the user shares it from
+        the viewer, check the app on screen (its widget context) to read what they shared. Check get_advisor_job for status or call
         open_advisor_result to reopen the viewer. App shutdown can interrupt work.
         No raw
         container/file selectors, arbitrary HTTP requests, or provider options exist.
@@ -231,7 +231,8 @@ def register_advisor_tools(server: MCPServer, service: AdvisorService, jobs: Adv
         """Open the advisor result viewer without sending its answer into this chat.
 
         Reading or scrolling in the MCP App does not share the result with the parent
-        model. The user can preview and send a selection, full answer or summary.
+        model. The user can share a selection, the full answer or a summary; after they
+        do, check the app on screen (its widget context) to read it.
         """
         with tool_errors():
             return status_result(jobs.status(job_id))

@@ -65,3 +65,12 @@ test('refuses an upload link for another origin', async ({ page }) => {
   await expect(viewer.getByText(/unexpected upload link/i)).toBeVisible();
   expect(seen).toEqual([]);
 });
+
+// claude.ai only reads app context when the model checks the app, so say so.
+test('after an upload, tells the user to ask Claude to check the uploader', async ({ page }) => {
+  await routeUploads(page);
+  const viewer = await openUploader(page);
+  await expect(viewer.getByText(/Ask Claude to check the uploader/)).toBeHidden();
+  await fileInput(viewer).setInputFiles(pngFile());
+  await expect(viewer.getByText('Uploaded. Ask Claude to check the uploader for the asset ids.')).toBeVisible();
+});

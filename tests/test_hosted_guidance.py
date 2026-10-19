@@ -69,3 +69,21 @@ async def test_tool_descriptions_do_not_describe_a_local_install(db_target, tmp_
     wrong = {tool.name: LOCAL_WORDING.findall(tool.description or "") for tool in listed
              if tool.name != "create_local_import" and LOCAL_WORDING.search(tool.description or "")}
     assert wrong == {}
+
+
+# claude.ai keeps what an app adds to context and the model fetches it on demand
+# ("check the app on screen"), so the tools must tell Claude to look there.
+CHECK_APP = re.compile(r"check the app on screen", re.IGNORECASE)
+APP_HANDOFF_TOOLS = {"send_advisor_message", "open_advisor_result", "open_image_uploader"}
+
+
+async def test_app_handoff_tools_tell_claude_to_check_the_app(db_target, tmp_path):
+    async with running_server(db_target, env={"ASSET_DIR": str(tmp_path / "assets")}) as server, \
+            server.client(server.token(), extensions=APPS) as client:
+        listed = {tool.name: tool.description or "" for tool in (await client.list_tools()).tools}
+        opened = await client.call_tool("open_image_uploader", {})
+    assert {name for name in APP_HANDOFF_TOOLS if not CHECK_APP.search(listed[name])} == set()
+    assert "appears in the conversation" not in listed["open_image_uploader"] + opened.content[0].text
+    assert CHECK_APP.search(opened.content[0].text)
+    assert "chooses what to send to the parent chat" not in listed["send_advisor_message"]
+    assert CHECK_APP.search(guidance.INSTRUCTIONS.replace("\n", " "))

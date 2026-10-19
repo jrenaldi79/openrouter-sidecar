@@ -173,11 +173,12 @@ def register_image_tools(server: MCPServer, hosted: HostedImages, catalog, tool_
         """Open a drop zone where the user can upload image files from their computer.
 
         For clients with MCP Apps (Claude Desktop, claude.ai). Each uploaded file
-        becomes an image asset; its asset_id is added to the conversation, ready for
-        `edit_image` (as an input image or mask_id). No cost.
+        becomes an image asset. After the user uploads, check the app on screen (its
+        widget context) for the asset ids, then pass them to `edit_image` (as an input
+        image or mask_id). No cost.
         """
-        return ("The image uploader is open. When the user has uploaded a file, its asset id "
-                "appears in the conversation: pass it to edit_image as an input image or mask_id.")
+        return ("The image uploader is open. When the user has uploaded files, check the app on "
+                "screen for their asset ids, then pass them to edit_image as an input image or mask_id.")
 
     uis = {name: UI_URI for name in IMAGE_TOOLS} | {"open_image_uploader": UPLOADER_UI_URI}
     for fn in (list_image_models, get_image_model, create_image_upload, generate_image,
