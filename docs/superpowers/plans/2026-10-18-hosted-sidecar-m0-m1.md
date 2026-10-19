@@ -783,7 +783,7 @@ Add a `provider_response_id` column to `advisor_jobs`. `AdvisorService.send` use
 - Auth0 API creation and the RBAC steps, referencing the unified-auth spec.
 
 **Deploy (needs user confirmation before each outward step):**
-1. `railway init` (project `opencode-sidecar`), add Postgres, and set variables with `railway variables --set …`. Secrets are entered by the user, never echoed into chat.
+1. `railway init` (project `openrouter-sidecar`), add Postgres, and set variables with `railway variables --set …`. Secrets are entered by the user, never echoed into chat.
 2. Create the Auth0 API `https://<railway-domain>/mcp` with RBAC and permissions-in-token, and add `sidecar:use`. This waits for the unified-auth sub-project, or else the user approves a one-off API.
 3. `railway up` and verify `/health` and `/ready`. Then add the connector in claude.ai with an instructor test account, link OpenRouter, and run `list_chat_models` → `start_advisor_chat` → `send_advisor_message`.
 
