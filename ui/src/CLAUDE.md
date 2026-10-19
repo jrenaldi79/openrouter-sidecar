@@ -9,6 +9,7 @@ read_when: "Changing or adding files in ui/src/."
 **Owns:**
 
 - Apps: `preview.*` (image preview), `advisor.*` (advisor results and handoff), `settings.*` (preferences and onboarding), `uploader.*` (hosted drop-zone: gets a single-use link through `create_image_upload` and PUTs bytes straight to the Sidecar origin).
+- Styling: `accents.css` (Northwestern bright accents, the top brand strip and status pills), which `ui/build.mjs` injects at each app's `/* ACCENTS */` marker. Use the accents for status and highlights only, with `--ink-*` shades for text.
 - Helpers: `markdown.js` (marked, plus DOMPurify sanitizing, with raw HTML escaped), `provider-logos.js`, and the advisor's `advisor-progress.js` (live running state, elapsed time, poll backoff), `advisor-handoff.js` (share text framing, status strings, model-context update, copy fallback, More menu) and `advisor-share.js` (one-click share flow: summary for answers over `FULL_ANSWER_LIMIT`, ownership recheck, delivery).
 
 **Invariants:**

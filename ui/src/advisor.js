@@ -71,6 +71,7 @@ function suppressResult(message) {
   element('prompt-details').hidden = true;
   element('export-status').textContent = '';
   element('job-status').textContent = 'Result unavailable';
+  delete element('job-status').dataset.state;
   showError(message);
   updateButtons();
 }
@@ -93,6 +94,7 @@ function renderOriginal(data) {
   providerLogo(element('model-logo'), string(data.model));
   element('result-id').textContent = `Result: ${data.job_id}`;
   element('job-status').textContent = stateLabel(data.status);
+  element('job-status').dataset.state = data.status;
   element('cost').textContent = costLabel(data.cost_usd);
   element('cleanup').textContent = data.cleanup_pending ? 'Cleanup pending' : '';
   element('prompt-details').hidden = typeof data.prompt !== 'string';

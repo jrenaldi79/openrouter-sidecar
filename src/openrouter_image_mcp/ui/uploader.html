@@ -716,6 +716,32 @@ SOFTWARE.
   <meta name="sidecar-origin" content="__SIDECAR_ORIGIN__">
   <title>OpenRouter Sidecar image uploader</title>
   <style>
+    /* Shared accents, injected into every app by ui/build.mjs at the ACCENTS marker.
+   Northwestern's bright secondary palette, used sparingly: fills for bars, dots and
+   pill backgrounds; darker "ink" shades for text so it stays readable on white. */
+:root {
+  --nu-green: #58b947; --nu-teal: #7fcecd; --nu-blue: #5091cd; --nu-gold: #ffc520; --nu-orange: #ef553f;
+  --ink-green: #2e7d32; --ink-teal: #0f6e6a; --ink-blue: #1d5f9e; --ink-gold: #8a5a00; --ink-orange: #b3361f;
+  --ink-purple: #4e2a84;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --ink-green: #8fd67f; --ink-teal: #9fdedd; --ink-blue: #8fbde6; --ink-gold: #ffd75e; --ink-orange: #ff8a76; --ink-purple: #c9b8e8;
+} }
+:root[data-theme="dark"] {
+  --ink-green: #8fd67f; --ink-teal: #9fdedd; --ink-blue: #8fbde6; --ink-gold: #ffd75e; --ink-orange: #ff8a76; --ink-purple: #c9b8e8;
+}
+
+/* A thin brand strip across the top of each app: purple, then teal and gold. */
+body { border-top: 3px solid transparent; border-image: linear-gradient(90deg, #4e2a84 0 62%, var(--nu-teal) 62% 84%, var(--nu-gold) 84%) 1; }
+
+/* Status pills: running blue, done green, interrupted gold, failed orange. */
+.pill { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 999px; font-weight: 600; font-size: 11.5px; line-height: 1.6; }
+.pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pill[data-state="queued"], .pill[data-state="running"] { color: var(--ink-blue); background: color-mix(in srgb, var(--nu-blue) 16%, transparent); }
+.pill[data-state="completed"] { color: var(--ink-green); background: color-mix(in srgb, var(--nu-green) 18%, transparent); }
+.pill[data-state="interrupted"] { color: var(--ink-gold); background: color-mix(in srgb, var(--nu-gold) 22%, transparent); }
+.pill[data-state="failed"] { color: var(--ink-orange); background: color-mix(in srgb, var(--nu-orange) 16%, transparent); }
+
     :root { color-scheme: light dark; --bg: #fff; --fg: #202124; --muted: #666; --line: #ccc; --card: #f7f7f8; --accent: #4e2a84; --bad: #b3261e; }
     @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #202124; --fg: #eee; --muted: #bbb; --line: #555; --card: #292a2d; --accent: #b6acd1; --bad: #f2b8b5; } }
     :root[data-theme="dark"] { color-scheme: dark; --bg: #202124; --fg: #eee; --muted: #bbb; --line: #555; --card: #292a2d; --accent: #b6acd1; --bad: #f2b8b5; }
@@ -726,7 +752,7 @@ SOFTWARE.
     .app-heading h1 { font-size: 16px; margin: 0; }
     .app-heading .app-logo { width: 24px; height: 24px; flex: 0 0 24px; border-radius: 4px; }
     #drop { display: block; border: 2px dashed var(--color-border-primary, var(--line)); border-radius: 10px; padding: 22px 12px; text-align: center; cursor: pointer; background: var(--color-background-secondary, var(--card)); }
-    #drop.over, #drop:focus-within { border-color: var(--accent); }
+    #drop:hover, #drop.over, #drop:focus-within { border-color: var(--nu-teal); background: color-mix(in srgb, var(--nu-teal) 12%, var(--color-background-secondary, var(--card))); }
     #drop strong { display: block; margin-bottom: 4px; }
     #drop span { color: var(--color-text-secondary, var(--muted)); font-size: 13px; }
     input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; }
@@ -735,7 +761,7 @@ SOFTWARE.
     .name { font-weight: 600; overflow-wrap: anywhere; }
     .state { color: var(--color-text-secondary, var(--muted)); overflow-wrap: anywhere; }
     .state.error { color: var(--bad); }
-    .state.done { color: var(--color-text-primary, var(--fg)); }
+    .state.done { color: var(--ink-green); font-weight: 600; } .state.done::before { content: "✓ "; }
     code { font: 12px ui-monospace, monospace; }
     button { font: inherit; padding: 2px 10px; border-radius: 6px; border: 1px solid var(--color-border-primary, var(--line)); background: transparent; color: inherit; cursor: pointer; }
   </style>

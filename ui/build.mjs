@@ -3,6 +3,7 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 const logo = await readFile(new URL('../src/openrouter_image_mcp/ui/mpd-logo.png', import.meta.url));
+const accents = await readFile(new URL('./src/accents.css', import.meta.url), 'utf8');
 
 async function bundleViewer(name) {
   const source = new URL(`./src/${name}.js`, import.meta.url);
@@ -40,6 +41,7 @@ async function bundleViewer(name) {
   const script = result.outputFiles[0].text.replaceAll('</script', '<\\/script');
   const html = template.replace(/^<!doctype html>/i, match => `${match}\n${notice}`)
     .replace('<!-- APP_LOGO -->', () => `<img class="app-logo" alt="" aria-hidden="true" src="data:image/png;base64,${logo.toString('base64')}">`)
+    .replace('/* ACCENTS */', () => accents)
     .replace('<!-- BUNDLED_SCRIPT -->', () => `<script>${script}</script>`);
   const output = new URL(`../src/openrouter_image_mcp/ui/${name}.html`, import.meta.url);
   await mkdir(new URL('.', output), { recursive: true });

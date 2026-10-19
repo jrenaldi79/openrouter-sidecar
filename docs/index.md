@@ -180,6 +180,7 @@ Filenames grouped by folder; each heading links that folder's note.
 
 ### [ui/src](../ui/src/CLAUDE.md): MCP App sources (ESM): one &#60;app&#62;.html + &#60;app&#62;.js per app (preview, advisor, settings, uploader) with shared helpers, bundled by ui/build.mjs into src/openrouter&#95;image&#95;mcp/ui.
 
+- [ui/src/accents.css](../ui/src/accents.css)
 - [ui/src/advisor-handoff.js](../ui/src/advisor-handoff.js)
 - [ui/src/advisor-progress.js](../ui/src/advisor-progress.js)
 - [ui/src/advisor-share.js](../ui/src/advisor-share.js)

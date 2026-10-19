@@ -6,6 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
 <title>OpenRouter Sidecar setup and settings</title>
 <style>
+/* ACCENTS */
 /* One accent (Northwestern purple), one warning tone, neutral surfaces. Spacing: 4/8/12/16/24. */
 :root { color-scheme:light; --bg:#fdfcfe; --fg:#261f30; --muted:#625a6e; --line:#e6e0ee; --soft:#f4f0fa; --purple:#4e2a84; --purple-hover:#3f2170; --accent:#5b3696; --warn:#8a5300; --warn-soft:#fff4dc; --error:#a12626; --error-soft:#fdeeee; }
 @media (prefers-color-scheme:dark) { :root:not([data-theme="light"]) { color-scheme:dark; --bg:#1c1922; --fg:#f1edf7; --muted:#b9b0c6; --line:#3a3245; --soft:#2a2335; --purple:#6b46a1; --purple-hover:#7b56b2; --accent:#c9b2ee; --warn:#f1ce82; --warn-soft:#3a2e18; --error:#ffb4ab; --error-soft:#3b2224; } }
@@ -48,7 +49,7 @@ summary { cursor:pointer; color:var(--muted); font-size:12px; width:fit-content;
 nav { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:4px; margin:16px 0 24px; }
 nav button { border:0; border-top:3px solid var(--line); border-radius:0; padding:8px 2px 2px; background:none; color:var(--muted); font-size:12px; font-weight:500; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 nav button:hover:not(:disabled) { background:none; color:var(--fg); }
-nav button:has(~ [aria-current="step"]) { border-top-color:color-mix(in srgb, var(--purple) 45%, var(--line)); }
+nav button:has(~ [aria-current="step"]) { border-top-color:var(--nu-green); }
 nav button[aria-current="step"] { border-top-color:var(--purple); color:var(--accent); font-weight:650; }
 nav button.needs-choice { border-top-color:var(--warn); color:var(--warn); }
 nav button.needs-choice .step-label:not(#model-task) { display:none; }
@@ -110,7 +111,7 @@ details p { margin-top:4px; color:var(--muted); font-size:13px; max-width:62ch; 
 
 /* Finish */
 .example { margin:0 0 16px; padding:4px 0 4px 16px; border-left:3px solid var(--purple); font-size:15px; max-width:62ch; }
-#finish-status { margin-top:12px; color:var(--accent); font-size:13px; }
+#finish-status { margin-top:12px; color:var(--ink-green); font-size:13px; font-weight:600; }
 
 /* Footer: Back on the left, the step's one primary action on the right */
 .bottom-nav { display:flex; align-items:center; gap:8px; margin-top:24px; padding-top:16px; border-top:1px solid var(--line); }

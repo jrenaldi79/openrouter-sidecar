@@ -6,6 +6,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
   <title>OpenRouter Sidecar advisor result</title>
   <style>
+    /* ACCENTS */
     :root { color-scheme: light dark; --bg: #fff; --fg: #202124; --muted: #666; --line: #ddd; --card: #f7f7f8; --purple: #4e2a84; --focus: #836eaa; --error: #a12626; --teal: #116b61; }
     @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #202124; --fg: #eee; --muted: #bbb; --line: #4a4a50; --card: #292a2d; --purple: #6b46a1; --error: #ffb4ab; --teal: #9ad9c7; } }
     :root[data-theme="dark"] { color-scheme: dark; --bg: #202124; --fg: #eee; --muted: #bbb; --line: #4a4a50; --card: #292a2d; --purple: #6b46a1; --error: #ffb4ab; --teal: #9ad9c7; }
@@ -27,7 +28,8 @@
     h1 { margin: 0; font-size: 17px; line-height: 1.4; }
     #result-title { font-weight: 400; } #result-title:not(:empty)::before { content: "· "; }
     .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; font-size: 12px; }
-    .meta > span:not(:first-child):not(:empty)::before { content: "·"; margin-right: 8px; }
+    .meta > span:not(:first-child):not(:empty):not(.pill)::before { content: "·"; margin-right: 8px; }
+    .pill:not([data-state]) { padding: 0; background: none; font-weight: 400; font-size: 12px; } .pill:not([data-state])::before { display: none; }
     .model-identity { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--color-text-primary, var(--fg)); }
     .provider-logo { width: 18px; height: 18px; object-fit: contain; padding: 1px; background: #fff; border-radius: 4px; }
     #error, #share-error { color: var(--error); }
@@ -41,7 +43,7 @@
     #answer:empty { display: none; }
     #answer-state { font-size: 12px; margin-top: 8px; }
     .live-state { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text-secondary, var(--muted)); margin-bottom: 10px; }
-    .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--focus); animation: live-pulse 1.4s ease-in-out infinite; }
+    .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--nu-blue); animation: live-pulse 1.4s ease-in-out infinite; }
     #live-elapsed { font-variant-numeric: tabular-nums; } #live-elapsed:not(:empty)::before { content: "· "; }
     .answer-skeleton span { display: block; height: 10px; margin: 10px 0; border-radius: 5px; background: var(--line); animation: skeleton 1.6s ease-in-out infinite; }
     .answer-skeleton span:nth-child(2) { width: 88%; } .answer-skeleton span:nth-child(3) { width: 60%; }
@@ -98,7 +100,8 @@
     .rich-text blockquote { padding-left:12px; margin-left:0; border-left:3px solid var(--teal); color:var(--muted); }
     .rich-text table { display:block; max-width:100%; overflow:auto; border-collapse:collapse; font-size:12px; }
     .rich-text th,.rich-text td { border:1px solid var(--line); padding:7px 10px; text-align:left; }
-    .rich-text a { color:var(--focus); text-decoration:underline; }
+    .rich-text a { color:var(--ink-blue); text-decoration:underline; }
+    .rich-text h1,.rich-text h2,.rich-text h3 { color:var(--ink-purple); }
     @media (max-width: 420px) { body { padding: 12px; } #answer { max-height: 280px; } .answer-card { padding: 12px; } .composer-row { align-items: flex-end; } }
   </style>
 </head>
@@ -110,7 +113,7 @@
         <h1 id="title">Advisor <span id="result-title"></span></h1>
         <p class="meta" aria-label="Result information">
           <span class="model-identity"><span id="model-logo" aria-hidden="true"></span><span id="model"></span></span>
-          <span id="job-status" role="status" aria-live="polite">Waiting for an advisor result…</span>
+          <span id="job-status" class="pill" role="status" aria-live="polite">Waiting for an advisor result…</span>
           <span id="cost"></span><span id="cleanup"></span>
         </p>
       </div>

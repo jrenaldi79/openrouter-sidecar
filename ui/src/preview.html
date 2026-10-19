@@ -6,6 +6,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
   <title>OpenRouter Sidecar image preview</title>
   <style>
+    /* ACCENTS */
     :root { color-scheme: light dark; --bg: #fff; --fg: #202124; --muted: #666; --line: #ddd; --card: #f7f7f8; }
     @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #202124; --fg: #eee; --muted: #bbb; --line: #444; --card: #292a2d; } }
     :root[data-theme="dark"] { color-scheme: dark; --bg: #202124; --fg: #eee; --muted: #bbb; --line: #444; --card: #292a2d; }
@@ -20,12 +21,13 @@
     #status, .path, .no-preview { color: var(--color-text-secondary, var(--muted)); }
     #details { margin: 10px 0; }
     #gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 12px; }
-    figure { margin: 0; border: 1px solid var(--color-border-primary, var(--line)); border-radius: 8px; padding: 10px; background: var(--color-background-secondary, var(--card)); min-width: 0; }
+    figure { margin: 0; border: 1px solid var(--color-border-primary, var(--line)); border-radius: 8px; padding: 10px; background: var(--color-background-secondary, var(--card)); min-width: 0; border-top: 3px solid var(--nu-teal); }
     img { display: block; width: 100%; height: auto; max-height: 460px; object-fit: contain; border-radius: 4px; }
     figcaption { margin-top: 8px; overflow-wrap: anywhere; }
     .filename { font-weight: 600; }
     .path { font-size: 12px; }
-    .download { margin-top: 6px; font: inherit; padding: 3px 12px; border-radius: 6px; border: 1px solid var(--color-border-primary, var(--line)); background: transparent; color: inherit; cursor: pointer; }
+    .download { margin-top: 6px; font: inherit; padding: 3px 12px; border-radius: 6px; border: 1px solid var(--nu-teal); background: color-mix(in srgb, var(--nu-teal) 14%, transparent); color: var(--ink-teal); font-weight: 600; cursor: pointer; }
+    .download:not(:disabled):hover { background: color-mix(in srgb, var(--nu-teal) 30%, transparent); }
     .download:disabled { opacity: 0.6; cursor: progress; }
     .no-preview { padding: 24px 8px; text-align: center; }
     section { margin-top: 10px; }
