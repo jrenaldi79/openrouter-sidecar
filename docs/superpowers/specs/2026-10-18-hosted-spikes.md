@@ -36,7 +36,7 @@ Live results only. The synthetic multi-user run (fakes for Auth0 and OpenRouter)
 - **A Google sign-in (`google-oauth2`) for the same person got a token without permissions**, and it was refused with 403 as designed. Whether to accept Google sign-ins for students is still an open decision.
 - **The identifier-first login page sends an email address to the password form**, because the shared client also has the database connection enabled. The operator login requests `connection=email` directly. For claude.ai, the database connection was later removed from **MPD MCP Clients** with the user's approval (recorded in `../mpd-auth`).
 
-### 2026-10-19: claude.ai connector, real account (no paid calls by the agent)
+### 2026-10-19: claude.ai connector, real account
 
 - **Deployment:** commit `1527802`, same service and region.
 - **Done by the user in claude.ai:**
@@ -59,13 +59,14 @@ Live results only. The synthetic multi-user run (fakes for Auth0 and OpenRouter)
   - The connector reported no skills. Server instructions, prompts and `skill://` resources were added (`cf0ae68`).
   - The advisor viewer's Settings button triggered a host "send a message" prompt. The viewer now shares through model context only (`c56b87f`).
 
+- **Paid flows, run by the agent after the user approved spending ($0.0407 in total):**
+  - **Advisor follow-up.** `ask_advisor` started a chat with one file (`notes/project.md`, a synthetic codename) for $0.0008. A follow-up on the same `chat_id`, sent without the file, named the file and its owner correctly for $0.0011.
+  - **Masked edit.** `edit_image` with `google/gemini-2.5-flash-image` used an uploaded 256x256 PNG and an uploaded mask, for $0.0388. The change stayed inside the mask.
+  - **Remask.** `remask_image` with a second uploaded mask re-blended the result for $0.00.
+  - **Downloads.** Both results downloaded as 256x256 PNGs. The edit's metadata records the model, prompt, cost and the input's sha256, which matches the uploaded file.
+- **Finding:** image results carry the preview JPEG as base64 in `structuredContent`. Claude Code showed that JSON to the model instead of the text lines.
+
 **Still open:**
 
-- **Paid flows through the connector:**
-  - an `ask_advisor` follow-up on an existing `chat_id`;
-  - an image edit;
-  - a remask.
-
-  The agent's no-spend rule stands (delegate ruling, 2026-10-19). The user runs these or sets a spending cap. The synthetic run covers the logic (`docs/E2E_LOCAL.md`).
 - **The MCP Apps uploader and gallery Download in claude.ai:** needs a person to click.
 - **Two-account isolation, live:** needs a second rostered identity, which is an Auth0 tenant change awaiting approval. The synthetic two-principal and cross-cohort checks pass; live, there is only the unknown-id refusal above.
