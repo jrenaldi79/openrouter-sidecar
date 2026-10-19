@@ -37,10 +37,11 @@ def sse(kind, **fields):
 
 
 class FakeOpenRouter:
-    """Just enough of OpenRouter for advisor chats; records every request."""
+    """Just enough of OpenRouter for advisor chats and student keys; records every request."""
 
     def __init__(self, answer="Final advice"):
         self.answer, self.requests, self.delay = answer, [], 0.0
+        self.keys: dict[str, dict] = {}  # hash -> key data, as the management API reports it
 
     def final(self):
         return {"status": "completed", "usage": {"cost": 0.002}, "output": [{
@@ -50,6 +51,8 @@ class FakeOpenRouter:
     async def handle(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
         path = request.url.path
+        if "/keys" in path or path.endswith("/key"):
+            return self._keys(request, path)
         if path.endswith("/models"):
             return httpx.Response(200, json={"data": [{
                 "id": MODEL, "name": "Test advisor", "created": int(time.time()) - 86400,
@@ -62,6 +65,28 @@ class FakeOpenRouter:
                                       stream=_Stream(self))
             return httpx.Response(200, json=self.final())
         return httpx.Response(404, json={"error": {"message": "fake: unknown path " + path}})
+
+    def _keys(self, request: httpx.Request, path: str) -> httpx.Response:
+        if path.endswith("/key"):  # the student's own key
+            return httpx.Response(200, json={"data": {"usage_monthly": 1.5, "effective_budget": {
+                "scope": "workspace_default_key", "limit_usd": 25, "spend_usd": 1.5,
+                "remaining_usd": 23.5, "reset_interval": "monthly", "resets_at": "2026-11-01T00:00:00Z"}}})
+        if request.method == "POST":
+            body = json.loads(request.content)
+            n = len(self.created_bodies())  # this request is already recorded
+            self.keys[f"hash{n}"] = {"hash": f"hash{n}", "disabled": False, **body}
+            return httpx.Response(201, json={"key": f"sk-or-v1-fake{n}", "data": self.keys[f"hash{n}"]})
+        found = self.keys.get(path.rsplit("/", 1)[-1])
+        if found is None:
+            return httpx.Response(404, json={"error": {"message": "not found"}})
+        if request.method == "DELETE":
+            self.keys.pop(found["hash"])
+            return httpx.Response(200, json={"deleted": True})
+        return httpx.Response(200, json={"data": found})
+
+    def created_bodies(self):
+        return [json.loads(r.content) for r in self.requests
+                if r.method == "POST" and r.url.path.endswith("/keys")]
 
     def bodies(self, suffix="/responses"):
         return [json.loads(r.content) for r in self.requests if r.url.path.endswith(suffix)]
@@ -87,6 +112,7 @@ def hosted_env(port: int, database_url: str) -> dict:
         "DATABASE_URL": database_url,
         "VAULT_KEYS": "v1:" + base64.b64encode(os.urandom(32)).decode(),
         "LINK_SIGNING_KEY": "k" * 32,
+        "OPENROUTER_MANAGEMENT_KEY": "sk-or-v1-management",
     }
 
 
@@ -94,7 +120,7 @@ class Running:
     def __init__(self, server, port, fake, settings):
         self.server, self.port, self.fake, self.settings = server, port, fake, settings
         self.url = f"http://127.0.0.1:{port}/mcp"
-        self.links = server.hosted["links"]
+        self.keys = server.hosted["keys"]
 
     def token(self, sub="email|alice", workspace=WS_2027, **overrides):
         return h.token(sub=sub, workspace=workspace, aud=[self.settings.resource], **overrides)

@@ -1,4 +1,4 @@
-"""M5 migration leg of the synthetic e2e: local export -> one-time link -> hosted import.
+"""M5 migration leg of the synthetic e2e: local export -> hosted import.
 
 Builds a local advisor database (as the retired local server left it) in a temp folder,
 exports it with the same code `openrouter-image-mcp export-local` runs, uploads it as
@@ -38,12 +38,12 @@ async def _put(c, data: bytes):
         return await http.put(ticket["upload_url"], content=data)
 
 
-async def migration_checks(stack, check, link, text) -> None:
+async def migration_checks(stack, check, provisioned, text) -> None:
     with tempfile.TemporaryDirectory() as folder:
         data = _local_export(Path(folder))
     check("export holds no local chat or container ids", b"chat_" not in data and b"nu_" not in data)
     frank = stack.token("email|frank", "2027")
-    await link(stack, frank, "frank")
+    await provisioned(stack, frank, "frank")
     async with stack.client(frank) as c:
         first = await _put(c, data)
         again = await _put(c, data)

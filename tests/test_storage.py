@@ -136,3 +136,20 @@ def test_closing_a_pool_releases_its_sessions(db_target):
     before = set(_backends(db_target, 4))
     storage.close_pool(db_target)
     assert not before & set(_backends(db_target, 4))
+
+
+def test_postgres_schema_counts_as_done_only_once_committed(db_target):
+    # Another session must not skip CREATE TABLE (and then hit UndefinedTable) while
+    # the session that ran it has not committed yet, or after it rolled back.
+    _postgres_only(db_target)
+    key = (db_target, DDL.strip())
+    with pytest.raises(RuntimeError), storage.connect(db_target) as db:
+        db.execute(DDL)
+        assert key not in storage._schema_done
+        raise RuntimeError("roll back")
+    assert key not in storage._schema_done
+    with storage.connect(db_target) as db:
+        db.execute(DDL)
+        assert key not in storage._schema_done
+        db.commit()
+        assert key in storage._schema_done

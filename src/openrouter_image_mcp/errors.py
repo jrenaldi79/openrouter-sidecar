@@ -8,6 +8,10 @@ from __future__ import annotations
 
 from .logs import redact
 
+# OpenRouter answered 401 for the student's provisioned key (disabled or deleted).
+KEY_REJECTED = ("OpenRouter rejected your Sidecar key (it may have been disabled or deleted). "
+                "Call `account_status` to check it, or ask your instructor.")
+
 
 class OpenRouterError(Exception):
     """Base class. ``message`` is the redacted, user-facing text."""

@@ -1,6 +1,6 @@
 # OpenRouter Sidecar
 
-Image generation, image editing, and side-advisor chats for Northwestern MPD AI classes, through [OpenRouter](https://openrouter.ai). Claude stays the main assistant; the Sidecar adds image models and lets Claude consult other models (Gemini, ChatGPT and others) with a deliberately chosen brief. Each person uses their own OpenRouter account, inside their cohort's Northwestern workspace.
+Image generation, image editing, and side-advisor chats for Northwestern MPD AI classes, through [OpenRouter](https://openrouter.ai). Claude stays the main assistant; the Sidecar adds image models and lets Claude consult other models (Gemini, ChatGPT and others) with a deliberately chosen brief. Each student gets their own OpenRouter key from the class automatically, inside their cohort's Northwestern workspace; nobody needs an OpenRouter account.
 
 The Sidecar is a hosted connector: an authenticated remote MCP server on Railway that works in claude.ai, Claude Desktop and Claude Code. There is nothing to install. The earlier local version that ran on each student's computer is retired; see [Moving from the local Sidecar](#moving-from-the-local-sidecar) to bring its chats across.
 
@@ -35,7 +35,7 @@ The server takes the workspace from the signed-in profile; there is no personal-
   claude mcp add --transport http openrouter-sidecar https://sidecar-production-e110.up.railway.app/mcp
   ```
 
-**2. Link your OpenRouter account (once).** Ask Claude for `account_status`. If OpenRouter is not linked, call `link_openrouter`: you get a one-time link to open in your own browser within 10 minutes. It runs OpenRouter sign-in for your cohort's workspace, then asks you to confirm. Only the browser that opens the link can finish it. The resulting key is stored encrypted on the server and used only for your requests, so every paid call bills your own OpenRouter key. `unlink_openrouter` stops the server using it; delete the key in OpenRouter to revoke it fully. Tools that cost money fail with a link-required message until you link.
+**2. Check your account.** Ask Claude for `account_status`. There is nothing to link: the first time you use the Sidecar, the server issues your own OpenRouter key in your cohort's workspace (named `Sidecar · <your email> · <cohort>`). The key is stored encrypted on the server and used only for your requests. `account_status` shows the key, what you have spent this month and your budget. Each key has a monthly budget ($25 a month) set on the cohort workspace by the instructor; when it runs out, paid calls fail until it resets. If `account_status` says no key is available or that your key was disabled, ask your instructor.
 
 **3. Try it.**
 - Ask a side advisor a question with `ask_advisor` (see [Headless advisor](#headless-advisor-subagent-mode)).
@@ -50,7 +50,7 @@ The connector brings its own workflow guide (server instructions) and the class 
 
 **Tool permissions.** claude.ai asks before each connector tool call; a server can't turn that off. It does group the Sidecar's tools under Connectors → OpenRouter Sidecar → Tool permissions, using the tools' MCP annotations (`src/openrouter_image_mcp/tool_annotations.py`):
 - **Read-only tools** are free lookups; setting the whole group to *Always allow* is safe.
-- **Write/delete tools** create or change something, or open an in-chat app. `ask_advisor`, `send_advisor_message`, `generate_image` and `edit_image` cost money; `delete_advisor_chat` and `unlink_openrouter` delete things. The `Open…` viewers, `remask_image`, `create_image_upload`, `start_advisor_chat`, `set_sidecar_preferences` and `link_openrouter` are free. The viewers sit here because claude.ai doesn't render the app of a tool labelled read-only.
+- **Write/delete tools** create or change something, or open an in-chat app. `ask_advisor`, `send_advisor_message`, `generate_image` and `edit_image` cost money; `delete_advisor_chat` deletes things. The `Open…` viewers, `remask_image`, `create_image_upload`, `start_advisor_chat` and `set_sidecar_preferences` are free. The viewers sit here because claude.ai doesn't render the app of a tool labelled read-only.
 
 Reconnect the connector after an update that changes tools: claude.ai keeps the tool list from when it was added. In Claude Code, allow the free tools with `permissions.allow` entries such as `mcp__openrouter-sidecar__account_status`.
 
@@ -62,9 +62,7 @@ Operators: see [docs/HOSTED_OPERATIONS.md](docs/HOSTED_OPERATIONS.md) for config
 
 | Tool | What it does |
 | --- | --- |
-| `account_status` | Shows your sign-in, cohort and whether OpenRouter is linked. No cost. |
-| `link_openrouter` | Returns a one-time browser link that links your own OpenRouter account. |
-| `unlink_openrouter` | Stops the server using your linked key; chats are kept. |
+| `account_status` | Shows your sign-in, cohort, your class OpenRouter key (issued on first use), spend this month and budget. No cost. |
 | `list_image_models` | Discovers available image models and pricing. |
 | `get_image_model` | Shows model parameters, providers and prices. |
 | `create_image_upload` | Returns a one-time PUT URL for uploading an image (`curl -T file URL`); the response holds the asset id. |
@@ -168,7 +166,7 @@ deleting that checkout:
 `export-local` reads the chats the local Sidecar saved for that cohort and the key it
 signed in with (only to find those chats; the key is never exported). The export
 holds the chats (titles, models, transcripts, session files) and your default models.
-Link OpenRouter on the hosted connector separately. Imported chats get new chat ids and
+Your hosted OpenRouter key is issued separately, on first use. Imported chats get new chat ids and
 continue where they left off. Exports from another class year are refused, and the same
 export imports only once. Your hosted settings are only filled in if you haven't chosen
 any yet. Delete the export file afterwards, since it contains your transcripts. Once the
@@ -176,7 +174,7 @@ import is done, remove the old Sidecar entry from Claude Desktop's configuration
 
 ## Cost and privacy
 
-Prompts and input images go through OpenRouter to third-party providers. Get explicit permission before uploading other people's images, research materials or confidential project information. Start with one low-cost draft and relay reported spending. Use the live catalog for model choice and prices. The reported cost is whatever OpenRouter returns, not an independent guarantee of total spending. Organization/workspace budgets are administered in OpenRouter; this server does not create or increase them. Nothing replays a potentially billed request automatically after a timeout or provider error.
+Prompts and input images go through OpenRouter to third-party providers. Get explicit permission before uploading other people's images, research materials or confidential project information. Start with one low-cost draft and relay reported spending. Use the live catalog for model choice and prices. The reported cost is whatever OpenRouter returns, not an independent guarantee of total spending. Budgets are administered in OpenRouter (each cohort workspace's default guardrail); this server creates one key per student but never sets or raises a budget. Instructors manage student keys with `scripts/ops/openrouter_keys.py` (see `docs/HOSTED_OPERATIONS.md`). Nothing replays a potentially billed request automatically after a timeout or provider error.
 
 ## Advisor settings and viewer
 

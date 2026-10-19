@@ -90,6 +90,8 @@ class _Postgres:
         self.url = url
         self.pool = _pool(url)
         self.connection = self.pool.getconn()
+        # DDL counts as done only once committed; until then other sessions must run it too.
+        self._schema_pending: set[tuple[str, str]] = set()
 
     def execute(self, sql: str, params: tuple = ()):
         text = sql.strip()
@@ -108,8 +110,7 @@ class _Postgres:
         # Concurrent first-time DDL races on the catalog; serialize it.
         self.connection.execute("SELECT pg_advisory_xact_lock(%s)", (_WRITE_LOCK,))
         cursor = self.connection.execute(_translate(text))
-        with _schema_lock:
-            _schema_done.add(key)
+        self._schema_pending.add(key)
         return cursor
 
     def has_table(self, name: str) -> bool:
@@ -123,14 +124,17 @@ class _Postgres:
                 return
         self.connection.execute("SELECT pg_advisory_xact_lock(%s)", (_WRITE_LOCK,))
         self.connection.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {_translate(ddl)}")
-        with _schema_lock:
-            _schema_done.add(key)
+        self._schema_pending.add(key)
 
     def commit(self):
         self.connection.commit()
+        with _schema_lock:
+            _schema_done.update(self._schema_pending)
+        self._schema_pending.clear()
 
     def rollback(self):
         self.connection.rollback()
+        self._schema_pending.clear()
 
     def close(self):
         self.pool.putconn(self.connection)  # back to the pool; a broken session is discarded

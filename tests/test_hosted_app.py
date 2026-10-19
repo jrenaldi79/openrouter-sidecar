@@ -64,21 +64,54 @@ async def test_wrong_audience_is_rejected(running):
 async def test_tool_surface_is_hosted(running):
     async with running.client(running.token()) as client:
         names = {tool.name for tool in (await client.list_tools()).tools}
-    assert {"link_openrouter", "account_status", "start_advisor_chat", "send_advisor_message",
+    assert {"account_status", "start_advisor_chat", "send_advisor_message",
             "ask_advisor", "wait_advisor_job"} <= names
-    assert not names & {"auth_login", "auth_logout", "generate_image", "export_advisor_result"}
+    assert not names & {"auth_login", "auth_logout", "generate_image", "export_advisor_result",
+                        "link_openrouter", "unlink_openrouter"}
 
 
-async def test_unlinked_user_is_told_to_link(running):
+async def test_first_tool_call_provisions_a_key_in_the_cohort_workspace(running):
     async with running.client(running.token()) as client:
-        result = await client.call_tool("list_chat_models", {})
-    assert result.is_error
-    assert "openrouter_link_required" in _text(result)
-    assert f"http://127.0.0.1:{running.port}/link/openrouter/start?t=" in _text(result)
+        assert not (await client.call_tool("list_chat_models", {})).is_error
+        assert not (await client.call_tool("list_advisor_chats", {})).is_error
+    assert running.fake.created_bodies() == [
+        {"name": "Sidecar · alice@u.northwestern.edu · 2027", "workspace_id": WS_2027}]
+    models = [r for r in running.fake.requests if r.url.path.endswith("/models")]
+    assert models[-1].headers["Authorization"] == "Bearer sk-or-v1-fake1"
+    assert running.keys.row(_alice(running).key, WS_2027).key_hash == "hash1"
 
 
-async def test_linked_user_runs_an_advisor_job(running):
-    running.links.save(_alice(running), "sk-or-v1-alice", "Alice key")
+async def test_concurrent_first_calls_provision_one_key(running):
+    async with running.client(running.token()) as client:
+        results = await asyncio.gather(*(client.call_tool("list_chat_models", {}) for _ in range(4)))
+    assert not any(result.is_error for result in results)
+    assert len(running.fake.created_bodies()) == 1
+
+
+async def test_free_tools_without_keys_still_work_when_provisioning_is_off(db_target, tmp_path):
+    env = {"OPENROUTER_MANAGEMENT_KEY": "", "ASSET_DIR": str(tmp_path / "assets")}
+    async with running_server(db_target, env=env) as server, server.client(server.token()) as client:
+        paid = await client.call_tool("list_chat_models", {})
+        status = _text(await client.call_tool("account_status", {}))
+        upload = await client.call_tool("create_image_upload",
+                                        {"filename": "a.png", "mime": "image/png", "size_bytes": 10})
+    assert paid.is_error and "isn't set up to issue OpenRouter keys" in _text(paid)
+    assert "isn't set up to issue OpenRouter keys" in status
+    assert "MANAGEMENT" not in status and "MANAGEMENT" not in _text(paid)
+    assert not upload.is_error
+    assert server.fake.created_bodies() == []
+
+
+async def test_account_status_shows_key_usage_and_budget(running):
+    async with running.client(running.token()) as client:
+        status = _text(await client.call_tool("account_status", {}))
+    assert "Sidecar · alice@u.northwestern.edu · 2027" in status and "2027" in status
+    assert "$1.50" in status and "$25.00" in status and "monthly" in status
+    assert "sk-or-v1" not in status
+
+
+async def test_provisioned_user_runs_an_advisor_job(running):
+    running.keys.insert(_alice(running), "sk-or-v1-alice", "hash-alice", "Alice key")
     async with running.client(running.token()) as client:
         status = _text(await client.call_tool("account_status", {}))
         assert "Alice key" in status and "2027" in status
@@ -96,7 +129,7 @@ async def test_linked_user_runs_an_advisor_job(running):
 
 
 async def test_headless_session_resumes_from_another_connection(running):
-    running.links.save(_alice(running), "sk-or-v1-alice", "Alice key")
+    running.keys.insert(_alice(running), "sk-or-v1-alice", "hash-alice", "Alice key")
     files = [{"path": "src/app.py", "content": "def handler():\n    return 42\n"}]
     async with running.client(running.token()) as first:
         asked = (await first.call_tool("ask_advisor", {"prompt": "Review handler", "model": MODEL,
@@ -115,9 +148,9 @@ async def test_headless_session_resumes_from_another_connection(running):
 
 
 async def test_hosted_sandbox_is_disabled_and_chats_are_private(running):
-    running.links.save(_alice(running), "sk-or-v1-alice", "Alice key")
+    running.keys.insert(_alice(running), "sk-or-v1-alice", "hash-alice", "Alice key")
     bob = Principal(h.ISSUER, "email|bob", WS_2027, "2027")
-    running.links.save(bob, "sk-or-v1-bob", "Bob key")
+    running.keys.insert(bob, "sk-or-v1-bob", "hash-bob", "Bob key")
     async with running.client(running.token()) as alice:
         refused = await alice.call_tool("ask_advisor", {"prompt": "x", "model": MODEL, "sandbox": True})
         assert refused.is_error and "isolation" in _text(refused)
@@ -130,9 +163,9 @@ async def test_hosted_sandbox_is_disabled_and_chats_are_private(running):
 
 
 async def test_users_are_isolated(running):
-    running.links.save(_alice(running), "sk-or-v1-alice", "Alice key")
+    running.keys.insert(_alice(running), "sk-or-v1-alice", "hash-alice", "Alice key")
     bob = Principal(h.ISSUER, "email|bob", WS_2027, "2027")
-    running.links.save(bob, "sk-or-v1-bob", "Bob key")
+    running.keys.insert(bob, "sk-or-v1-bob", "hash-bob", "Bob key")
     async with running.client(running.token()) as alice:
         chat = json.loads(_text(await alice.call_tool("start_advisor_chat", {"model": MODEL})))
     async with running.client(running.token(sub="email|bob")) as client:
@@ -143,7 +176,7 @@ async def test_users_are_isolated(running):
 
 async def test_cohorts_route_to_their_own_workspace(running):
     carol = Principal(h.ISSUER, "email|carol", WS_2028, "2028")
-    running.links.save(carol, "sk-or-v1-carol", "Carol key")
+    running.keys.insert(carol, "sk-or-v1-carol", "hash-carol", "Carol key")
     async with running.client(running.token(sub="email|carol", workspace=WS_2028)) as client:
         assert not (await client.call_tool("list_chat_models", {})).is_error
     workspaces = {r.url.params.get("workspace_id") for r in running.fake.requests}
@@ -163,10 +196,18 @@ async def test_health_and_ready(running):
     assert ready.status_code == 200 and ready.json()["ready"] is True
 
 
-async def test_link_tool_returns_single_use_url(running):
+async def test_link_pages_are_gone(running):
+    async with httpx.AsyncClient() as http:
+        response = await http.get(f"http://127.0.0.1:{running.port}/link/openrouter/start?t=x")
+    assert response.status_code == 404
+
+
+async def test_rejected_key_deleted_by_an_admin_is_replaced(running):
+    running.keys.insert(_alice(running), "sk-or-v1-alice", "hash-alice", "Alice key")
+    running.keys.mark_rejected(_alice(running).key, WS_2027)  # inference got a 401; key gone
     async with running.client(running.token()) as client:
-        text = _text(await client.call_tool("link_openrouter", {}))
-    assert f"http://127.0.0.1:{running.port}/link/openrouter/start?t=" in text
+        assert not (await client.call_tool("list_chat_models", {})).is_error
+    assert running.keys.row(_alice(running).key, WS_2027).key_hash == "hash1"
 
 
 async def test_shutdown_closes_the_database_pool(db_target, monkeypatch):

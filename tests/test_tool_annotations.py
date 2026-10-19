@@ -22,7 +22,7 @@ READ_ONLY = {
 OPENS_APP = {"open_advisor_result", "open_sidecar_settings", "open_image_uploader"}
 PAID = {"ask_advisor", "send_advisor_message", "generate_image", "edit_image",
         "summarize_advisor_result", "run_sidecar_demo"}
-DESTRUCTIVE = {"delete_advisor_chat", "unlink_openrouter", "retry_advisor_cleanup"}
+DESTRUCTIVE = {"delete_advisor_chat", "retry_advisor_cleanup"}
 
 
 def _by_hint(tools):
@@ -43,7 +43,7 @@ async def test_hosted_tools_are_labelled_read_only_paid_or_destructive(db_target
     assert read_only == READ_ONLY & names
     assert destructive == DESTRUCTIVE & names
     assert paid == PAID & names
-    assert {"link_openrouter", "create_image_upload", "remask_image"} <= names - read_only - destructive
+    assert {"create_image_upload", "remask_image"} <= names - read_only - destructive
     assert OPENS_APP & names == {"open_advisor_result", "open_sidecar_settings", "open_image_uploader"}
 
 

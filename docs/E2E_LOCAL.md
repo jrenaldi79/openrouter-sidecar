@@ -15,9 +15,9 @@ Those remain acceptance steps for you.
 | Piece | What it is |
 |---|---|
 | `scripts/dev/fake_identity.py` | Local issuer. It serves a JWKS on `127.0.0.1:9400` and mints contract-shaped RS256 tokens (`permissions`, profile claim). |
-| `scripts/dev/fake_openrouter.py` | Local OpenRouter on `127.0.0.1:9500`. It covers the PKCE page, code exchange, `/key`, `/models` and `/responses`. Replies describe the files and turns the advisor saw. |
+| `scripts/dev/fake_openrouter.py` | Local OpenRouter on `127.0.0.1:9500`. It covers the management API for student keys (behind the fake management key that `run_sidecar.sh` passes), `/key`, `/models` and `/responses`. Replies describe the files and turns the advisor saw. |
 | `scripts/dev/run_sidecar.sh` | `serve-http` with dev flags. `SIDECAR_DEV_INSECURE_ISSUER` and `SIDECAR_DEV_OPENROUTER_URL` are accepted only for localhost. |
-| `scripts/dev/e2e_local.py` | Driver that runs 46 checks and prints PASS/FAIL. It never prints tokens or keys. |
+| `scripts/dev/e2e_local.py` | Driver that runs 37 checks and prints PASS/FAIL. It never prints tokens or keys. |
 | `scripts/dev/e2e_migration.py` | The M5 leg: builds a local advisor database, exports it, imports it as a new student and continues the chat. |
 | `.claude/launch.json` | Starts the three servers (`fake-identity`, `fake-openrouter`, `sidecar-http`). |
 
@@ -86,3 +86,14 @@ A manual pass in the in-app browser of the link pages (fake sign-in → confirm 
 - a 2028 student's upload of the 2027 export is refused with 403.
 
 This run found that access logs printed `/imports/` link tokens. The fix withholds them like `/uploads/` and `/assets/`.
+
+## Result: 2026-10-19, provisioned student keys
+
+37/37 checks passed against SQLite (`DATABASE_URL=sqlite:///…`; no Postgres container was available for this run). Linking was replaced by provisioned keys, so the link checks are gone. The new checks:
+
+- the first call issues a key named `Sidecar · <email> · <cohort>` in the student's cohort workspace, and `account_status` shows it with the $25 monthly budget;
+- each student (2027, 2028 and the migration user) gets their own key on first use;
+- a key disabled through the management API is refused, and `account_status` reports "disabled by your instructor"; re-enabled, it works again;
+- a deleted key is replaced on the next call and the student's chats are kept.
+
+The server log showed no `sk-or` keys. OpenRouter key hashes (not secrets) appear in its outgoing request lines.

@@ -1,8 +1,9 @@
 """No-cost acceptance probe of a deployed Sidecar with a real Auth0 token.
 
 Uses the token saved by real_login.py. Checks sign-in, cohort routing, the tool
-surface and the image upload/download path (which proves the asset volume is
-writable). It never calls a paid model and never prints the token.
+surface, the signed-in account's provisioned OpenRouter key (account_status issues it on
+first use) and the image upload/download path (which proves the asset volume is
+writable). It never calls a paid model and never prints the token or a key.
 
     uv run python scripts/ops/acceptance_probe.py --url https://<sidecar-host>/mcp
 """
@@ -22,7 +23,7 @@ from mcp.client.streamable_http import streamable_http_client
 from PIL import Image
 
 RESULTS: list[tuple[str, bool]] = []
-EXPECTED = {"account_status", "link_openrouter", "ask_advisor", "wait_advisor_job",
+EXPECTED = {"account_status", "ask_advisor", "wait_advisor_job",
             "create_image_upload", "edit_image", "get_image_download"}
 
 
@@ -53,11 +54,14 @@ async def probe(url: str, token: str) -> None:
     async with (httpx2.AsyncClient(headers=headers, timeout=60) as http,
                 Client(streamable_http_client(url, http_client=http), mode="legacy") as client):
         names = {tool.name for tool in (await client.list_tools()).tools}
-        check("tool surface is hosted", EXPECTED <= names and "auth_login" not in names,
+        check("tool surface is hosted", EXPECTED <= names and not names & {"auth_login", "link_openrouter"},
               str(sorted(EXPECTED - names)))
         status = text(await client.call_tool("account_status", {}))
         check("account_status shows the profile and cohort", "Signed in as" in status and "2027" in status,
               status.splitlines()[0] if status else "")
+        # The first account_status issues this account's own class key (no spend).
+        check("account_status shows a provisioned key", "OpenRouter key: Sidecar · " in status,
+              status.splitlines()[-1] if status else "")
         png = io.BytesIO()
         Image.new("RGB", (32, 24), (78, 42, 132)).save(png, "PNG")
         ticket = (await client.call_tool("create_image_upload", {

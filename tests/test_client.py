@@ -162,8 +162,8 @@ async def test_401_deletes_key_and_raises(keys, client, mock):
     with pytest.raises(AuthRequiredError) as exc:
         await client.images({"prompt": "x"})
     assert keys.get() is None
-    assert "link_openrouter" in str(exc.value)
-    assert "no longer valid" in exc.value.message
+    assert "account_status" in str(exc.value) and "link_openrouter" not in str(exc.value)
+    assert "rejected your Sidecar key" in exc.value.message
 
 
 async def test_no_key_raises_auth_required_without_request(keys, mock):

@@ -20,6 +20,7 @@ def _hints(*, read_only=False, destructive=False, idempotent=False, open_world=F
 
 
 # Free and read-only; open_world where the live OpenRouter catalog or key is read.
+# account_status may issue the caller's class key on first use: free and idempotent.
 _READ = _hints(read_only=True)
 _READ_OPENROUTER = _hints(read_only=True, open_world=True)
 # Paid inference through the user's OpenRouter key.
@@ -40,10 +41,9 @@ ANNOTATIONS: dict[str, ToolAnnotations] = {
     **dict.fromkeys(("ask_advisor", "send_advisor_message", "generate_image", "edit_image",
                      "summarize_advisor_result", "run_sidecar_demo"), _PAID),
     **dict.fromkeys(("create_image_upload", "remask_image", "create_local_import",
-                     "link_openrouter", "reset_advisor_sandbox"), _WRITE),
+                     "reset_advisor_sandbox"), _WRITE),
     "set_sidecar_preferences": _hints(idempotent=True),
     "start_advisor_chat": _hints(open_world=True),  # checks the live catalog; no inference
-    "unlink_openrouter": _hints(destructive=True, idempotent=True),
     "delete_advisor_chat": _hints(destructive=True, idempotent=True),
     "retry_advisor_cleanup": _hints(destructive=True, idempotent=True, open_world=True),
 }

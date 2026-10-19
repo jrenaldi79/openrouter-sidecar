@@ -7,7 +7,11 @@ import pytest
 from openrouter_image_mcp import storage
 from openrouter_image_mcp.advisor_results import AdvisorResults
 from openrouter_image_mcp.advisor_store import AdvisorStore, Scope
-from openrouter_image_mcp.hosted.retention import purge
+from openrouter_image_mcp.hosted.openrouter_keys import KeyManagementError
+from openrouter_image_mcp.hosted.principal import Principal
+from openrouter_image_mcp.hosted.retention import purge, purge_student_keys
+from openrouter_image_mcp.hosted.student_keys import StudentKeyStore
+from openrouter_image_mcp.hosted.vault import Vault
 from openrouter_image_mcp.session_files import FilePacket, SessionFiles
 
 ALICE = Scope("iss|alice", "ws-1")
@@ -46,7 +50,7 @@ def test_old_idle_chat_is_deleted_with_jobs_and_files(store):
     recent = store.create(ALICE, "m", "recent")
     age(store, old.id, 91)
     report = purge(store.target, days=90, apply=True)
-    assert report == {"chats": 1, "jobs": 1, "session_files": 1, "link_attempts": 0,
+    assert report == {"chats": 1, "jobs": 1, "session_files": 1, "retired_links": 0,
                       "stamped": 0, "applied": True, "retention_days": 90}
     assert ids(store) == {recent.id}
     with storage.connect(store.target) as db:
@@ -99,16 +103,58 @@ def test_new_turns_refresh_activity(store):
     assert purge(store.target, days=90, apply=True)["chats"] == 0
 
 
-def test_expired_link_attempts_are_deleted(store):
-    from openrouter_image_mcp.hosted.links import LinkStore
-    from openrouter_image_mcp.hosted.vault import Vault
+def test_retired_link_tables_are_emptied_not_dropped(store):
+    with storage.connect(store.target) as db:
+        db.execute("CREATE TABLE IF NOT EXISTS openrouter_links (principal TEXT, sealed_key TEXT)")
+        db.execute("CREATE TABLE IF NOT EXISTS link_attempts (id TEXT, expires_at REAL)")
+        db.execute("INSERT INTO openrouter_links (principal, sealed_key) VALUES ('p', 'v1:x')")
+        db.execute("INSERT INTO link_attempts (id, expires_at) VALUES ('a', 1)")
+    assert purge(store.target, days=90)["retired_links"] == 2
+    assert purge(store.target, days=90, apply=True)["retired_links"] == 2
+    with storage.connect(store.target) as db:
+        assert db.has_table("openrouter_links") and db.has_table("link_attempts")
+        assert db.execute("SELECT COUNT(*) AS n FROM openrouter_links").fetchone()["n"] == 0
 
-    links = LinkStore(store.target, Vault("v1:" + "A" * 43 + "="), "k" * 32, "http://127.0.0.1:1")
-    with links._db() as db:
-        for attempt_id, expires in (("old", time.time() - 2 * DAY), ("live", time.time() + 60)):
-            db.execute("INSERT INTO link_attempts (id,principal,workspace,verifier,expires_at) "
-                       "VALUES (?,?,?,?,?)", (attempt_id, "p", "w", "v", expires))
-    assert purge(store.target, days=90, apply=True)["link_attempts"] == 1
+
+class Manager:
+    def __init__(self, gone=(), failing=()):
+        self.deleted, self.gone, self.failing = [], set(gone), set(failing)
+
+    async def delete(self, key_hash):
+        if key_hash in self.failing:
+            raise KeyManagementError("OpenRouter key management failed (HTTP 500).", 500)
+        self.deleted.append(key_hash)
+        return key_hash not in self.gone
+
+
+def _idle_keys(store):
+    keys = StudentKeyStore(store.target, Vault("v1:" + "A" * 43 + "="))
+    keys.clock = lambda: time.time() - 100 * DAY
+    for name in ("alice", "bob", "carol"):
+        keys.insert(Principal("iss", name, "ws-1"), f"sk-or-v1-{name}", f"h-{name}", name)
+    store.create(Scope("iss|carol", "ws-1"), "m", "still has a chat")
+    return keys
+
+
+async def test_idle_student_keys_are_counted_then_deleted_at_openrouter(store):
+    keys = _idle_keys(store)
+    manager = Manager(gone={"h-bob"}, failing={"h-alice"})
+    dry = await purge_student_keys(store.target, manager, days=90, apply=False)
+    assert dry == {"student_keys": 2, "student_keys_deleted": 0, "student_key_errors": 0}
+    assert manager.deleted == []
+    applied = await purge_student_keys(store.target, manager, days=90, apply=True)
+    assert applied == {"student_keys": 2, "student_keys_deleted": 1, "student_key_errors": 1}
+    assert manager.deleted == ["h-bob"]  # already gone at OpenRouter still counts as removed
+    assert keys.row("iss|bob", "ws-1") is None
+    assert keys.row("iss|alice", "ws-1") is not None  # kept until OpenRouter confirms
+    assert keys.row("iss|carol", "ws-1") is not None
+
+
+async def test_without_a_management_key_idle_keys_are_only_counted(store):
+    keys = _idle_keys(store)
+    report = await purge_student_keys(store.target, None, days=90, apply=True)
+    assert report == {"student_keys": 2, "student_keys_deleted": 0, "student_key_errors": 0}
+    assert keys.row("iss|bob", "ws-1") is not None
 
 
 def test_empty_database_is_fine(tmp_path):

@@ -17,6 +17,7 @@
    - preferences;
    - linked OpenRouter keys, AES-256-GCM sealed and bound to the principal;
    - link attempts (short-lived);
+   - since 2026-10-19: provisioned student keys instead (`student_keys`, same sealing) with OpenRouter's key hash; the two linking tables are emptied by `purge`.
    - image assets (M3): uploads, results, unblended layers and their metadata.
    
    **Not stored:** Auth0 tokens, reasoning traces, provider container contents.
@@ -26,6 +27,7 @@
    - Generated images and uploads (M3) are kept for 30 days from creation. The server sweeps them hourly; each account is capped at 2 GB.
 6. **Sandbox mode stays disabled** (`SIDECAR_SANDBOX_ENABLED` unset). On 2026-10-05 a live test showed that another key in the shared cohort workspace could list and download uploads. Inline sessions send files in the prompt and offer no tools.
 7. **Spend.** Each student's own OpenRouter key is charged, within the cohort workspace. Server limits: 2 concurrent jobs, 20 requests/min, $5/day per principal.
+   - 2026-10-19: OpenRouter linking was replaced by provisioned keys. The server creates one key per student and cohort with an org management key (`OPENROUTER_MANAGEMENT_KEY`); each cohort workspace's default guardrail budgets every key at $25/month. Students need no OpenRouter account. See `2026-10-19-provisioned-student-keys-design.md`.
 8. **Local stdio server** stays until M5 parity, then it is retired.
    - Retired on 2026-10-19 (M5 task 5.3): the hosted connector is the only server; `export-local` remains for migration.
 9. **Image blobs on a Railway volume** (M3), not an object-storage bucket as the design spec proposed. The single-replica constraint already exists, the volume needs no extra credentials or vendor, and there's no untested S3 code. Uploads go to the Sidecar's own `PUT /uploads/…` endpoint (single-use, size- and pixel-checked, decoded before storage) instead of presigned URLs. Downloads use 24-hour HMAC links. Moving to a bucket later only means replacing `LocalDirBlobs`.

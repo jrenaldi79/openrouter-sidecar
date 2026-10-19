@@ -89,3 +89,11 @@ def test_asset_dir_is_optional_and_absolute():
     assert load_hosted_settings(BASE | {"ASSET_DIR": "/data/assets"}).asset_dir == "/data/assets"
     with pytest.raises(ValueError, match="ASSET_DIR"):
         load_hosted_settings(BASE | {"ASSET_DIR": "data/assets"})
+
+
+def test_management_key_is_optional_and_kept_out_of_repr():
+    assert load_hosted_settings(BASE).management_key is None
+    assert load_hosted_settings(BASE | {"OPENROUTER_MANAGEMENT_KEY": ""}).management_key is None
+    settings = load_hosted_settings(BASE | {"OPENROUTER_MANAGEMENT_KEY": "sk-or-v1-management"})
+    assert settings.management_key == "sk-or-v1-management"
+    assert "sk-or-v1-management" not in repr(settings)

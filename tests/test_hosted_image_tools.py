@@ -56,7 +56,7 @@ def _text(result):
 async def running(db_target, tmp_path):
     async with running_server(db_target, fake=FakeImages(),
                               env={"ASSET_DIR": str(tmp_path / "assets")}) as server:
-        server.links.save(Principal(h.ISSUER, "email|alice", WS_2027, "2027"), "sk-or-v1-alice", "Alice")
+        server.keys.insert(Principal(h.ISSUER, "email|alice", WS_2027, "2027"), "sk-or-v1-alice", "hash-alice", "Alice")
         yield server
 
 
@@ -128,7 +128,11 @@ async def test_assets_are_private_to_their_owner(running):
     assert edit.is_error and running.fake.bodies("/images") == []
 
 
-async def test_unlinked_user_is_told_to_link_before_generating(running):
+async def test_first_generate_provisions_a_key_and_charges_it(running):
     async with running.client(running.token(sub="email|carol")) as client:
         result = await client.call_tool("generate_image", {"prompt": "x", "model": SUNBURST})
-    assert result.is_error and "openrouter_link_required" in _text(result)
+    assert not result.is_error, _text(result)
+    assert [body["name"] for body in running.fake.created_bodies()] == [
+        "Sidecar · carol@u.northwestern.edu · 2027"]
+    calls = [r for r in running.fake.requests if r.url.path.endswith("/images")]
+    assert calls[-1].headers["Authorization"] == "Bearer sk-or-v1-fake1"

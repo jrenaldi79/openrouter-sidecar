@@ -72,6 +72,6 @@ async def test_client_401_forgets_injected_credentials():
 @respx.mock
 async def test_missing_key_message_comes_from_the_source(keys):
     async with OpenRouterClient(timeout_s=5, credentials=keys.credentials()) as client:
-        with pytest.raises(AuthRequiredError, match="link_openrouter"):
+        with pytest.raises(AuthRequiredError, match="No OpenRouter key"):
             await client.key_info()
     assert not respx.calls

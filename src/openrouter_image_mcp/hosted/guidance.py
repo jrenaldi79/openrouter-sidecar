@@ -21,11 +21,13 @@ _FRONT = re.compile(r"^---\nname: (?P<name>[a-z0-9-]+)\ndescription: (?P<descrip
 
 INSTRUCTIONS = """\
 Northwestern MPD OpenRouter Sidecar: image generation and editing, and side-advisor chats
-with other models, billed to the student's own linked OpenRouter account.
+with other models. Each student gets their own OpenRouter key from the class automatically
+(no OpenRouter account needed), with a monthly budget set by the class.
 
-Start with `account_status()`. If OpenRouter isn't linked, give the user the link from
-`link_openrouter()` before any paid call. State the likely cost before large or
-high-quality runs, and relay the cost each result reports.
+Start with `account_status()`: it shows the key and what has been spent against the budget.
+If it says no key is available, relay that message (the instructor fixes it); never retry
+paid calls in a loop. State the likely cost before large or high-quality runs, and relay
+the cost each result reports.
 
 Images: the server can't see the user's files or images pasted into the chat. Get them
 in as an asset id with `open_image_uploader()` (claude.ai, Claude Desktop) or

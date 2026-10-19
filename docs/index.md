@@ -29,6 +29,7 @@ Use maintained guidance, status, and reference documents for current decisions. 
 | Document | Status | Description | Read when |
 | --- | --- | --- | --- |
 | [Hosted Sidecar M2–M5 Implementation Plan (outline)](superpowers/plans/2026-10-18-hosted-sidecar-m2-m5.md) | pending | Task-by-task implementation plan: Hosted Sidecar M2–M5 Implementation Plan (outline). | Tracing why the implementation looks the way it does, or continuing this plan. |
+| [Provisioned student OpenRouter keys](superpowers/specs/2026-10-19-provisioned-student-keys-design.md) | completed | Design for issuing each student an OpenRouter key automatically from a management key, replacing the OpenRouter linking flow | Changing how the hosted Sidecar gets, stores, checks or removes a student's OpenRouter key, or operating student keys |
 
 ## History
 
@@ -87,9 +88,10 @@ Filenames grouped by folder; each heading links that folder's note.
 - [scripts/dev/fake&#95;openrouter.py](../scripts/dev/fake_openrouter.py)
 - [scripts/dev/run&#95;sidecar.sh](../scripts/dev/run_sidecar.sh)
 
-### [scripts/ops](../scripts/ops/CLAUDE.md): Operator acceptance tools for a deployed sidecar: a real Auth0 PKCE login that saves a short-lived token, and a no-cost probe of the live server.
+### [scripts/ops](../scripts/ops/CLAUDE.md): Operator tools for a deployed sidecar: a real Auth0 PKCE login, a no-cost probe of the live server, and the instructor's student OpenRouter key manager.
 
 - [scripts/ops/acceptance&#95;probe.py](../scripts/ops/acceptance_probe.py)
+- [scripts/ops/openrouter&#95;keys.py](../scripts/ops/openrouter_keys.py)
 - [scripts/ops/real&#95;login.py](../scripts/ops/real_login.py)
 
 ### [src/openrouter&#95;image&#95;mcp](../src/openrouter_image_mcp/CLAUDE.md): Core package: the command line, the shared tool helpers, the image pipeline (catalog, client, imaging, service, outputs), the advisor, preferences and onboarding, and the SQLite/Postgres storage seam the hosted server builds on.
@@ -104,7 +106,6 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/advisor&#95;tools.py](../src/openrouter_image_mcp/advisor_tools.py)
 - [src/openrouter&#95;image&#95;mcp/apps.py](../src/openrouter_image_mcp/apps.py)
 - [src/openrouter&#95;image&#95;mcp/assets.py](../src/openrouter_image_mcp/assets.py)
-- [src/openrouter&#95;image&#95;mcp/auth.py](../src/openrouter_image_mcp/auth.py)
 - [src/openrouter&#95;image&#95;mcp/catalog.py](../src/openrouter_image_mcp/catalog.py)
 - [src/openrouter&#95;image&#95;mcp/catalog&#95;tools.py](../src/openrouter_image_mcp/catalog_tools.py)
 - [src/openrouter&#95;image&#95;mcp/cli.py](../src/openrouter_image_mcp/cli.py)
@@ -128,9 +129,10 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/tool&#95;annotations.py](../src/openrouter_image_mcp/tool_annotations.py)
 - [src/openrouter&#95;image&#95;mcp/tool&#95;support.py](../src/openrouter_image_mcp/tool_support.py)
 
-### [src/openrouter&#95;image&#95;mcp/hosted](../src/openrouter_image_mcp/hosted/CLAUDE.md): Hosted remote MCP (Railway): authenticated multi-tenant Streamable HTTP server with Auth0 verification, per-principal OpenRouter key linking and vault, cohort workspaces, limits, image assets with signed uploads and downloads, health, sweeper and retention.
+### [src/openrouter&#95;image&#95;mcp/hosted](../src/openrouter_image_mcp/hosted/CLAUDE.md): Hosted remote MCP (Railway): authenticated multi-tenant Streamable HTTP server with Auth0 verification, per-principal provisioned OpenRouter keys and vault, cohort workspaces, limits, image assets with signed uploads and downloads, health, sweeper and retention.
 
 - [src/openrouter&#95;image&#95;mcp/hosted/&#95;&#95;init&#95;&#95;.py](../src/openrouter_image_mcp/hosted/__init__.py)
+- [src/openrouter&#95;image&#95;mcp/hosted/account.py](../src/openrouter_image_mcp/hosted/account.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/app.py](../src/openrouter_image_mcp/hosted/app.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/credentials.py](../src/openrouter_image_mcp/hosted/credentials.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/devproxy.py](../src/openrouter_image_mcp/hosted/devproxy.py)
@@ -141,13 +143,13 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/hosted/images.py](../src/openrouter_image_mcp/hosted/images.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/imports.py](../src/openrouter_image_mcp/hosted/imports.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/limits.py](../src/openrouter_image_mcp/hosted/limits.py)
-- [src/openrouter&#95;image&#95;mcp/hosted/link&#95;routes.py](../src/openrouter_image_mcp/hosted/link_routes.py)
-- [src/openrouter&#95;image&#95;mcp/hosted/links.py](../src/openrouter_image_mcp/hosted/links.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/main.py](../src/openrouter_image_mcp/hosted/main.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/openrouter&#95;keys.py](../src/openrouter_image_mcp/hosted/openrouter_keys.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/principal.py](../src/openrouter_image_mcp/hosted/principal.py)
+- [src/openrouter&#95;image&#95;mcp/hosted/provisioning.py](../src/openrouter_image_mcp/hosted/provisioning.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/retention.py](../src/openrouter_image_mcp/hosted/retention.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/settings.py](../src/openrouter_image_mcp/hosted/settings.py)
+- [src/openrouter&#95;image&#95;mcp/hosted/student&#95;keys.py](../src/openrouter_image_mcp/hosted/student_keys.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/sweeper.py](../src/openrouter_image_mcp/hosted/sweeper.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/uploads.py](../src/openrouter_image_mcp/hosted/uploads.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/vault.py](../src/openrouter_image_mcp/hosted/vault.py)

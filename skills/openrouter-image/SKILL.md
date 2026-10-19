@@ -1,13 +1,13 @@
 ---
 name: openrouter-image
-description: Use when the user wants to make, generate, edit, restyle, inpaint, extend (outpaint) or vary an image with the hosted Sidecar connector's `generate_image` or `edit_image` tools, when choosing an OpenRouter image model, or when an image call fails with a link, credits, size or moderation error.
+description: Use when the user wants to make, generate, edit, restyle, inpaint, extend (outpaint) or vary an image with the hosted Sidecar connector's `generate_image` or `edit_image` tools, when choosing an OpenRouter image model, or when an image call fails with a key, budget, size or moderation error.
 ---
 
 # Northwestern AI image generation and editing (hosted Sidecar)
 
 ## Overview
 
-The Sidecar connector sends prompts and images to any OpenRouter image model and stores the results as private image assets on the server. It has no presets: picking the model, wording the prompt and keeping spend sensible is your job. Every call costs real money, billed to the OpenRouter account the student linked.
+The Sidecar connector sends prompts and images to any OpenRouter image model and stores the results as private image assets on the server. It has no presets: picking the model, wording the prompt and keeping spend sensible is your job. Every call costs real money, billed to the student's own class OpenRouter key (issued automatically, with a monthly budget set by the class).
 
 The server can't see files on the user's computer or images pasted into the chat. Images reach it only as asset ids: from an upload, or from an earlier result.
 
@@ -15,8 +15,7 @@ The server can't see files on the user's computer or images pasted into the chat
 
 | Tool | Use it for |
 |---|---|
-| `account_status()` | Signed-in Northwestern account, class cohort, and whether OpenRouter is linked. Free. |
-| `link_openrouter()` | Returns a one-time browser link that connects the student's own OpenRouter account. Needed once before any paid call. |
+| `account_status()` | Signed-in Northwestern account, class cohort, the student's OpenRouter key (issued on first use) and spend against the monthly budget. Free. |
 | `list_image_models(query?, accepts_images?, author?, sort="newest"\|"price")` | Find candidate models. `accepts_images=true` for edits. |
 | `get_image_model(model_id)` | Exact aspect ratios, resolutions, quality values, max `n`, max input images, passthrough options, pricing. |
 | `create_image_upload(filename, mime, size_bytes)` | A one-time PUT link for one image file (`curl -T file "<url>"`); the response holds its asset id. |
@@ -38,7 +37,7 @@ Ask the user for an explicit OK before the first `edit_image` call that sends a 
 
 ## Workflow
 
-1. **Check the account.** `account_status()`; if OpenRouter isn't linked, give the user the `link_openrouter()` link and wait for them to finish.
+1. **Check the account.** `account_status()`; if it says no key is available, relay the message (the instructor fixes it) and stop.
 2. **Discover first.** Don't pick a model from memory. Call `list_image_models` (with `accepts_images=true` for edits), then `get_image_model` on the one or two candidates to read their real parameters.
 3. **Iterate cheaply.** Use a speed-tier model, or `quality="low"` where the model has `quality`, and start with `n=1` while the prompt is still changing. Increase the batch only when the student requests it and understands the cost.
 4. **State the cost before spending.** Before a large `n` or a high/max-quality final, tell the user the likely cost: the cost of a comparable earlier result times `n`, or, if the cost is unknown, say so and run `n=1` first. `n` can be 1 to 10; above the model's maximum the server splits it into several calls, each billed.
@@ -62,8 +61,8 @@ Each result lists its asset id, a 24-hour download link for the image and one fo
 
 | Message | Do this |
 |---|---|
-| `openrouter_link_required` | Call `link_openrouter()`, give the user the link, and retry after they confirm. Never retry in a loop. |
-| Out of credits (402) | Tell the user to add credits or raise the key's limit on OpenRouter. |
+| No key available, or key rejected, disabled or not set up | Relay the message and suggest asking the instructor. Never retry in a loop. |
+| Budget used up (403) or out of credits (402) | Tell the user; `account_status()` shows the budget and when it resets. The instructor manages budgets. |
 | "Blocked by … moderation … Not charged" | Nothing was billed. Reword neutrally (drop violent, body or brand wording), or check `get_image_model` for a `moderation` passthrough and offer it as a flat `provider_options={"moderation": "low"}` (the server routes it to each provider that allows it; other keys are rejected before spend), or switch to a model that isn't moderated. Tell the user which you chose. |
 | Invalid parameter (lists allowed values) | Pick from the list; nothing was billed. |
 | "unavailable" for an asset id | The id belongs to another sign-in or has expired; upload the image again. |

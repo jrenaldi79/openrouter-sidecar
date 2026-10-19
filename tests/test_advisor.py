@@ -209,7 +209,7 @@ async def test_malformed_handles_never_reach_http(rig, handle):
 async def test_no_key_means_no_catalog_or_inference(keys, rig):
     service, _, seen, _, _ = rig
     keys.delete(workspace_id=WORKSPACE)
-    with pytest.raises(OpenRouterError, match="not linked"):
+    with pytest.raises(OpenRouterError, match="No OpenRouter key"):
         await service.start(MODEL, "A")
     assert not seen
 

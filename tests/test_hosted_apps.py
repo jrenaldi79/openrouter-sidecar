@@ -14,7 +14,7 @@ from tests.test_hosted_image_tools import APPS, FakeImages
 async def running(db_target, tmp_path):
     async with running_server(db_target, fake=FakeImages(),
                               env={"ASSET_DIR": str(tmp_path / "assets")}) as server:
-        server.links.save(Principal(h.ISSUER, "email|alice", WS_2027, "2027"), "sk-or-v1-alice", "Alice")
+        server.keys.insert(Principal(h.ISSUER, "email|alice", WS_2027, "2027"), "sk-or-v1-alice", "hash-alice", "Alice")
         yield server
 
 

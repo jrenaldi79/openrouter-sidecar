@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -27,6 +27,8 @@ class HostedSettings:
     maintenance: bool = False
     dev_openrouter_url: str | None = None
     asset_dir: str | None = None
+    # Org management key: creates and deletes student keys only. Unset: no new keys.
+    management_key: str | None = field(default=None, repr=False)
 
 
 def _secure_or_local(url: str, name: str) -> None:
@@ -103,4 +105,5 @@ def load_hosted_settings(env: Mapping[str, str]) -> HostedSettings:
         maintenance=env.get("SIDECAR_MAINTENANCE", "").lower() in _TRUE,
         dev_openrouter_url=_dev_openrouter(env, resource),
         asset_dir=_asset_dir(env),
+        management_key=env.get("OPENROUTER_MANAGEMENT_KEY") or None,
     )

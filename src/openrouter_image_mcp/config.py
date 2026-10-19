@@ -10,7 +10,6 @@ import math
 from dataclasses import dataclass
 
 API_BASE = "https://openrouter.ai/api/v1"
-AUTH_URL = "https://openrouter.ai/auth"
 APP_URL = "https://github.com/skelly-77/openrouter-image-mcp"
 APP_TITLE = "Northwestern AI Images"
 # Where the retired local Sidecar kept each cohort's key; `export-local` still reads it.

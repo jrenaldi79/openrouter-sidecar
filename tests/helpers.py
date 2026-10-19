@@ -82,8 +82,8 @@ def unc_paths(name: str) -> list[str]:
 class KeyBox:
     """Test stand-in for where each caller's OpenRouter key comes from, one per workspace.
 
-    The hosted server reads linked keys from its vault (`hosted/credentials.py`); unit
-    tests swap keys here to simulate a different account or a revoked link.
+    The hosted server reads provisioned keys from its vault (`hosted/credentials.py`); unit
+    tests swap keys here to simulate a different account or a revoked key.
     """
 
     def __init__(self):
@@ -105,7 +105,7 @@ class KeyBox:
 class BoxCredentials:
     """A `CredentialSource` over a KeyBox: the owner scope is the key's SHA-256."""
 
-    MISSING = "OpenRouter is not linked. Call link_openrouter first."
+    MISSING = "No OpenRouter key is available yet; ask your instructor."
 
     def __init__(self, box: KeyBox, workspace_id: str):
         self.box, self.workspace_id = box, workspace_id

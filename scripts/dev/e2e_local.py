@@ -1,7 +1,8 @@
 """Synthetic local e2e: drive a running hosted sidecar as test users.
 
 Needs: fake_identity.py (issuer), fake_openrouter.py and run_sidecar.sh running.
-Uses the real MCP SDK client over Streamable HTTP and the real link pages over HTTP.
+Uses the real MCP SDK client over Streamable HTTP; student keys come from the fake
+management API.
 Prints PASS/FAIL per check, never tokens or keys. This is a synthetic run: it does
 not exercise real Auth0 login, real OpenRouter, or a hosted Claude client.
 
@@ -30,6 +31,8 @@ from fake_identity import mint
 from openrouter_image_mcp.config import COHORT_WORKSPACES
 
 RESULTS: list[tuple[str, bool, str]] = []
+FAKE_OPENROUTER_PORT = 9500
+MANAGEMENT_KEY = "sk-or-v1-fake-management"  # the local fake's, as in run_sidecar.sh
 MODEL = "openai/fake-advisor"
 IMAGE_MODEL = "openai/gpt-image-2.5-sunburst"
 
@@ -63,24 +66,24 @@ def text(result) -> str:
     return "\n".join(getattr(item, "text", "") for item in result.content)
 
 
-async def link(stack: Stack, token: str, who: str, label: str | None = None) -> bool:
-    """Run link_openrouter, then the browser pages: start -> fake auth -> callback -> confirm."""
+async def provisioned(stack: Stack, token: str, who: str) -> bool:
+    """account_status issues the student's key on first use and names it."""
     async with stack.client(token) as c:
-        url = re.search(r"https?://\S+", text(await c.call_tool("link_openrouter", {}))).group(0)
-    async with httpx.AsyncClient(timeout=30) as browser:
-        start = await browser.get(url)
-        page = await browser.get(start.headers["location"])
-        authorize = re.search(r"href='([^']+)'", page.text).group(1).replace("&amp;", "&")
-        confirm = await browser.get(authorize)
-        shows_account = f"{who}@example.edu" in confirm.text and "do not continue" in confirm.text
-        fields = dict(re.findall(r"name=(state|csrf) value='([^']+)'", confirm.text))
-        done = await browser.post(stack.origin + "/link/openrouter/confirm", data=fields)
-        forged = await browser.post(stack.origin + "/link/openrouter/confirm", data=fields)
-    label = label or who
-    check(f"{label}: confirm page names the target account", shows_account)
-    check(f"{label}: confirm replay refused", forged.status_code == 400)
-    return check(f"{label}: link flow completes", done.status_code == 200 and "Linked" in done.text,
-                 f"status {done.status_code}")
+        status = text(await c.call_tool("account_status", {}))
+    return check(f"{who}: key issued on first use", f"Sidecar · {who}@example.edu · " in status
+                 and "sk-or-v1" not in status, status[:200])
+
+
+async def _admin(method: str, path: str, **kwargs) -> httpx.Response:
+    """Act as the instructor on the fake OpenRouter's management API."""
+    async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{FAKE_OPENROUTER_PORT}/api/v1/") as http:
+        return await http.request(method, path, headers={"Authorization": f"Bearer {MANAGEMENT_KEY}"},
+                                  **kwargs)
+
+
+async def _key_hash(email: str) -> str:
+    rows = (await _admin("GET", "keys", params={"workspace_id": COHORT_WORKSPACES["2027"]})).json()["data"]
+    return next(row["hash"] for row in rows if f"· {email} ·" in row["name"])
 
 
 async def auth_checks(stack: Stack):
@@ -108,7 +111,8 @@ async def headless_checks(stack: Stack, alice: str) -> dict:
         tools = {t.name for t in (await c.list_tools()).tools}
         check("tool surface has ask_advisor and wait_advisor_job", {"ask_advisor", "wait_advisor_job"} <= tools)
         status = text(await c.call_tool("account_status", {}))
-        check("account_status shows linked key and cohort", "Linked" in status or "key" in status.lower())
+        check("account_status shows key, budget and cohort", "OpenRouter key: Sidecar" in status
+              and "$25.00" in status and "2027" in status, status[:200])
         first = (await c.call_tool("ask_advisor", {"prompt": "Review the handler", "model": MODEL,
                                                    "files": files})).structured_content
     answer = (first or {}).get("answer", "")
@@ -133,7 +137,7 @@ async def headless_checks(stack: Stack, alice: str) -> dict:
 
 async def isolation_checks(stack: Stack, alice_chat: dict):
     bob = stack.token("email|bob", "2027")
-    await link(stack, bob, "bob")
+    await provisioned(stack, bob, "bob")
     async with stack.client(bob) as c:
         foreign = await c.call_tool("ask_advisor", {"prompt": "show", "chat_id": alice_chat["chat_id"]})
         listed = json.loads(text(await c.call_tool("list_advisor_chats", {})))
@@ -142,7 +146,7 @@ async def isolation_checks(stack: Stack, alice_chat: dict):
     check("bob cannot read alice's job", waited.is_error)
     check("bob sees no chats", listed == [])
     carol = stack.token("email|carol", "2028")
-    await link(stack, carol, "carol")
+    await provisioned(stack, carol, "carol")
     async with stack.client(carol) as c:
         status = text(await c.call_tool("account_status", {}))
         asked = (await c.call_tool("ask_advisor", {"prompt": "hi", "model": MODEL})).structured_content
@@ -193,31 +197,46 @@ async def image_checks(stack: Stack, alice: str):
     check("bob cannot fetch alice's image", denied.is_error and "unavailable" in text(denied))
 
 
-async def unlink_checks(stack: Stack, alice: str):
-    async with stack.client(alice) as c:
-        await c.call_tool("unlink_openrouter", {})
-        after = await c.call_tool("list_chat_models", {})
-    check("after unlink, tools ask to link again", after.is_error and "openrouter_link_required" in text(after))
-    await link(stack, alice, "alice", "alice (relink)")
+async def _ask(stack: Stack, token: str):
+    async with stack.client(token) as c:
+        asked = await c.call_tool("ask_advisor", {"prompt": "hi", "model": MODEL})
+        status = text(await c.call_tool("account_status", {}))
+    done = not asked.is_error and (asked.structured_content or {}).get("status") == "completed"
+    return done, status
+
+
+async def key_admin_checks(stack: Stack, alice: str):
+    """Instructor actions on the fake management API: disable, enable, delete."""
+    key_hash = await _key_hash("alice@example.edu")
+    await _admin("PATCH", f"keys/{key_hash}", json={"disabled": True})
+    asked, status = await _ask(stack, alice)
+    check("a disabled key is refused and reported as disabled", not asked
+          and "disabled by your instructor" in status, status[:200])
+    await _admin("PATCH", f"keys/{key_hash}", json={"disabled": False})
+    asked, _ = await _ask(stack, alice)
+    check("a re-enabled key works again", asked)
+    await _admin("DELETE", f"keys/{key_hash}")
+    asked, status = await _ask(stack, alice)
     async with stack.client(alice) as c:
         chats = json.loads(text(await c.call_tool("list_advisor_chats", {})))
-    check("after relink, earlier chats are kept", len(chats) >= 1)
+    check("a deleted key is replaced, not re-tried", not asked and "OpenRouter key: Sidecar" in status
+          and await _key_hash("alice@example.edu") != key_hash, status[:200])
+    check("earlier chats are kept with the new key", len(chats) >= 1)
 
 
 async def run(stack: Stack) -> int:
     await auth_checks(stack)
     alice = stack.token("email|alice", "2027")
     async with stack.client(alice) as c:
-        unlinked = await c.call_tool("list_chat_models", {})
-    check("unlinked user gets openrouter_link_required", unlinked.is_error
-          and "openrouter_link_required" in text(unlinked))
-    if not await link(stack, alice, "alice"):
+        first_call = await c.call_tool("list_chat_models", {})
+    check("first paid-path call issues a key and succeeds", not first_call.is_error, text(first_call)[:200])
+    if not await provisioned(stack, alice, "alice"):
         return 1
     first = await headless_checks(stack, alice)
     await isolation_checks(stack, first)
     await image_checks(stack, alice)
-    await migration_checks(stack, check, link, text)
-    await unlink_checks(stack, alice)
+    await migration_checks(stack, check, provisioned, text)
+    await key_admin_checks(stack, alice)
     failed = [name for name, ok, _ in RESULTS if not ok]
     print(f"\n{len(RESULTS) - len(failed)}/{len(RESULTS)} checks passed (synthetic local run)")
     (stack.state / "e2e-results.json").write_text(json.dumps(

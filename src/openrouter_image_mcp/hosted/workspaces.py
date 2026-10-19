@@ -24,8 +24,7 @@ from ..preferences import PreferenceService
 from ..service import ImageService
 from .credentials import HostedCredentials
 from .principal import current_principal
-
-NOT_SERVED = "Your class workspace is not served by this Sidecar; ask your instructor."
+from .provisioning import NOT_SERVED
 
 
 @dataclass
@@ -75,13 +74,13 @@ class ByWorkspace:
         return getattr(self._target(), name)
 
 
-def build_workspaces(target, links, *, profile_claim: str, admit, timeout_s: float = 600.0,
+def build_workspaces(target, keys, *, profile_claim: str, admit, timeout_s: float = 600.0,
                      advisor_timeout_s: float = ADVISOR_MAX_TIMEOUT_S,
                      transport: httpx.AsyncBaseTransport | None = None,
                      sandbox_enabled: bool = False) -> dict[str, WorkspaceServices]:
     services = {}
     for workspace in COHORT_WORKSPACES.values():
-        credentials = HostedCredentials(workspace, links, profile_claim)
+        credentials = HostedCredentials(workspace, keys, profile_claim)
         settings = Settings(workspace_id=workspace, max_input_edge=2048, timeout_s=timeout_s,
                             ratio_tolerance=0.03, advisor_timeout_s=advisor_timeout_s)
         advisors = AdvisorService(workspace, AdvisorStore(target),

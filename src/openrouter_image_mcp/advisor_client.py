@@ -9,7 +9,7 @@ import re
 import httpx
 
 from .config import ADVISOR_MAX_TIMEOUT_S, API_BASE, APP_TITLE, APP_URL
-from .errors import AuthRequiredError, ProviderError
+from .errors import KEY_REJECTED, AuthRequiredError, ProviderError
 
 FILE_ID = re.compile(r"or_file_[A-Za-z0-9]+\Z")
 MAX_STREAM_FRAME = 256_000
@@ -45,8 +45,8 @@ class AdvisorClient:
         if response.status_code == 404 and missing_ok:
             return None
         if response.status_code == 401:
-            # Do not delete the keyring entry: it might have changed during this request.
-            raise AuthRequiredError("Advisor sign-in is invalid; sign in again.")
+            # Leave the stored key alone: account_status rechecks it with OpenRouter.
+            raise AuthRequiredError(KEY_REJECTED)
         if not 200 <= response.status_code < 300:
             raise ProviderError(
                 f"Advisor operation failed (HTTP {response.status_code}). "
@@ -153,7 +153,7 @@ class AdvisorClient:
                     timeout=self._timeout_s,
                 ) as response:
                     if response.status_code == 401:
-                        raise AuthRequiredError("Advisor sign-in is invalid; sign in again.")
+                        raise AuthRequiredError(KEY_REJECTED)
                     if not 200 <= response.status_code < 300:
                         raise ProviderError(
                             f"Advisor operation failed (HTTP {response.status_code}). "

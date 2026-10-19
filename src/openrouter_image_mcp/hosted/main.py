@@ -7,11 +7,9 @@ from collections.abc import Mapping
 
 import uvicorn
 
-from ..auth import AUTH_URL
 from ..logs import configure_logging
 from .app import build_hosted_server, transport_security
 from .devproxy import RedirectTransport
-from .openrouter_keys import exchange_code, verify_key
 from .settings import load_hosted_settings
 
 log = logging.getLogger(__name__)
@@ -22,16 +20,8 @@ def build_app(env: Mapping[str, str]):
     options = {}
     if settings.dev_openrouter_url:
         log.warning("DEVELOPMENT MODE: OpenRouter traffic goes to %s", settings.dev_openrouter_url)
-        transport = RedirectTransport(settings.dev_openrouter_url)
-
-        async def exchange(code, verifier):
-            return await exchange_code(code, verifier, transport=transport)
-
-        async def verify(key, workspace_id):
-            return await verify_key(key, workspace_id, transport=transport)
-
-        options = {"transport": transport, "exchange": exchange, "verify": verify,
-                   "auth_url": settings.dev_openrouter_url + AUTH_URL.removeprefix("https://openrouter.ai")}
+        # Inference and key management both go to the local fake.
+        options = {"transport": RedirectTransport(settings.dev_openrouter_url)}
     if settings.issuer.startswith("http://"):
         log.warning("DEVELOPMENT MODE: accepting tokens from local issuer %s", settings.issuer)
     server = build_hosted_server(settings, **options)

@@ -54,7 +54,12 @@ Path-scoped rules live in `.claude/rules/` (TDD, code quality, testing, Python, 
 
 - **Never edit `src/openrouter_image_mcp/ui/*.html`.** They are generated; edit `ui/src` and rebuild.
 - **OpenRouter HTTP lives in a few seams:** `client.py` (images), `advisor_client.py` (advisor) and
-  `hosted/openrouter_keys.py` (key exchange). Tests stub them with `respx`; don't add httpx calls elsewhere.
+  `hosted/openrouter_keys.py` (management API for student keys and guardrails, plus `GET /key`). Tests stub them
+  with `respx` or the harness fake; don't add httpx calls elsewhere.
+- **Student keys are provisioned, not linked:** `OPENROUTER_MANAGEMENT_KEY` lets the server create one key per
+  principal and cohort on first use (`hosted/provisioning.py`, middleware before tool calls), sealed per principal in
+  `student_keys`. `HostedCredentials.resolve()` stays a synchronous lookup; never provision inside it. The management
+  key is never used for inference, logged or returned. Instructors manage keys with `scripts/ops/openrouter_keys.py`.
 - **Keys never leak:** keys are vault-encrypted per principal; nothing writes to the OS keyring (`keystore.py` only
   reads the retired local key for `export-local`). Errors and logs pass through `logs.redact`. Tests pass keys through
   the `keys` fixture (`helpers.KeyBox`); `memory_keyring` exists only for the export tests.

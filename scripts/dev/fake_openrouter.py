@@ -1,7 +1,7 @@
 """Local stand-in for OpenRouter (development only). No real keys, no spend.
 
-Implements just what the hosted sidecar calls: the PKCE sign-in page and code
-exchange, key info, the model catalogs, Responses (streaming and not) and image
+Implements just what the hosted sidecar calls: the management API for student keys
+(create, get, list, update, delete), key info, the model catalogs, Responses (streaming and not) and image
 generation. Replies describe what the advisor received (files, prior turns) so an
 e2e run can check that session state is restored. Images are flat test pictures.
 
@@ -13,73 +13,86 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
-import html
 import io
 import json
 import re
 import secrets
 import time
 from pathlib import Path
-from urllib.parse import urlencode, urlsplit
 
 import uvicorn
 from PIL import Image
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import (
-    HTMLResponse,
-    JSONResponse,
-    StreamingResponse,
-)
+from starlette.responses import JSONResponse, StreamingResponse
 from starlette.routing import Route
 
 MODEL = "openai/fake-advisor"
 FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixtures"  # image model catalog
-_codes: dict[str, dict] = {}   # code -> {challenge, workspace, label}
-_keys: dict[str, dict] = {}    # key -> {workspace, label}
+MANAGEMENT_KEY = "sk-or-v1-fake-management"  # run_sidecar.sh passes the same value
+_keys: dict[str, dict] = {}    # key -> {hash, name, workspace_id, disabled, created_at}
 calls: list[dict] = []          # what each /responses call carried (for inspection)
 
 
-def _challenge(verifier: str) -> str:
-    return base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+def _managed(request: Request) -> bool:
+    return request.headers.get("authorization", "") == f"Bearer {MANAGEMENT_KEY}"
 
 
-async def auth_page(request: Request):
-    q = request.query_params
-    callback = q.get("callback_url", "")
-    if urlsplit(callback).hostname not in {"127.0.0.1", "localhost"}:
-        return HTMLResponse("fake OpenRouter only redirects to localhost", 400)
-    code = "code_" + secrets.token_hex(12)
-    _codes[code] = {"challenge": q.get("code_challenge"), "workspace": q.get("required_workspace_id"),
-                    "label": q.get("key_label") or "Fake key"}
-    target = callback + ("&" if "?" in callback else "?") + urlencode({"code": code, "state": q.get("state", "")})
-    return HTMLResponse(
-        "<!doctype html><title>Fake OpenRouter</title><h1>Fake OpenRouter (local)</h1>"
-        f"<p>Workspace: {html.escape(str(q.get('required_workspace_id')))}</p>"
-        f"<p><a id=authorize href='{html.escape(target)}'>Authorize</a></p>")
+def _denied():
+    return JSONResponse({"error": {"message": "Only management keys can perform this operation."}}, 403)
 
 
-async def exchange(request: Request):
+def _by_hash(key_hash: str):
+    return next(((key, data) for key, data in _keys.items() if data["hash"] == key_hash), (None, None))
+
+
+async def create_key(request: Request):
+    if not _managed(request):
+        return _denied()
     body = await request.json()
-    grant = _codes.pop(body.get("code", ""), None)
-    if not grant or _challenge(body.get("code_verifier", "")) != grant["challenge"]:
-        return JSONResponse({"error": {"message": "invalid code"}}, 400)
     key = "sk-or-v1-fake-" + secrets.token_hex(16)
-    _keys[key] = {"workspace": grant["workspace"], "label": grant["label"]}
-    return JSONResponse({"key": key})
+    _keys[key] = {"hash": hashlib.sha256(key.encode()).hexdigest(), "name": body.get("name", ""),
+                  "workspace_id": body.get("workspace_id"), "disabled": False, "usage_monthly": 0.0,
+                  "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    return JSONResponse({"key": key, "data": _keys[key]}, 201)
+
+
+async def list_keys(request: Request):
+    if not _managed(request):
+        return _denied()
+    workspace = request.query_params.get("workspace_id")
+    return JSONResponse({"data": [d for d in _keys.values() if d["workspace_id"] == workspace]})
+
+
+async def one_key(request: Request):
+    if not _managed(request):
+        return _denied()
+    key, data = _by_hash(request.path_params["hash"])
+    if key is None:
+        return JSONResponse({"error": {"message": "Resource not found"}}, 404)
+    if request.method == "DELETE":
+        del _keys[key]
+        return JSONResponse({"deleted": True})
+    if request.method == "PATCH":
+        data["disabled"] = bool((await request.json()).get("disabled"))
+    return JSONResponse({"data": data})
 
 
 def _owner(request: Request):
-    key = request.headers.get("authorization", "").removeprefix("Bearer ")
-    return _keys.get(key)
+    """The calling student key's data, if it exists and is enabled (else OpenRouter's 401)."""
+    data = _keys.get(request.headers.get("authorization", "").removeprefix("Bearer "))
+    return data if data and not data["disabled"] else None
 
 
 async def key_info(request: Request):
     owner = _owner(request)
     if not owner:
         return JSONResponse({"error": {"message": "invalid key"}}, 401)
-    return JSONResponse({"data": {"label": owner["label"], "workspace_id": owner["workspace"],
-                                  "usage_daily": 0.0, "usage_monthly": 0.0, "limit": None}})
+    return JSONResponse({"data": {"label": owner["name"], "workspace_id": owner["workspace_id"],
+                                  "usage_daily": 0.0, "usage_monthly": 0.0, "limit": None,
+                                  "effective_budget": {"scope": "workspace_default_key", "limit_usd": 25,
+                                                       "spend_usd": 0.0, "remaining_usd": 25,
+                                                       "reset_interval": "monthly", "resets_at": None}}})
 
 
 async def models(request: Request):
@@ -144,7 +157,8 @@ async def images(request: Request):
 
 def app() -> Starlette:
     return Starlette(routes=[
-        Route("/auth", auth_page), Route("/api/v1/auth/keys", exchange, methods=["POST"]),
+        Route("/api/v1/keys", create_key, methods=["POST"]), Route("/api/v1/keys", list_keys),
+        Route("/api/v1/keys/{hash}", one_key, methods=["GET", "PATCH", "DELETE"]),
         Route("/api/v1/key", key_info), Route("/api/v1/models", models),
         Route("/api/v1/images/models", image_models), Route("/api/v1/images", images, methods=["POST"]),
         Route("/api/v1/responses", responses, methods=["POST"])])

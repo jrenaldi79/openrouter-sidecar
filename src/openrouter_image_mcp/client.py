@@ -14,6 +14,7 @@ import httpx
 from .config import API_BASE, APP_TITLE, APP_URL
 from .credentials import CredentialSource
 from .errors import (
+    KEY_REJECTED,
     AuthRequiredError,
     BadRequestError,
     CatalogUnavailableError,
@@ -25,10 +26,7 @@ from .errors import (
     RateLimitError,
 )
 
-_MSG_401 = (
-    "Your OpenRouter sign-in is no longer valid (revoked or deleted). "
-    "Call `link_openrouter` to link it again."
-)
+_MSG_401 = KEY_REJECTED
 _MSG_401_ANONYMOUS = "OpenRouter rejected the request (HTTP 401)."
 _MSG_402 = "The OpenRouter workspace is out of credits. Ask the org admin to top up."
 _MSG_429 = "Rate limited by OpenRouter (HTTP 429). Try again shortly."
@@ -190,7 +188,7 @@ class OpenRouterClient:
     ) -> Any:
         headers: dict[str, str] = {}
         if auth:
-            key = self.credentials.resolve()[0]  # the source says how to link a key
+            key = self.credentials.resolve()[0]  # the source says why there is no key
             headers["Authorization"] = f"Bearer {key}"
 
         rate_retries = 0
