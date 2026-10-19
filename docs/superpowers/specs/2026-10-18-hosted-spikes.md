@@ -64,7 +64,10 @@ Live results only. The synthetic multi-user run (fakes for Auth0 and OpenRouter)
   - **Masked edit.** `edit_image` with `google/gemini-2.5-flash-image` used an uploaded 256x256 PNG and an uploaded mask, for $0.0388. The change stayed inside the mask.
   - **Remask.** `remask_image` with a second uploaded mask re-blended the result for $0.00.
   - **Downloads.** Both results downloaded as 256x256 PNGs. The edit's metadata records the model, prompt, cost and the input's sha256, which matches the uploaded file.
-- **Finding:** image results carry the preview JPEG as base64 in `structuredContent`. Claude Code showed that JSON to the model instead of the text lines.
+- **Finding, fixed:** image results carried the preview JPEG as base64 in `structuredContent`, and Claude Code showed that JSON to the model. Previews now travel in `_meta.sidecarPreviews` (`367017c`, deployed in `dfa2e3f`).
+- **After deploying `dfa2e3f`** (previews in `_meta`, throttled partial writes, pooled Postgres):
+  - a free remask returned only ids and links;
+  - a third advisor turn on the same chat, with nothing resent, recalled the codename and launch week ($0.0041).
 
 **Still open:**
 
