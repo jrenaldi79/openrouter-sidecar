@@ -22,17 +22,20 @@ IMAGE_TOOLS = frozenset({"generate_image", "edit_image", "remask_image"})
 PREVIEWS_META = "sidecarPreviews"
 ADVISOR_UI_TOOLS = frozenset({"send_advisor_message", "open_advisor_result"})
 SETTINGS_UI_TOOLS = frozenset({"open_sidecar_settings"})
-APP_ONLY_TOOLS = frozenset({"get_advisor_result", "summarize_advisor_result", "get_sidecar_settings", "run_sidecar_demo", "get_sidecar_demo",
+LOGO_SIZE = 225  # mpd-logo.png is square
+APP_ONLY_TOOLS = frozenset({"get_advisor_result", "summarize_advisor_result",
+                            "get_sidecar_settings", "run_sidecar_demo", "get_sidecar_demo",
                             "open_image_uploader"})
 
 
+def logo_data_uri() -> str:
+    """The supplied MPD mark as a data URI, embedded for offline host display."""
+    png = files("openrouter_image_mcp").joinpath("ui", "mpd-logo.png").read_bytes()
+    return "data:image/png;base64," + base64.b64encode(png).decode("ascii")
+
+
 def app_icons() -> list[Icon]:
-    """The supplied Northwestern mark, embedded for offline host display."""
-    png = files("openrouter_image_mcp").joinpath("ui", "northwestern-logo.png").read_bytes()
-    return [Icon(
-        src="data:image/png;base64," + base64.b64encode(png).decode("ascii"),
-        mime_type="image/png", sizes=["256x256"],
-    )]
+    return [Icon(src=logo_data_uri(), mime_type="image/png", sizes=[f"{LOGO_SIZE}x{LOGO_SIZE}"])]
 
 
 class ImageApps(Extension):

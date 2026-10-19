@@ -40,7 +40,7 @@ One-time per clone, enable the git hooks: `git config core.hooksPath .githooks`.
 | Gate | Rule | Enforced by |
 | --- | --- | --- |
 | Secrets | No keys, tokens, JWTs, signed links or non-local DB passwords, tests included | `scripts/checks/secret_scan.py` (pre-commit) |
-| TDD | A new module ships with its test (`tests/test_<m>.py`, `test_hosted_<m>.py`, `ui/tests/<app>*.spec.js`) | `scripts/checks/missing_tests.py` (pre-commit) |
+| TDD | Big features only (`.claude/rules/tdd.md`); a new module ships with its test (`tests/test_<m>.py`, `test_hosted_<m>.py`, `ui/tests/<app>*.spec.js`). Small changes just run the existing suites | `scripts/checks/missing_tests.py` (pre-commit) |
 | File size | 300-line ratchet: new files capped, oversized files may not grow | `scripts/checks/file_sizes.py` (pre-commit) |
 | Docs | Index and AUTO block current; every source folder has a note | `generate.js --staged` (pre-commit), CI `docs` |
 | Bundles | Generated MCP App HTML matches `ui/src` | `scripts/checks/ui_build.py` (pre-commit), CI `ui` |

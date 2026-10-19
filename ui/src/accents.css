@@ -1,0 +1,25 @@
+/* Shared accents, injected into every app by ui/build.mjs at the ACCENTS marker.
+   Northwestern's bright secondary palette, used sparingly: fills for bars, dots and
+   pill backgrounds; darker "ink" shades for text so it stays readable on white. */
+:root {
+  --nu-green: #58b947; --nu-teal: #7fcecd; --nu-blue: #5091cd; --nu-gold: #ffc520; --nu-orange: #ef553f;
+  --ink-green: #2e7d32; --ink-teal: #0f6e6a; --ink-blue: #1d5f9e; --ink-gold: #8a5a00; --ink-orange: #b3361f;
+  --ink-purple: #4e2a84;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --ink-green: #8fd67f; --ink-teal: #9fdedd; --ink-blue: #8fbde6; --ink-gold: #ffd75e; --ink-orange: #ff8a76; --ink-purple: #c9b8e8;
+} }
+:root[data-theme="dark"] {
+  --ink-green: #8fd67f; --ink-teal: #9fdedd; --ink-blue: #8fbde6; --ink-gold: #ffd75e; --ink-orange: #ff8a76; --ink-purple: #c9b8e8;
+}
+
+/* A thin brand strip across the top of each app: purple, then teal and gold. */
+body { border-top: 3px solid transparent; border-image: linear-gradient(90deg, #4e2a84 0 62%, var(--nu-teal) 62% 84%, var(--nu-gold) 84%) 1; }
+
+/* Status pills: running blue, done green, interrupted gold, failed orange. */
+.pill { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 999px; font-weight: 600; font-size: 11.5px; line-height: 1.6; }
+.pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pill[data-state="queued"], .pill[data-state="running"] { color: var(--ink-blue); background: color-mix(in srgb, var(--nu-blue) 16%, transparent); }
+.pill[data-state="completed"] { color: var(--ink-green); background: color-mix(in srgb, var(--nu-green) 18%, transparent); }
+.pill[data-state="interrupted"] { color: var(--ink-gold); background: color-mix(in srgb, var(--nu-gold) 22%, transparent); }
+.pill[data-state="failed"] { color: var(--ink-orange); background: color-mix(in srgb, var(--nu-orange) 16%, transparent); }

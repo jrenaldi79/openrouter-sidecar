@@ -22,5 +22,5 @@ def test_stale_outputs_combine_unstaged_diffs_and_untracked_bundles():
 
 
 def test_only_html_bundles_count_as_stale():
-    notes = [f"{OUTPUT_DIR}/CLAUDE.md", f"{OUTPUT_DIR}/northwestern-logo.png"]
+    notes = [f"{OUTPUT_DIR}/CLAUDE.md", f"{OUTPUT_DIR}/mpd-logo.png"]
     assert stale_outputs(notes, []) == []

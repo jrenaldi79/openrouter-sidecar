@@ -6,7 +6,7 @@ status: "maintained"
 read_when: "Changing or adding files in src/openrouter_image_mcp/ui/."
 ---
 
-**Owns:** the `<app>.html` bundles served as MCP App resources by `apps.py` and the hosted server, and `northwestern-logo.png`.
+**Owns:** the `<app>.html` bundles served as MCP App resources by `apps.py` and the hosted server, and `mpd-logo.png`.
 
 **Invariants:**
 

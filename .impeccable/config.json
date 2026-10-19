@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "*",
+        "files": [
+          "ui/src/accents.css"
+        ],
+        "createdAt": "2026-10-19T16:18:47.332Z",
+        "reason": "agent verified: L17 is the body's top brand strip; body has no border-radius"
+      }
+    ]
+  }
+}
