@@ -148,15 +148,20 @@ class AdvisorResults:
             if fields.get("status") not in (None, *ACTIVE):
                 self._release(db, scope, row)
 
-    def interrupt(self, scope, job_id, process_id, *, error, suppress=False, cleanup_pending=False):
-        """Shutdown/account-change bookkeeping uses captured ownership, no provider I/O."""
+    def interrupt(self, scope, job_id, process_id, *, error, suppress=False, cleanup_pending=False,
+                  answer=None):
+        """Shutdown/account-change bookkeeping uses captured ownership, no provider I/O.
+
+        ``answer`` is the newest streamed text when it is ahead of the saved row.
+        """
         with self.connection() as db:
             db.execute("BEGIN IMMEDIATE")
             row = self._row(db, scope, job_id)
             if row["process_id"] == process_id and row["status"] in ACTIVE:
                 db.execute("UPDATE advisor_jobs SET status='interrupted',error=?,answer=?,"
                            "cleanup_pending=? WHERE id=?",
-                           (error, "" if suppress else row["answer"], cleanup_pending, job_id))
+                           (error, "" if suppress else row["answer"] if answer is None else answer,
+                            cleanup_pending, job_id))
                 self._release(db, scope, row)
 
     def delete_chat(self, scope, chat_id):

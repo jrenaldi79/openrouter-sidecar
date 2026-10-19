@@ -228,8 +228,7 @@ class AdvisorService:
             guard()
             self._check_container(event, chat.container_id)
 
-        async def emit(text):
-            guard()
+        async def emit(text):  # check_event already guarded this event
             await on_text(redact(text).replace(key, "[credential withheld]"))
 
         return await self.client.respond_stream(key, payload, emit, check_event)
@@ -243,7 +242,8 @@ class AdvisorService:
     async def send(self, chat_id: str, prompt: str, skills: list[SkillPacket] | None = None,
                    *, files: list[FilePacket] | None = None, replace_files: bool = False,
                    on_text=None, _scope=None, _lease_token=None, _guard=None,
-                   _summary_answer=None, _demo_limits=None, _before_request=None) -> dict:
+                   _summary_answer=None, _demo_limits=None, _before_request=None,
+                   _stream_guard=None) -> dict:
         if _demo_limits not in (None, (256, 1)):
             raise ValueError('Invalid internal demo limits')
         key, scope = self._credentials()
@@ -280,7 +280,8 @@ class AdvisorService:
                 configure_cache(payload, chat.id, allow_explicit=not uploads)
                 if _before_request:
                     _before_request()
-                body = await self._infer(key, chat, payload, on_text, guard)
+                # Jobs pass a cheaper per-event check; checkpoints keep the full guard.
+                body = await self._infer(key, chat, payload, on_text, _stream_guard or guard)
                 final = self._answer(body, chat.container_id).replace(key, "[credential withheld]")
                 guard()
             finally:
