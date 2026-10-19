@@ -41,7 +41,8 @@ async def test_instructions_prompts_and_resources_reach_clients(db_target, tmp_p
     async with running_server(db_target, env={"ASSET_DIR": str(tmp_path / "assets")}) as server, \
             server.client(server.token(), extensions=APPS) as client:
         instructions = client.instructions or ""
-        tools = {tool.name for tool in (await client.list_tools()).tools}
+        listed = (await client.list_tools()).tools
+        tools = {tool.name for tool in listed}
         prompts = {prompt.name for prompt in (await client.list_prompts()).prompts}
         resources = {str(r.uri) for r in (await client.list_resources()).resources}
         prompt = await client.get_prompt("openrouter-image", {})
@@ -56,3 +57,15 @@ async def test_instructions_prompts_and_resources_reach_clients(db_target, tmp_p
     for skill in guidance.hosted_skills().values():
         named |= set(re.findall(r"`([a-z_]+)\(", skill.text))
     assert named and named <= tools, sorted(named - tools)
+
+
+LOCAL_WORDING = re.compile(r"\blocal(ly)?\b|this computer", re.IGNORECASE)
+
+
+async def test_tool_descriptions_do_not_describe_a_local_install(db_target, tmp_path):
+    async with running_server(db_target, env={"ASSET_DIR": str(tmp_path / "assets")}) as server, \
+            server.client(server.token(), extensions=APPS) as client:
+        listed = (await client.list_tools()).tools
+    wrong = {tool.name: LOCAL_WORDING.findall(tool.description or "") for tool in listed
+             if tool.name != "create_local_import" and LOCAL_WORDING.search(tool.description or "")}
+    assert wrong == {}

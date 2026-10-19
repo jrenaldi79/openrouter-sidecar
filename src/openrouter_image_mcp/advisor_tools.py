@@ -85,7 +85,7 @@ def register_advisor_tools(server: MCPServer, service: AdvisorService, jobs: Adv
 
     async def start_advisor_chat(model: str | None = None, title: str = "Advisor",
                                  sandbox: bool | None = None) -> str:
-        """Create a local side-advisor chat for the current Northwestern sign-in.
+        """Create a saved side-advisor chat for the current Northwestern sign-in.
 
         Choose an exact model ID or Gemini/ChatGPT/Grok/Open Weight for your saved brand
         default. Omit model to use your saved general advisor default; set these
@@ -110,10 +110,10 @@ def register_advisor_tools(server: MCPServer, service: AdvisorService, jobs: Adv
         shareable skill text to OpenRouter. This costs inference and possibly sandbox
         compute. Skills contain name, content and optional source/version; supply
         supporting instructions as additional named packets. Do not send private
-        skill files. Claude selects the skills; a local path alone is not sufficient.
+        skill files. Claude selects the skills; a file path alone is not sufficient.
         The sandbox shell has no outbound network and receives no API credentials.
         Starts a background job and returns status and its job_id only. The full
-        answer stays local and appears in the advisor MCP App. The user chooses
+        answer stays with the Sidecar and appears in the advisor MCP App. The user chooses
         what to send to the parent chat. Check get_advisor_job for status or call
         open_advisor_result to reopen the viewer. App shutdown can interrupt work.
         No raw
@@ -176,16 +176,16 @@ def register_advisor_tools(server: MCPServer, service: AdvisorService, jobs: Adv
             return status_result(await headless.wait(job_id, wait_s, progress))
 
     async def list_advisor_chats() -> str:
-        """List up to 100 locally saved advisor chats for the active credential/workspace."""
+        """List up to 100 saved advisor chats for the active credential/workspace."""
         with tool_errors():
             return encode(service.list())
 
     async def get_advisor_chat(chat_id: str, limit: int = 20) -> str:
-        """Show metadata and message count for an owned local advisor chat.
+        """Show metadata and message count for an owned advisor chat.
 
         Full transcripts are not returned to the parent model. Open an advisor
         result in the MCP App to read it and deliberately select a handoff.
-        The limit remains a bounded local-history inspection limit.
+        The limit bounds how many saved messages and results are inspected.
         """
         with tool_errors():
             chat = service.get(chat_id, limit)
@@ -193,7 +193,7 @@ def register_advisor_tools(server: MCPServer, service: AdvisorService, jobs: Adv
                           | {"message_count": len(chat["messages"]), "results": jobs.for_chat(chat_id, limit)})
 
     async def reset_advisor_sandbox(chat_id: str) -> str:
-        """Assign a fresh sandbox to an owned chat while preserving its local history.
+        """Assign a fresh sandbox to an owned chat while preserving its saved history.
 
         Does not delete the old provider sandbox or its saved files; they expire under
         OpenRouter's inactivity policy. Does not make a provider request or run inference.
@@ -202,7 +202,7 @@ def register_advisor_tools(server: MCPServer, service: AdvisorService, jobs: Adv
             return encode(service.reset(chat_id))
 
     async def delete_advisor_chat(chat_id: str) -> str:
-        """Delete the owned chat's local transcript and mapping.
+        """Delete the owned chat's saved transcript and mapping.
 
         Does not delete its old provider container files. Refuses while a message is
         active or uploaded skills still need cleanup. Does not run inference.
@@ -228,7 +228,7 @@ def register_advisor_tools(server: MCPServer, service: AdvisorService, jobs: Adv
             return status_result(jobs.status(job_id))
 
     async def open_advisor_result(job_id: str) -> CallToolResult:
-        """Open the local advisor result viewer without sending its answer into this chat.
+        """Open the advisor result viewer without sending its answer into this chat.
 
         Reading or scrolling in the MCP App does not share the result with the parent
         model. The user can preview and send a selection, full answer or summary.
@@ -251,10 +251,11 @@ def register_advisor_tools(server: MCPServer, service: AdvisorService, jobs: Adv
             return status_result(await jobs.summarize(job_id))
 
     async def export_advisor_result(job_id: str) -> CallToolResult:
-        """App-only: save an owned completed response as durable local Markdown.
+        """App-only: save an owned completed response as durable Markdown on disk.
 
-        Uses a server-selected directory on this computer, outside OpenRouter's
-        sandbox. No caller-supplied path, provider file fetch, or inference.
+        Uses a server-selected directory on the user's own machine (Claude Desktop
+        only; the hosted connector refuses), outside OpenRouter's sandbox.
+        No caller-supplied path, provider file fetch, or inference.
         """
         with tool_errors():
             exported = jobs.export(job_id)

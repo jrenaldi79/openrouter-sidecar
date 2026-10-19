@@ -95,9 +95,9 @@ def register_preference_tools(server, preferences, demos, catalog, settings, too
             return result({"mode": mode, "signed_in": signed_in, **target()})
 
     async def get_sidecar_preferences() -> CallToolResult:
-        """Read local advisor defaults, opaque settings ID and save revision; no inference.
+        """Read saved advisor defaults, opaque settings ID and save revision; no inference.
 
-        Preferences belong to the active credential and cohort on this computer.
+        Preferences belong to the signed-in account and its class cohort.
         Use these settings_id and revision values when changing defaults.
         """
         with tool_errors():
@@ -107,7 +107,7 @@ def register_preference_tools(server, preferences, demos, catalog, settings, too
         settings_id: str, expected_revision: int, general_default: str | None = None,
         family_defaults: dict[str, str] | None = None, onboarding_completed: bool | None = None,
     ) -> CallToolResult:
-        """Save local advisor defaults or mark the walkthrough complete; no paid inference.
+        """Save advisor defaults or mark the walkthrough complete; no paid inference.
 
         First get_sidecar_preferences for settings_id and revision. Pass exact IDs
         from list_chat_models; family keys are google, openai, x-ai and open_weight.
