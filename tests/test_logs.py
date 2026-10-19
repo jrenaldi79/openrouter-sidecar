@@ -1,3 +1,4 @@
+import base64
 import contextlib
 import logging
 
@@ -56,7 +57,11 @@ def test_log_redacts_exception_traceback(capsys):
 
 
 def test_redact_withholds_bearer_jwts():
-    jwt = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJlbWFpbHxhbGljZSJ9.c2lnbmF0dXJlLXZhbHVlLWhlcmU"
+    # Built at runtime: a JWT-shaped literal trips secret scanners (it was never a real token).
+    def b64(text):
+        return base64.urlsafe_b64encode(text.encode()).rstrip(b"=").decode()
+
+    jwt = ".".join(b64(part) for part in ('{"alg":"RS256"}', '{"sub":"email|alice"}', "signature-value-here"))
     out = logs.redact(f"Authorization: Bearer {jwt} end")
     assert jwt not in out and "[token withheld]" in out and out.endswith("end")
 
