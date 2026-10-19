@@ -1,7 +1,7 @@
 """Where the OpenRouter key and ownership scope come from for the current call.
 
 The hosted server's source is `hosted/credentials.py` (the request's Auth0 principal
-plus its linked key). Every client and advisor service is given one explicitly.
+plus its provisioned key). Every client and advisor service is given one explicitly.
 """
 
 from __future__ import annotations

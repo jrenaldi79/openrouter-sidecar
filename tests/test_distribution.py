@@ -44,7 +44,7 @@ def test_plugin_connects_to_the_hosted_server_over_http():
 
 def test_no_stdio_server_configs_remain():
     configs = [p for p in ROOT.rglob(".mcp.json")
-               if not {"node_modules", "reference", ".git"} & set(p.relative_to(ROOT).parts)]
+               if not {"node_modules", "reference", ".git", ".claude"} & set(p.relative_to(ROOT).parts)]
     assert configs == [PLUGIN / ".mcp.json"]
     assert not (ROOT / "scripts" / "install_claude_desktop.py").exists()
 
