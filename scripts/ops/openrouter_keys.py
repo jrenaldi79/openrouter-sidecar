@@ -24,7 +24,7 @@ import sys
 
 from openrouter_image_mcp.config import COHORT_WORKSPACES
 from openrouter_image_mcp.errors import OpenRouterError
-from openrouter_image_mcp.hosted.openrouter_keys import KeyManager
+from openrouter_image_mcp.hosted.openrouter_keys import BUDGET_GUARDRAIL, KeyManager
 
 PREFIX = "Sidecar · "
 
@@ -126,23 +126,21 @@ async def cmd_guardrails(manager, args) -> int:
     for year, workspace in sorted(COHORT_WORKSPACES.items()):
         if args.cohort not in (None, year):
             continue
-        default_id = (await manager.workspace(workspace)).get("default_guardrail_id")
         guardrails = {g.get("id"): g for g in await manager.guardrails(workspace)}
-        default = guardrails.get(default_id)
+        budget = next((g for g in guardrails.values() if g.get("name") == BUDGET_GUARDRAIL), None)
         keys = [key for y, key in await sidecar_keys(manager, year)]
         print(f"{year} (workspace {workspace})")
-        if default and default.get("limit_usd") is not None:
-            print(f"  default guardrail: {_money(default['limit_usd'])} per key, reset "
-                  f"{default.get('reset_interval') or 'never'} (applies to each of the {len(keys)} Sidecar keys)")
+        if budget is None:
+            print(f"  NO '{BUDGET_GUARDRAIL}' GUARDRAIL -> the server refuses to create keys here")
         else:
-            print(f"  default guardrail: NO BUDGET SET -> {len(keys)} Sidecar keys are unbudgeted")
-        explicit = [key for key in keys if key.get("hash") in assigned]
-        for key in explicit:
-            extra = guardrails.get(assigned[key["hash"]], {})
-            print(f"  also assigned: {key.get('name')} -> {extra.get('name', assigned[key['hash']])} "
-                  f"({_money(extra.get('limit_usd'))})")
-        print(f"  {len(explicit)} Sidecar keys with an extra key guardrail")
-    print("Confirm live: account_status on a new key shows the budget scope workspace_default_key.")
+            print(f"  {BUDGET_GUARDRAIL}: {_money(budget.get('limit_usd'))} per key, reset "
+                  f"{budget.get('reset_interval') or 'never'}")
+        for key in keys:
+            if budget is None or assigned.get(key.get("hash")) != budget.get("id"):
+                other = guardrails.get(assigned.get(key.get("hash")), {})
+                print(f"  NOT ON THE BUDGET: {key.get('name')} -> {other.get('name') or 'no guardrail'}")
+        on_budget = sum(1 for key in keys if budget and assigned.get(key.get("hash")) == budget.get("id"))
+        print(f"  {on_budget} of {len(keys)} Sidecar keys on the budget")
     return 0
 
 

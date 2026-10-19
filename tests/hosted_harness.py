@@ -19,6 +19,7 @@ from mcp.client.streamable_http import streamable_http_client
 
 from openrouter_image_mcp.config import COHORT_WORKSPACES
 from openrouter_image_mcp.hosted.app import build_hosted_server
+from openrouter_image_mcp.hosted.openrouter_keys import BUDGET_GUARDRAIL
 from openrouter_image_mcp.hosted.settings import load_hosted_settings
 from tests import jwt_helpers as h
 
@@ -51,6 +52,11 @@ class FakeOpenRouter:
     async def handle(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
         path = request.url.path
+        if "/guardrails" in path:  # the class budget guardrail and its key assignments
+            if request.method == "POST":
+                return httpx.Response(200, json={"assigned_count": len(json.loads(request.content)["key_hashes"])})
+            return httpx.Response(200, json={"data": [{"id": "g-budget", "name": BUDGET_GUARDRAIL}],
+                                             "total_count": 1})
         if "/keys" in path or path.endswith("/key"):
             return self._keys(request, path)
         if path.endswith("/models"):
@@ -69,7 +75,7 @@ class FakeOpenRouter:
     def _keys(self, request: httpx.Request, path: str) -> httpx.Response:
         if path.endswith("/key"):  # the student's own key
             return httpx.Response(200, json={"data": {"usage_monthly": 1.5, "effective_budget": {
-                "scope": "workspace_default_key", "limit_usd": 25, "spend_usd": 1.5,
+                "scope": "api_key", "limit_usd": 25, "spend_usd": 1.5,
                 "remaining_usd": 23.5, "reset_interval": "monthly", "resets_at": "2026-11-01T00:00:00Z"}}})
         if request.method == "POST":
             body = json.loads(request.content)
@@ -86,7 +92,7 @@ class FakeOpenRouter:
 
     def created_bodies(self):
         return [json.loads(r.content) for r in self.requests
-                if r.method == "POST" and r.url.path.endswith("/keys")]
+                if r.method == "POST" and r.url.path.endswith("/api/v1/keys")]
 
     def bodies(self, suffix="/responses"):
         return [json.loads(r.content) for r in self.requests if r.url.path.endswith(suffix)]

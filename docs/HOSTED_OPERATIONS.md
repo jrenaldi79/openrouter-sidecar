@@ -169,13 +169,13 @@ railway variables set OPENROUTER_MANAGEMENT_KEY=…
 
 That restarts the service (§4). It is used only to create, inspect and delete student keys, never for inference.
 
-**Budgets.** The server sets no per-key limit. Each cohort workspace's **default guardrail** carries the budget ($25 per month), which OpenRouter applies to each key in the workspace. Check it, and that no Sidecar key has an unexpected extra guardrail:
+**Budgets.** Each cohort workspace has a guardrail named **`Sidecar student budget`** ($25 per month), and the server assigns it to every key it creates. Keys the management key creates don't inherit the workspace default guardrail, so this assignment is what budgets them. If the guardrail is missing, or the assignment fails, the server deletes the new key and the student sees a retry-later message: there is never an unbudgeted key. To change the budget, edit that guardrail in the OpenRouter dashboard (keep its name). Check it, and that every Sidecar key is on it:
 
 ```bash
 OPENROUTER_MANAGEMENT_KEY=… uv run python scripts/ops/openrouter_keys.py guardrails
 ```
 
-Then confirm it live once: `account_status` on a freshly issued key shows `Budget: $… of $25.00 used (monthly …)`. If the budget is missing or shared between students, OpenRouter is applying it per member, not per key; stop and revisit the design spec's open question.
+`account_status` on a student's key shows `Budget: $… of $25.00 used (monthly …)`.
 
 **Managing students** (locally, with the management key in your environment; the script never prints it):
 
@@ -186,6 +186,6 @@ Then confirm it live once: `account_status` on a freshly issued key shows `Budge
 | `disable <email>` / `enable <email>` | Block or unblock. A blocked student is told their key was disabled by the instructor |
 | `delete <email> --yes` | Remove the key (dry run without `--yes`). The student gets a fresh key on the next call, so use `disable` to block |
 | `usage [--csv]` | Spend per cohort, or a CSV per student |
-| `guardrails` | Each workspace's default guardrail budget and any key-level assignments |
+| `guardrails` | Each workspace's `Sidecar student budget` guardrail, and any Sidecar key not on it |
 
 **Removing a student** for good: remove them from the roster in Auth0 (§7), then `delete <email> --yes`. Without Auth0 access they can't get a new key.

@@ -1,8 +1,8 @@
 """OpenRouter key management: the one seam for the management API and `GET /key`.
 
 `KeyManager` holds the org's management key (`OPENROUTER_MANAGEMENT_KEY`) and only
-creates, reads, updates and deletes student keys and reads guardrails; it never runs
-inference. `current_key` reads a student's own key. Errors never carry either key.
+creates, reads, updates and deletes student keys, reads guardrails and assigns each new
+key its class budget guardrail; it never runs inference. `current_key` reads a student's own key. Errors never carry either key.
 """
 
 from __future__ import annotations
@@ -17,6 +17,8 @@ from ..errors import KEY_REJECTED, AuthRequiredError, ProviderError
 
 _HEADERS = {"HTTP-Referer": APP_URL, "X-Title": APP_TITLE}
 _PAGE = 100  # OpenRouter's page size for keys, and the maximum for guardrail listings
+# The per-key budget guardrail the instructor keeps in each cohort workspace ($25 a month).
+BUDGET_GUARDRAIL = "Sidecar student budget"
 
 
 class KeyManagementError(ProviderError):
@@ -65,6 +67,7 @@ def _path(key_hash: str) -> str:
 class KeyManager:
     def __init__(self, management_key: str, *, transport: httpx.AsyncBaseTransport | None = None):
         self._http = _client(management_key, transport)
+        self._budgets: dict[str, str] = {}  # workspace id -> budget guardrail id
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -76,13 +79,32 @@ class KeyManager:
         return _json(response)
 
     async def create(self, name: str, workspace_id: str) -> CreatedKey:
-        # No limit or limit_reset: the cohort workspace's default guardrail budgets each key.
+        """A new key with the workspace's budget guardrail; never an unbudgeted key."""
+        guardrail = await self._budget_guardrail(workspace_id)
         body = await self._call("POST", "keys", json={"name": name, "workspace_id": workspace_id})
         data = body.get("data") if isinstance(body.get("data"), dict) else {}
         key, key_hash = body.get("key"), data.get("hash")
         if not isinstance(key, str) or not key or not isinstance(key_hash, str) or not key_hash:
             raise KeyManagementError("OpenRouter created a key but did not return it.")
+        try:
+            await self._call("POST", f"guardrails/{quote(guardrail, safe='')}/assignments/keys",
+                             json={"key_hashes": [key_hash]})
+        except KeyManagementError:
+            self._budgets.pop(workspace_id, None)  # look it up again next time
+            await self.delete(key_hash)
+            raise
         return CreatedKey(key, key_hash, data)
+
+    async def _budget_guardrail(self, workspace_id: str) -> str:
+        # Keys the management key creates don't inherit a budget, so each gets this one.
+        if workspace_id not in self._budgets:
+            found = next((g.get("id") for g in await self.guardrails(workspace_id)
+                          if g.get("name") == BUDGET_GUARDRAIL and g.get("id")), None)
+            if found is None:
+                raise KeyManagementError(f"No '{BUDGET_GUARDRAIL}' guardrail in workspace {workspace_id}; "
+                                         "refusing to create an unbudgeted key.")
+            self._budgets[workspace_id] = found
+        return self._budgets[workspace_id]
 
     async def get(self, key_hash: str) -> dict | None:
         body = await self._call("GET", _path(key_hash), missing_ok=True)

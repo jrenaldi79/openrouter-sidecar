@@ -114,28 +114,27 @@ nothing needs migrating.
 | Delete | `DELETE /api/v1/keys/{hash}` → `{deleted:true}`, 404 when gone | [delete](https://openrouter.ai/docs/api/api-reference/api-keys/delete-an-api-key.md) |
 | List | `GET /api/v1/keys?workspace_id=&include_disabled=true&offset=` → `{data:[...]}` (pages of 100) | [list](https://openrouter.ai/docs/api/api-reference/api-keys/list-api-keys.md) |
 | Current key | `GET /api/v1/key` (student key) → `{data:{usage_monthly, limit, effective_budget, budgets}}` | [current](https://openrouter.ai/docs/api/api-reference/api-keys/get-current-api-key.md) |
-| Workspace | `GET /api/v1/workspaces/{id}` → `{data:{default_guardrail_id, ...}}` | [workspace](https://openrouter.ai/docs/api/api-reference/workspaces/get-a-workspace.md) |
-| Guardrails | `GET /api/v1/guardrails?workspace_id=` → `{data:[{id, limit_usd, reset_interval}], total_count}` | [list guardrails](https://openrouter.ai/docs/api/api-reference/guardrails/list-guardrails.md) |
+| Guardrails | `GET /api/v1/guardrails?workspace_id=` → `{data:[{id, name, limit_usd, reset_interval}], total_count}` | [list guardrails](https://openrouter.ai/docs/api/api-reference/guardrails/list-guardrails.md) |
+| Assign | `POST /api/v1/guardrails/{id}/assignments/keys {key_hashes}` → `{assigned_count}` (a key holds one guardrail) | [assign keys](https://openrouter.ai/docs/api/api-reference/guardrails/bulk-assign-keys-to-a-guardrail.md) |
 | Key assignments | `GET /api/v1/guardrails/assignments/keys` → `{data:[{guardrail_id, key_hash}], total_count}` | [assignments](https://openrouter.ai/docs/api/api-reference/guardrails/list-all-key-assignments.md) |
 
 ## Guardrail model
 
-There is no per-key `limit`. Each cohort workspace's **default guardrail** carries a
-budget of $25 a month, set by the user. OpenRouter checks the workspace default
-guardrail per key (budget scope `workspace_default_key`) and also per member
-(`workspace_default_member`).
+There is no per-key `limit`. Each cohort workspace has a guardrail named
+`Sidecar student budget` ($25 a month), and `KeyManager.create` assigns it to every key
+it creates. The guardrail budget applies to each assigned key separately.
 
-**Open question, to confirm live.** Keys created through the management API should fall
-under the default guardrail per key. They have no `creator_user_id`, so they should not be
-pooled into one member's aggregate. Two checks confirm it:
+**Why not the workspace default guardrail.** Checked live on 2026-10-19: keys created with
+the management key in a cohort workspace got `effective_budget: null`, so the default
+guardrail (and a budget inherited from the Default Workspace) did not reach them. In the
+Default Workspace, keys fell under `workspace_default_member`, pooled under the instructor's
+membership. With the class guardrail assigned, each key shows scope `api_key`,
+`limit_usd: 25`, monthly.
 
-- `scripts/ops/openrouter_keys.py guardrails`, which shows each workspace's default
-  guardrail budget and any explicit key assignments;
-- `account_status` on a freshly provisioned key, which shows `effective_budget` and the
-  scope it comes from.
-
-If the scope turns out to be `workspace_default_member`, students would share one budget.
-The fix would then be a per-key `limit` or a dedicated guardrail assigned to each key.
+**Fail closed.** `create` finds the guardrail by name (cached per workspace) before creating
+the key. No guardrail means no key. If the assignment fails, the new key is deleted and the
+call fails with the retry-later message. `openrouter_keys.py guardrails` lists any Sidecar
+key that is not on its class guardrail.
 
 ## Failure modes
 
@@ -147,5 +146,6 @@ The fix would then be a per-key `limit` or a dedicated guardrail assigned to eac
 | Insert fails or loses a cross-replica race | The new key is deleted at OpenRouter (best effort). |
 | Key deleted by an admin | Inference 401 → row marked rejected → the next call sees 404 → row removed → a fresh key is provisioned. |
 | Key disabled by an admin | Inference 401 → row marked rejected → each call reports "disabled by your instructor" until the key is enabled again. |
+| Budget guardrail missing or assignment fails | No key is kept; the student sees the retry-later message and the log names the cause. |
 | Budget exhausted | OpenRouter returns 403 and its message is relayed. `account_status` shows the budget. |
 | Vault key rotated | Rows are resealed on read, as before. |

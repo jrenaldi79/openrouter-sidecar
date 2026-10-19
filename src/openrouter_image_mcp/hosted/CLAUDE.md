@@ -22,7 +22,7 @@ read_when: "Changing or adding files in src/openrouter_image_mcp/hosted/."
 - Every query is scoped to the authenticated principal; no tool accepts a caller-chosen principal or workspace.
 - One replica owns background work through the health advisory lock.
 - `VAULT_KEYS`, `LINK_SIGNING_KEY` (signs upload, import and download URLs), `OPENROUTER_MANAGEMENT_KEY`, Auth0 and `DATABASE_URL` come only from the environment (`settings.py`). The secret scan blocks literals.
-- The management key only creates, reads, updates and deletes student keys; it never runs inference and never appears in logs or tool output. Free tools keep working when no key can be provisioned.
+- The management key only creates, reads, updates and deletes student keys and assigns each its class budget guardrail (`Sidecar student budget`; no guardrail, no key); it never runs inference and never appears in logs or tool output. Free tools keep working when no key can be provisioned.
 
 **Tests:** `tests/test_hosted_<module>*.py`, using `tests/hosted_harness.py` and `tests/jwt_helpers.py`. The local end-to-end stack is in `scripts/dev/` (`docs/E2E_LOCAL.md`). Operations are in `docs/HOSTED_OPERATIONS.md`.
 

@@ -1,7 +1,7 @@
 """Local stand-in for OpenRouter (development only). No real keys, no spend.
 
 Implements just what the hosted sidecar calls: the management API for student keys
-(create, get, list, update, delete), key info, the model catalogs, Responses (streaming and not) and image
+(create, get, list, update, delete), the budget guardrail and its key assignments, key info, the model catalogs, Responses (streaming and not) and image
 generation. Replies describe what the advisor received (files, prior turns) so an
 e2e run can check that session state is restored. Images are flat test pictures.
 
@@ -57,6 +57,25 @@ async def create_key(request: Request):
     return JSONResponse({"key": key, "data": _keys[key]}, 201)
 
 
+async def guardrails(request: Request):
+    if not _managed(request):
+        return _denied()
+    workspace = request.query_params.get("workspace_id", "")
+    return JSONResponse({"data": [{"id": "g-" + workspace, "name": "Sidecar student budget",
+                                   "workspace_id": workspace, "limit_usd": 25, "reset_interval": "monthly"}],
+                         "total_count": 1})
+
+
+async def assign_keys(request: Request):
+    if not _managed(request):
+        return _denied()
+    hashes = (await request.json()).get("key_hashes") or []
+    for data in _keys.values():
+        if data["hash"] in hashes:
+            data["guardrail_id"] = request.path_params["guardrail"]
+    return JSONResponse({"assigned_count": len(hashes)})
+
+
 async def list_keys(request: Request):
     if not _managed(request):
         return _denied()
@@ -90,7 +109,7 @@ async def key_info(request: Request):
         return JSONResponse({"error": {"message": "invalid key"}}, 401)
     return JSONResponse({"data": {"label": owner["name"], "workspace_id": owner["workspace_id"],
                                   "usage_daily": 0.0, "usage_monthly": 0.0, "limit": None,
-                                  "effective_budget": {"scope": "workspace_default_key", "limit_usd": 25,
+                                  "effective_budget": {"scope": "api_key", "limit_usd": 25,
                                                        "spend_usd": 0.0, "remaining_usd": 25,
                                                        "reset_interval": "monthly", "resets_at": None}}})
 
@@ -159,6 +178,8 @@ def app() -> Starlette:
     return Starlette(routes=[
         Route("/api/v1/keys", create_key, methods=["POST"]), Route("/api/v1/keys", list_keys),
         Route("/api/v1/keys/{hash}", one_key, methods=["GET", "PATCH", "DELETE"]),
+        Route("/api/v1/guardrails", guardrails),
+        Route("/api/v1/guardrails/{guardrail}/assignments/keys", assign_keys, methods=["POST"]),
         Route("/api/v1/key", key_info), Route("/api/v1/models", models),
         Route("/api/v1/images/models", image_models), Route("/api/v1/images", images, methods=["POST"]),
         Route("/api/v1/responses", responses, methods=["POST"])])
