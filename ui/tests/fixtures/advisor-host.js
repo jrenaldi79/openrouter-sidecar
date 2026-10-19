@@ -16,16 +16,17 @@ export const result = (overrides = {}) => {
 };
 
 export async function openAdvisor(page, {
-  initial = { content: [], structuredContent: job() }, responses = {}, capabilities = { serverTools: {}, message: { text: {} } },
-  messageResponse = {}, theme = 'light', delay = 0,
+  initial = { content: [], structuredContent: job() }, responses = {}, capabilities = { serverTools: {}, updateModelContext: { text: {} } },
+  contextResponse = {}, theme = 'light', delay = 0,
 } = {}) {
   const requests = [];
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/*', route => { requests.push(route.request().url()); return route.abort(); });
   await page.setContent('<iframe title="Advisor viewer" sandbox="allow-scripts" style="width:700px;height:700px;border:0"></iframe>');
-  await page.evaluate(({ html, initial, responses, capabilities, messageResponse, theme, delay }) => {
+  await page.evaluate(({ html, initial, responses, capabilities, contextResponse, theme, delay }) => {
     window.hostMessages = [];
+    window.pollTimes = [];
     window.toolCounts = {};
     window.activeFetches = 0;
     window.maxActiveFetches = 0;
@@ -55,7 +56,10 @@ export async function openAdvisor(page, {
         if (initial) window.notify('ui/notifications/tool-result', initial);
       }
       if (message.method === 'ui/notifications/size-changed') iframe.style.height = `${message.params.height}px`;
-      if (message.method === 'ui/message') reply(message.id, { result: messageResponse });
+      if (message.method === 'ui/message') reply(message.id, { result: {} });
+      if (message.method === 'ui/update-model-context') {
+        reply(message.id, contextResponse.rpcError ? { error: contextResponse.rpcError } : { result: contextResponse });
+      }
       if (message.method === 'tools/call') {
         const key = `${message.params.name}:${message.params.arguments.job_id}`;
         const index = window.toolCounts[key] ?? 0;
@@ -63,6 +67,7 @@ export async function openAdvisor(page, {
         const sequence = responses[key] ?? [];
         const next = sequence[Math.min(index, sequence.length - 1)] ?? { isError: true, content: [{ type: 'text', text: 'Missing test result' }] };
         if (message.params.name === 'get_advisor_result') {
+          window.pollTimes.push(performance.now());
           window.activeFetches++;
           window.maxActiveFetches = Math.max(window.maxActiveFetches, window.activeFetches);
         }
@@ -76,8 +81,23 @@ export async function openAdvisor(page, {
       }
     });
     iframe.srcdoc = html;
-  }, { html, initial, responses, capabilities, messageResponse, theme, delay });
+  }, { html, initial, responses, capabilities, contextResponse, theme, delay });
   return { viewer: page.frameLocator('iframe'), requests, errors };
+}
+
+// Secondary actions sit in the "More" disclosure; open it before using one.
+export async function moreAction(viewer, name) {
+  const menu = viewer.locator('#more');
+  if (!await menu.evaluate(element => element.open)) await viewer.getByText('More', { exact: true }).click();
+  return viewer.getByRole('button', { name, exact: true });
+}
+
+export const contexts = page => page.evaluate(() => window.hostMessages.filter(message =>
+  message.method === 'ui/update-model-context'));
+
+// The viewer never posts into the chat as the user (that triggers a host prompt).
+export async function assertNoChatMessage(page) {
+  expect(await page.evaluate(() => (window.hostMessages ?? []).filter(message => message.method === 'ui/message'))).toEqual([]);
 }
 
 export async function assertNoHandoff(page) {

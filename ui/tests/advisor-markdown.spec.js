@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
-import { result, openAdvisor, assertNoHandoff } from './fixtures/advisor-host.js';
+import { result, openAdvisor, assertNoHandoff, assertNoChatMessage } from './fixtures/advisor-host.js';
+
+test.afterEach(async ({ page }) => assertNoChatMessage(page));
 
 test('formats markdown as rich text while keeping raw Markdown in the reviewed handoff', async ({ page }) => {
   const markdown = '# A product idea\n\n**Strong evidence** and *a caveat*.\n\n1. Interview users\n2. Test a prototype\n\n```python\nprint("hello")\n```\n\n| Option | Cost |\n| --- | --- |\n| A | Low |';
@@ -9,8 +11,8 @@ test('formats markdown as rich text while keeping raw Markdown in the reviewed h
   await expect(viewer.locator('#answer ol li')).toHaveCount(2);
   await expect(viewer.locator('#answer pre code')).toContainText('print("hello")');
   await expect(viewer.locator('#answer table')).toBeVisible();
-  await viewer.getByRole('button', { name: 'Review full answer', exact: true }).click();
-  await expect(viewer.getByLabel('Message preview')).toHaveValue(markdown);
+  await viewer.getByRole('button', { name: 'Share with Claude', exact: true }).click();
+  await expect(viewer.getByLabel('Text to share')).toHaveValue(markdown);
   await assertNoHandoff(page);
 });
 

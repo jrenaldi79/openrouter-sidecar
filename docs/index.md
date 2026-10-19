@@ -179,6 +179,8 @@ Filenames grouped by folder; each heading links that folder's note.
 
 ### [ui/src](../ui/src/CLAUDE.md): MCP App sources (ESM): one &#60;app&#62;.html + &#60;app&#62;.js per app (preview, advisor, settings, uploader) with shared helpers, bundled by ui/build.mjs into src/openrouter&#95;image&#95;mcp/ui.
 
+- [ui/src/advisor-handoff.js](../ui/src/advisor-handoff.js)
+- [ui/src/advisor-progress.js](../ui/src/advisor-progress.js)
 - [ui/src/advisor.html](../ui/src/advisor.html)
 - [ui/src/advisor.js](../ui/src/advisor.js)
 - [ui/src/markdown.js](../ui/src/markdown.js)
@@ -209,7 +211,9 @@ Filenames grouped by folder; each heading links that folder's note.
 ### [ui/tests](../ui/tests/CLAUDE.md): Playwright specs for the MCP Apps (preview, advisor, settings, uploader), one or more &#60;app&#62;&#42;.spec.js per app, with mock MCP hosts in fixtures/; gated in CI.
 
 - [ui/tests/advisor-follow-up.spec.js](../ui/tests/advisor-follow-up.spec.js)
+- [ui/tests/advisor-handoff.spec.js](../ui/tests/advisor-handoff.spec.js)
 - [ui/tests/advisor-markdown.spec.js](../ui/tests/advisor-markdown.spec.js)
+- [ui/tests/advisor-progress.spec.js](../ui/tests/advisor-progress.spec.js)
 - [ui/tests/advisor-screenshots.spec.js](../ui/tests/advisor-screenshots.spec.js)
 - [ui/tests/advisor.spec.js](../ui/tests/advisor.spec.js)
 - [ui/tests/preview.spec.js](../ui/tests/preview.spec.js)

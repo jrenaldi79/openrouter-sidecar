@@ -1,6 +1,8 @@
 import { App } from '@modelcontextprotocol/ext-apps';
 import { renderMarkdown } from './markdown.js';
 import { providerLogo } from './provider-logos.js';
+import { createLiveView, createPoller } from './advisor-progress.js';
+import { ADDED, COPIED, COPY_BLOCKED, addToContext, canAddContext, copyText, handoffText, wireMenu } from './advisor-handoff.js';
 
 const app = new App({ name: 'OpenRouter Sidecar advisor result', version: '1.0.0' }, {}, { autoResize: true });
 const element = id => document.getElementById(id);
@@ -8,7 +10,8 @@ const answer = element('answer');
 const preview = element('preview');
 const terminal = new Set(['completed', 'failed', 'interrupted']);
 const states = new Set(['queued', 'running', ...terminal]);
-const pollInterval = 1000;
+const live = createLiveView(element);
+const poller = createPoller();
 let connected = false;
 let disposed = false;
 let blocked = false;
@@ -25,18 +28,16 @@ let sendBusy = false;
 let followUpBusy = false;
 let sendRejected = false;
 let fetchTail = Promise.resolve();
-const timers = new Set();
 
 const string = value => typeof value === 'string' ? value : '';
 const stateLabel = status => string(status).charAt(0).toUpperCase() + string(status).slice(1);
 const costLabel = cost => typeof cost === 'number' && Number.isFinite(cost) && cost >= 0
   ? `Cost: $${cost}` : 'Cost: unavailable';
 const canCallTools = () => connected && !!app.getHostCapabilities()?.serverTools;
-const canSend = () => connected && !!app.getHostCapabilities()?.message?.text;
+const canShare = () => connected && canAddContext(app);
 
 function stopPolling() {
-  for (const timer of timers) clearTimeout(timer);
-  timers.clear();
+  poller.clear();
   controller.abort();
   controller = new AbortController();
   generation++;
@@ -53,16 +54,16 @@ function updateButtons() {
   element('follow-up').disabled = disposed || (!original && !blocked) || !canCallTools();
   element('follow-up').readOnly = !canFollowUp;
   element('follow-up-send').disabled = !canFollowUp || !element('follow-up').value.trim();
-  element('settings').disabled = !canCallTools() || disposed || followUpBusy;
   const available = !disposed && !blocked && !followUpBusy && !!original && !!string(original.answer).trim();
   element('prepare-full').disabled = !available || summaryBusy || sendBusy;
-  element('prepare-selection').disabled = !available || summaryBusy || sendBusy || !selection.trim();
+  element('share-label').textContent = selection.trim() ? 'Share selection with Claude' : 'Share with Claude';
   element('summarize').disabled = !available || original.status !== 'completed' || summaryBusy || sendBusy || !canCallTools();
   element('export').disabled = !available || exportBusy || sendBusy || !canCallTools();
   preview.disabled = !prepared || summaryBusy || disposed || blocked || sendBusy;
   const ready = available && prepared && !!preview.value.trim() && !summaryBusy && !sendBusy;
-  element('send').disabled = !ready || !canSend();
-  element('copy').hidden = !prepared || (canSend() && !sendRejected);
+  element('send').hidden = !canShare();
+  element('send').disabled = !ready || !canShare();
+  element('copy').hidden = !prepared || (canShare() && !sendRejected);
   element('copy').disabled = !ready;
 }
 
@@ -73,6 +74,7 @@ function showError(message) {
 function suppressResult(message) {
   blocked = true;
   stopPolling();
+  live.stop();
   original = null;
   summary = null;
   prepared = null;
@@ -111,7 +113,7 @@ function renderOriginal(data) {
   element('model').textContent = string(data.model);
   providerLogo(element('model-logo'), string(data.model));
   element('result-id').textContent = `Result: ${data.job_id}`;
-  element('job-status').textContent = `${stateLabel(data.status)}${data.status === 'queued' || data.status === 'running' ? ' · Updating locally…' : ''}`;
+  element('job-status').textContent = stateLabel(data.status);
   element('cost').textContent = costLabel(data.cost_usd);
   element('cleanup').textContent = data.cleanup_pending ? 'Cleanup pending' : '';
   element('prompt-details').hidden = typeof data.prompt !== 'string';
@@ -128,21 +130,10 @@ function renderOriginal(data) {
     answer.scrollTop = !wasEmpty && wasAtBottom ? answer.scrollHeight : oldTop;
     renderedAnswer = text;
   }
-  element('answer-state').textContent = data.status === 'completed' ? 'Completed answer'
-    : text ? 'Partial answer · This result is not completed.' : 'Waiting for answer text…';
-  element('answer-state').hidden = data.status === 'completed';
+  live.render(data, text);
   showError(string(data.error));
   updateButtons();
 }
-
-function handoffHeader() {
-  if (!prepared) return '';
-  const suffix = prepared.summaryId ? `; summary ${prepared.summaryId}` : '';
-  const partial = prepared.partial ? ' (partial result)' : '';
-  return `Advisor ${prepared.kind}${partial} from ${prepared.model} (result ${prepared.sourceId}${suffix}):`;
-}
-
-function handoffText() { return `${handoffHeader()}\n\n${preview.value}`; }
 
 function prepare(kind, text, summaryId = null) {
   if (!original || blocked || disposed) return;
@@ -150,10 +141,11 @@ function prepare(kind, text, summaryId = null) {
   preview.value = text;
   sendRejected = false;
   element('preview-section').hidden = false;
-  element('preview-context').textContent = 'Only the reviewed text below will be shared.';
+  element('preview-context').textContent = canShare() ? 'Edit if needed. Claude gets only this text, labelled with its source.'
+    : 'This host cannot add context. Copy the text and paste it into the chat.';
   element('copy-section').hidden = true;
   element('copy-text').value = '';
-  element('handoff-status').textContent = canSend() ? '' : 'This host does not support sending to the parent chat. Copy your reviewed message instead.';
+  element('handoff-status').textContent = '';
   updateButtons();
 }
 
@@ -206,14 +198,6 @@ async function verifyHandoff(snapshot, token) {
   }
 }
 
-function schedulePoll(jobId, isSummary, token) {
-  const timer = setTimeout(() => {
-    timers.delete(timer);
-    if (!disposed && !blocked && token === generation) void poll(jobId, isSummary, token);
-  }, pollInterval);
-  timers.add(timer);
-}
-
 function renderSummary(data) {
   summary = data;
   element('summary-status').textContent = `Summary: ${stateLabel(data.status)} · ${costLabel(data.cost_usd)}${data.cleanup_pending ? ' · Cleanup pending' : ''}`;
@@ -246,7 +230,11 @@ async function poll(jobId, isSummary, token) {
     }
     if (isSummary) renderSummary(data);
     else renderOriginal(data);
-    if (!terminal.has(data.status)) schedulePoll(jobId, isSummary, token);
+    if (!terminal.has(data.status)) {
+      poller.schedule(jobId, `${data.status}:${data.answer.length}`, () => {
+        if (!disposed && !blocked && token === generation) void poll(jobId, isSummary, token);
+      });
+    }
   } catch (error) {
     if (disposed || blocked || token !== generation) return;
     suppressResult(`Unable to retrieve this result: ${string(error?.message) || 'Host request failed.'}`);
@@ -331,37 +319,25 @@ element('follow-up-send').addEventListener('click', async () => {
   }
 });
 
-element('prepare-selection').addEventListener('pointerdown', event => event.preventDefault());
-element('settings').addEventListener('click', async () => {
-  if (!canCallTools() || disposed) return;
-  const text = 'Open Sidecar settings using open_sidecar_settings with mode settings.';
-  if (!canSend()) {
-    element('settings-request-section').hidden = false;
-    element('settings-request').value = text;
-    element('settings-status').textContent = 'Copy this request into the parent chat to open settings.';
-    return;
-  }
-  element('settings').disabled = true;
-  try {
-    const result = await app.sendMessage({ role: 'user', content: [{ type: 'text', text }] }, { signal: controller.signal, timeout: 15000 });
-    if (disposed) return;
-    if (result.isError) throw new Error('Host rejected settings request');
-    element('settings-status').textContent = 'Requested settings in the parent chat. No answer text was sent.';
-  } catch {
-    if (!disposed) {
-      element('settings-request-section').hidden = false;
-      element('settings-request').value = text;
-      element('settings-status').textContent = 'Settings request was not confirmed. Copy this request into the parent chat.';
-    }
-  } finally { if (!disposed) updateButtons(); }
+// Keep an answer selection while pressing Share: a selection shares only itself.
+element('prepare-full').addEventListener('pointerdown', event => event.preventDefault());
+element('prepare-full').addEventListener('click', () => (selection.trim()
+  ? prepare('selection', selection) : prepare('answer', string(original?.answer))));
+element('cancel-share').addEventListener('click', () => {
+  if (sendBusy) return;
+  // A summary still being written is abandoned along with the review.
+  if (summaryBusy) { stopPolling(); summaryBusy = exportBusy = false; element('summary-status').textContent = ''; }
+  prepared = null;
+  preview.value = '';
+  sendRejected = false;
+  element('preview-section').hidden = element('copy-section').hidden = true;
+  element('handoff-status').textContent = '';
+  updateButtons();
 });
-element('prepare-selection').addEventListener('click', () => {
-  if (selection.trim()) prepare('selection', selection);
-});
-element('prepare-full').addEventListener('click', () => prepare('answer', string(original?.answer)));
+wireMenu(element('more'));
 document.addEventListener('selectionchange', captureSelection);
 preview.addEventListener('input', () => {
-  element('handoff-status').textContent = canSend() ? '' : 'This host does not support sending to the parent chat. Copy your reviewed message instead.';
+  element('handoff-status').textContent = '';
   element('copy-section').hidden = true;
   updateButtons();
 });
@@ -426,62 +402,53 @@ element('export').addEventListener('click', async () => {
   }
 });
 
-element('send').addEventListener('click', async () => {
-  if (!prepared || !preview.value.trim() || !canSend() || blocked || disposed || summaryBusy || sendBusy) return;
-  const token = generation;
-  const snapshot = { ...prepared };
-  const text = handoffText();
-  sendBusy = true;
-  element('handoff-status').textContent = 'Verifying result access…';
-  updateButtons();
-  try {
-    if (!await verifyHandoff(snapshot, token)) return;
-    if (disposed || blocked || token !== generation) return;
-    element('handoff-status').textContent = 'Sending…';
-    // This explicit button handler is the only path to parent-chat content.
-    const result = await app.sendMessage({ role: 'user', content: [{ type: 'text', text }] }, { signal: controller.signal, timeout: 15000 });
-    if (disposed || blocked || token !== generation) return;
-    if (result.isError) throw new Error('Host rejected the message.');
-    element('handoff-status').textContent = 'Sent to parent chat.';
-  } catch (error) {
-    if (disposed || blocked || token !== generation) return;
-    sendRejected = true;
-    element('handoff-status').textContent = `${string(error?.message) || 'Unable to send.'} Nothing was confirmed sent. You can copy your reviewed message.`;
-  } finally {
-    if (token === generation) { sendBusy = false; updateButtons(); }
-  }
-});
-
-element('copy').addEventListener('click', async () => {
+// Both share paths recheck ownership first. Neither posts a chat message as the user.
+async function share(deliver, failure) {
   if (!prepared || !preview.value.trim() || blocked || disposed || summaryBusy || sendBusy) return;
   const token = generation;
   const snapshot = { ...prepared };
-  const text = handoffText();
+  const current = () => !disposed && !blocked && token === generation;
   sendBusy = true;
   element('handoff-status').textContent = 'Verifying result access…';
   updateButtons();
   try {
-    if (!await verifyHandoff(snapshot, token)) return;
-    if (disposed || blocked || token !== generation) return;
-    element('copy-text').value = text;
-    element('copy-section').hidden = false;
-    element('copy-text').focus();
-    element('copy-text').select();
-    if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
-    await navigator.clipboard.writeText(text);
-    if (disposed || blocked || token !== generation) return;
-    element('handoff-status').textContent = 'Copied message. Paste it into the parent chat when ready.';
-  } catch {
-    if (disposed || blocked || token !== generation) return;
-    element('handoff-status').textContent = 'Clipboard access is unavailable. Select and copy the message below, then paste it into the parent chat.';
+    if (!await verifyHandoff(snapshot, token) || !current()) return;
+    const status = await deliver(handoffText(snapshot, preview.value));
+    if (current()) element('handoff-status').textContent = status;
+  } catch (error) {
+    if (current()) element('handoff-status').textContent = failure(error);
   } finally {
     if (token === generation) { sendBusy = false; updateButtons(); }
   }
-});
+}
+
+element('send').addEventListener('click', () => canShare() && share(async text => {
+  element('handoff-status').textContent = 'Adding…';
+  await addToContext(app, text, controller.signal);
+  return ADDED;
+}, error => {
+  sendRejected = true;
+  return `${string(error?.message) || 'The host did not accept the text.'} Nothing was added. You can copy it instead.`;
+}));
+
+element('copy').addEventListener('click', () => share(async text => {
+  element('copy-text').value = text;
+  try {
+    await copyText(text);
+    return COPIED;
+  } catch (error) {
+    // Sandboxed frames often block the clipboard: offer the text for manual copy.
+    element('copy-section').hidden = false;
+    element('copy-text').focus();
+    element('copy-text').select();
+    throw error;
+  }
+}, () => COPY_BLOCKED));
 
 function dispose() {
   disposed = true;
   stopPolling();
+  live.stop();
   document.removeEventListener('selectionchange', captureSelection);
   updateButtons();
 }

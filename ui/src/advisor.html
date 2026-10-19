@@ -6,46 +6,85 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
   <title>OpenRouter Sidecar advisor result</title>
   <style>
-    :root { color-scheme: light dark; --bg: #fff; --fg: #202124; --muted: #666; --line: #ddd; --card: #f7f7f8; --purple: #4e2a84; --focus: #836eaa; --error: #a12626; }
-    @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #202124; --fg: #eee; --muted: #bbb; --line: #4a4a50; --card: #292a2d; --purple: #6b46a1; --error: #ffb4ab; } }
-    :root[data-theme="dark"] { color-scheme: dark; --bg: #202124; --fg: #eee; --muted: #bbb; --line: #4a4a50; --card: #292a2d; --purple: #6b46a1; --error: #ffb4ab; }
+    :root { color-scheme: light dark; --bg: #fff; --fg: #202124; --muted: #666; --line: #ddd; --card: #f7f7f8; --purple: #4e2a84; --focus: #836eaa; --error: #a12626; --teal: #116b61; }
+    @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #202124; --fg: #eee; --muted: #bbb; --line: #4a4a50; --card: #292a2d; --purple: #6b46a1; --error: #ffb4ab; --teal: #9ad9c7; } }
+    :root[data-theme="dark"] { color-scheme: dark; --bg: #202124; --fg: #eee; --muted: #bbb; --line: #4a4a50; --card: #292a2d; --purple: #6b46a1; --error: #ffb4ab; --teal: #9ad9c7; }
     :root[data-theme="light"] { color-scheme: light; }
     * { box-sizing: border-box; }
     [hidden] { display: none !important; }
     body { margin: 0; padding: 16px; font: 14px/1.5 system-ui, sans-serif; background: var(--color-background-primary, var(--bg)); color: var(--color-text-primary, var(--fg)); }
-    main { max-width: 960px; margin: 0 auto; }
-    h1 { margin: 0; font-size: 18px; }
-    h2 { margin: 0 0 8px; font-size: 15px; }
-    p { margin: 6px 0; overflow-wrap: anywhere; }
-    .app-heading { display: flex; align-items: center; gap: 8px; }
-    .app-logo { width: 26px; height: 26px; border-radius: 4px; }
-    .muted, #result-title, #job-status, #cleanup { color: var(--color-text-secondary, var(--muted)); }
-    .metadata { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 10px 0; font-size: 12px; }
-    .metadata p { margin: 0; }
-    #model { font-weight: 600; }
-    details { border: 1px solid var(--color-border-primary, var(--line)); border-radius: 8px; padding: 10px 12px; margin: 12px 0; }
-    summary { cursor: pointer; font-weight: 600; }
-    pre { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; margin: 8px 0 0; }
-    .answer-card, .preview-card { margin-top: 14px; padding: 14px; border: 1px solid var(--color-border-primary, var(--line)); border-radius: 10px; background: var(--color-background-secondary, var(--card)); }
-    #answer { user-select:text; min-height:48px; max-height:360px; overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:stable; scrollbar-color:var(--focus) transparent; padding-right:6px; }
-    #answer-state { font-size: 12px; color: var(--color-text-secondary, var(--muted)); }
-    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-    button { font: inherit; font-weight: 600; border: 1px solid var(--color-border-primary, var(--line)); border-radius: 7px; background: var(--color-background-primary, var(--bg)); color: var(--color-text-primary, var(--fg)); padding: 8px 12px; cursor: pointer; }
+    main { max-width: 960px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+    p { margin: 0; overflow-wrap: anywhere; }
+    h2 { margin: 0; font-size: 15px; }
+    .muted, .help, .meta, #answer-state, #result-title { color: var(--color-text-secondary, var(--muted)); }
+    .help { font-size: 12px; }
+    .visually-hidden { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+    :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+    /* Header: one title line and one quiet metadata line. */
+    .head { display: flex; gap: 10px; align-items: flex-start; }
+    .app-logo { width: 26px; height: 26px; border-radius: 4px; flex-shrink: 0; margin-top: 1px; }
+    h1 { margin: 0; font-size: 17px; line-height: 1.4; }
+    #result-title { font-weight: 400; } #result-title:not(:empty)::before { content: "· "; }
+    .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; font-size: 12px; }
+    .meta > span:not(:first-child):not(:empty)::before { content: "·"; margin-right: 8px; }
+    .model-identity { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--color-text-primary, var(--fg)); }
+    .provider-logo { width: 18px; height: 18px; object-fit: contain; padding: 1px; background: #fff; border-radius: 4px; }
+    #error, #summary-error { color: var(--error); }
+    #error:empty, #summary-error:empty, #cleanup:empty, #export-status:empty, #handoff-status:empty, #follow-up-status:empty, #summary-status:empty { display: none; }
+    details.quiet { font-size: 12px; } details.quiet summary { cursor: pointer; color: var(--color-text-secondary, var(--muted)); width: max-content; }
+    pre { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; margin: 6px 0 0; }
+
+    /* Answer: the main content, on a soft surface without a border. */
+    .answer-card { padding: 14px 16px; border-radius: 12px; background: var(--color-background-secondary, var(--card)); }
+    #answer { user-select:text; max-height:360px; overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:stable; scrollbar-color:var(--focus) transparent; padding-right:6px; }
+    #answer:empty { display: none; }
+    #answer-state { font-size: 12px; margin-top: 8px; }
+    .live-state { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text-secondary, var(--muted)); margin-bottom: 10px; }
+    .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--focus); animation: live-pulse 1.4s ease-in-out infinite; }
+    #live-elapsed { font-variant-numeric: tabular-nums; } #live-elapsed:not(:empty)::before { content: "· "; }
+    .answer-skeleton span { display: block; height: 10px; margin: 10px 0; border-radius: 5px; background: var(--line); animation: skeleton 1.6s ease-in-out infinite; }
+    .answer-skeleton span:nth-child(2) { width: 88%; } .answer-skeleton span:nth-child(3) { width: 60%; }
+    @keyframes live-pulse { 0%, 100% { opacity: .35; transform: scale(.8); } 50% { opacity: 1; transform: scale(1); } }
+    @keyframes skeleton { 0%, 100% { opacity: .45; } 50% { opacity: .9; } }
+    @media (prefers-reduced-motion: reduce) { .live-dot, .answer-skeleton span { animation: none; } }
+
+    button { font: inherit; font-weight: 600; border: 1px solid var(--color-border-primary, var(--line)); border-radius: 8px; background: var(--color-background-primary, var(--bg)); color: var(--color-text-primary, var(--fg)); padding: 8px 12px; cursor: pointer; }
     button.primary { background: var(--purple); border-color: var(--purple); color: #fff; }
     button:disabled { opacity: .5; cursor: default; }
-    :focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
-    label { display: block; font-weight: 600; margin: 10px 0 6px; }
-    textarea { display: block; width: 100%; min-height: 160px; resize: vertical; padding: 10px; border: 1px solid var(--color-border-primary, var(--line)); border-radius: 7px; background: var(--color-background-primary, var(--bg)); color: var(--color-text-primary, var(--fg)); font: inherit; }
-    .help { font-size: 12px; color: var(--color-text-secondary, var(--muted)); }
-    #error, #summary-error { color: var(--error); }
-    #error:empty, #summary-error:empty, #cleanup:empty { display: none; }
-    #export-status, #handoff-status { font-size: 13px; }
-    #summary-text:empty { display: none; }
-    @media (max-width: 420px) { body { padding: 12px; } .actions button { flex: 1 1 100%; } .answer-card, .preview-card { padding: 12px; } }
+    .quiet-button, .more > summary { border: 0; background: transparent; color: var(--color-text-secondary, var(--muted)); font-weight: 500; font-size: 13px; padding: 6px 8px; border-radius: 6px; }
+    .quiet-button:not(:disabled):hover, .more > summary:hover { background: var(--color-background-secondary, var(--card)); color: var(--color-text-primary, var(--fg)); }
+    .icon { width: 16px; height: 16px; flex-shrink: 0; }
 
-    .return-heading { display:flex; gap:8px; align-items:center; margin:18px 0 0; color:#116b61; }
-    .return-icon { width:20px; height:20px; flex-shrink:0; }
-    #send { display:flex; gap:7px; align-items:center; }
+    /* Answer toolbar: one share action and a small More menu. */
+    .toolbar { display: flex; align-items: center; gap: 2px; margin-top: -6px; }
+    #prepare-full { display: inline-flex; gap: 6px; align-items: center; }
+    .more { position: relative; }
+    .more > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+    .more > summary::-webkit-details-marker { display: none; }
+    .more > summary::after { content: ""; width: 6px; height: 6px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg) translateY(-2px); }
+    .more-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 2; min-width: 210px; display: flex; flex-direction: column; padding: 6px; border: 1px solid var(--color-border-primary, var(--line)); border-radius: 10px; background: var(--color-background-primary, var(--bg)); box-shadow: 0 6px 20px rgb(0 0 0 / .14); }
+    .more-menu button { border: 0; background: transparent; text-align: left; font-weight: 500; padding: 8px 10px; }
+    .more-menu button:not(:disabled):hover { background: var(--color-background-secondary, var(--card)); }
+    .more-menu .help { padding: 4px 10px 2px; }
+    #export-status, #handoff-status { font-size: 13px; }
+
+    /* Share review: appears only after choosing to share. */
+    .preview-card { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--color-border-primary, var(--line)); }
+    label { font-weight: 600; font-size: 13px; }
+    textarea { display: block; width: 100%; min-height: 140px; resize: vertical; padding: 10px; border: 1px solid var(--color-border-primary, var(--line)); border-radius: 8px; background: var(--color-background-primary, var(--bg)); color: var(--color-text-primary, var(--fg)); font: inherit; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    #send { background: var(--teal); border-color: var(--teal); color: var(--bg); }
+    #summary-text:empty { display: none; }
+
+    /* Follow-up composer: the primary action. */
+    .composer { border: 1px solid var(--color-border-primary, var(--line)); border-radius: 12px; padding: 8px 8px 8px 12px; background: var(--color-background-primary, var(--bg)); }
+    .composer:focus-within { border-color: var(--focus); box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus) 35%, transparent); }
+    #follow-up { border: 0; padding: 4px 0; min-height: 52px; max-height: 160px; resize: vertical; background: transparent; outline: none; }
+    .composer-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; }
+    #follow-up-send { white-space: nowrap; }
+    #follow-up-status { font-size: 12px; margin-top: 6px; }
+
     .rich-text { overflow-wrap:anywhere; }
     .rich-text > :first-child { margin-top:0; } .rich-text > :last-child { margin-bottom:0; }
     .rich-text p,.rich-text ul,.rich-text ol,.rich-text blockquote { margin:10px 0; }
@@ -55,83 +94,76 @@
     .rich-text code { font:12px/1.55 ui-monospace,Consolas,monospace; background:var(--bg); border-radius:4px; padding:2px 4px; }
     .rich-text pre { background:var(--bg); border:1px solid var(--line); padding:12px; border-radius:8px; }
     .rich-text pre code { padding:0; }
-    .rich-text blockquote { padding-left:12px; margin-left:0; border-left:3px solid #116b61; color:var(--muted); }
+    .rich-text blockquote { padding-left:12px; margin-left:0; border-left:3px solid var(--teal); color:var(--muted); }
     .rich-text table { display:block; max-width:100%; overflow:auto; border-collapse:collapse; font-size:12px; }
     .rich-text th,.rich-text td { border:1px solid var(--line); padding:7px 10px; text-align:left; }
     .rich-text a { color:var(--focus); text-decoration:underline; }
-    :root[data-theme="dark"] .return-heading { color:#9ad9c7; }
-    @media(prefers-color-scheme:dark) { :root:not([data-theme="light"]) .return-heading { color:#9ad9c7; } }
-  .model-identity { display:flex; align-items:center; gap:7px; } .provider-logo { width:24px; height:24px; object-fit:contain; padding:2px; background:#fff; border-radius:5px; }
-
-.visually-hidden { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
-#prepare-full { background:#116b61; border-color:#116b61; color:#fff; }
-#export,#settings { border-color:transparent; background:transparent; font-weight:500; }
-@media(max-width:420px) { [aria-label="Result actions"] { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; } [aria-label="Result actions"] button { min-width:0; min-height:42px; padding:7px 5px; font-size:12px; line-height:1.3; } }
-
-.follow-up { margin:14px 0; }
-.follow-up label { font-size:13px; }
-#follow-up { min-height:72px; max-height:160px; resize:vertical; }
-.follow-up-footer { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:8px; }
-.follow-up-footer .help { margin:0; max-width:40ch; }
-#follow-up-send { background:#116b61; border-color:#116b61; color:#fff; white-space:nowrap; }
-#follow-up-status { font-size:12px; } #follow-up-status:empty { display:none; }
-@media(max-width:420px) { #answer { max-height:280px; } .follow-up-footer { align-items:flex-start; } #follow-up-send { font-size:12px; padding:8px; } }
-</style>
+    @media (max-width: 420px) { body { padding: 12px; } #answer { max-height: 280px; } .answer-card, .preview-card { padding: 12px; } .composer-row { align-items: flex-end; } }
+  </style>
 </head>
 <body>
   <main aria-labelledby="title">
-    <div class="app-heading"><!-- APP_LOGO --><h1 id="title">Advisor result</h1></div>
-    <p id="result-title"></p>
-    <p id="job-status" role="status" aria-live="polite">Waiting for an advisor result…</p>
-    <div class="metadata" aria-label="Result information">
-      <p class="model-identity"><span id="model-logo" aria-hidden="true"></span><span id="model"></span></p><p id="cost"></p><p id="cleanup"></p>
-    </div>
+    <header class="head">
+      <!-- APP_LOGO -->
+      <div>
+        <h1 id="title">Advisor <span id="result-title"></span></h1>
+        <p class="meta" aria-label="Result information">
+          <span class="model-identity"><span id="model-logo" aria-hidden="true"></span><span id="model"></span></span>
+          <span id="job-status" role="status" aria-live="polite">Waiting for an advisor result…</span>
+          <span id="cost"></span><span id="cleanup"></span>
+        </p>
+      </div>
+    </header>
     <p id="error" role="alert"></p>
-    <details id="prompt-details" hidden>
-      <summary>Original user prompt</summary>
+    <details id="prompt-details" class="quiet" hidden>
+      <summary>Original prompt</summary>
       <p id="result-id" class="help"></p><pre id="prompt"></pre>
     </details>
     <section class="answer-card" aria-labelledby="answer-title">
       <h2 id="answer-title" class="visually-hidden">Advisor answer</h2>
-      <p id="answer-state">The answer stays here until you choose what to send.</p>
-      <div class="rich-text" id="answer" tabindex="0" aria-label="Advisor answer text"></div>
+      <p class="live-state" id="live-state" hidden><span class="live-dot" aria-hidden="true"></span><span id="live-label" role="status" aria-live="polite"></span><span id="live-elapsed" aria-hidden="true"></span></p>
+      <div class="answer-skeleton" id="answer-skeleton" aria-hidden="true" hidden><span></span><span></span><span></span></div>
+      <div class="rich-text" id="answer" tabindex="0" aria-label="Advisor answer text" aria-busy="false"></div>
+      <p id="answer-state" hidden></p>
     </section>
-    <section class="follow-up" aria-label="Continue advisor conversation">
-      <label for="follow-up">Message advisor</label>
-      <textarea id="follow-up" placeholder="Ask a follow-up…" aria-describedby="follow-up-help" maxlength="50000" disabled></textarea>
-      <div class="follow-up-footer"><p class="help" id="follow-up-help">Same chat and model. Uses OpenRouter credits.</p><button id="follow-up-send" disabled>Send follow-up</button></div>
-      <p id="follow-up-status" role="status" aria-live="polite"></p>
-    </section>
-    <h2 class="return-heading"><svg class="return-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M10 5 4 11l6 6M4 11h10a6 6 0 0 1 6 6v2"/></svg>Bring back to main chat</h2><div class="actions" aria-label="Result actions">
-      <button id="prepare-selection" disabled>Review selected text</button>
-      <button id="prepare-full" disabled>Review full answer</button>
-      <button id="summarize" disabled aria-describedby="summary-cost-note">Review a summary</button>
-      <button id="export" disabled>Save as file</button>
-      <button id="settings" disabled aria-describedby="settings-status">Settings</button>
+    <div class="toolbar" role="group" aria-label="Answer actions">
+      <button class="quiet-button" id="prepare-full" disabled><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M10 5 4 11l6 6M4 11h10a6 6 0 0 1 6 6v2"/></svg><span id="share-label">Share with Claude</span></button>
+      <details class="more" id="more">
+        <summary>More</summary>
+        <div class="more-menu" id="more-menu">
+          <button id="summarize" disabled aria-describedby="summary-cost-note">Share a summary</button>
+          <button id="export" disabled>Save as file</button>
+          <p class="help" id="summary-cost-note">Summaries use OpenRouter credits.</p>
+        </div>
+      </details>
     </div>
-    <p class="help" id="summary-cost-note">Summaries use OpenRouter credits.</p>
-    <p class="help">Nothing is shared until you send.</p>
     <p id="export-status" role="status" aria-live="polite"></p>
-    <p id="settings-status" role="status" aria-live="polite"></p>
-    <div id="settings-request-section" hidden><label for="settings-request">Settings request for parent chat</label><textarea id="settings-request" readonly></textarea></div>
     <section class="preview-card" id="preview-section" aria-labelledby="preview-title" hidden>
-      <h2 id="preview-title">Review before sending</h2>
+      <h2 id="preview-title">Share with Claude</h2>
       <p id="preview-context" class="help"></p>
       <p id="summary-status" role="status" aria-live="polite"></p>
       <p id="summary-error" role="alert"></p>
       <div class="rich-text" id="summary-text" aria-label="Summary in progress"></div>
-      <label for="preview">Message preview</label>
-      <textarea id="preview" aria-describedby="preview-help" spellcheck="false"></textarea>
-      <p class="help" id="preview-help">Edit before sending. Source information is included.</p>
+      <label for="preview">Text to share</label>
+      <textarea id="preview" spellcheck="false"></textarea>
       <div class="actions">
-        <button class="primary" id="send" disabled><svg class="return-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M10 5 4 11l6 6M4 11h10a6 6 0 0 1 6 6v2"/></svg>Send to main chat</button>
+        <button id="send" disabled hidden>Add to Claude's context</button>
         <button id="copy" hidden>Copy message</button>
+        <button class="quiet-button" id="cancel-share">Cancel</button>
       </div>
       <p id="handoff-status" role="status" aria-live="polite"></p>
       <div id="copy-section" hidden>
         <label for="copy-text">Copyable message</label>
         <textarea id="copy-text" readonly spellcheck="false"></textarea>
       </div>
+    </section>
+    <section class="follow-up" aria-label="Continue advisor conversation">
+      <div class="composer">
+        <label for="follow-up" class="visually-hidden">Message advisor</label>
+        <textarea id="follow-up" placeholder="Ask the advisor a follow-up…" aria-describedby="follow-up-help" maxlength="50000" disabled></textarea>
+        <div class="composer-row"><p class="help" id="follow-up-help">Same chat and model. Uses OpenRouter credits.</p><button class="primary" id="follow-up-send" disabled>Send follow-up</button></div>
+      </div>
+      <p id="follow-up-status" role="status" aria-live="polite"></p>
     </section>
   </main>
   <!-- BUNDLED_SCRIPT -->

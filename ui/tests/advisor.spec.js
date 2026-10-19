@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
-import { job, result, openAdvisor, assertNoHandoff, selectAnswer } from './fixtures/advisor-host.js';
+import { job, result, openAdvisor, assertNoHandoff, assertNoChatMessage, contexts, moreAction, selectAnswer } from './fixtures/advisor-host.js';
+
+test.afterEach(async ({ page }) => assertNoChatMessage(page));
 
 const completed = { 'get_advisor_result:result-1': [result()] };
 
@@ -20,15 +22,15 @@ test('prepares only answer selection and sends the edited preview on explicit cl
   const { viewer } = await openAdvisor(page, { responses: completed });
   await expect(viewer.locator('#answer')).toContainText('Selected insight.');
   await selectAnswer(viewer, 'Selected insight.');
-  await viewer.getByRole('button', { name: 'Review selected text' }).click();
-  await expect(viewer.getByLabel('Message preview')).toHaveValue('Selected insight.');
+  await viewer.getByRole('button', { name: 'Share selection with Claude', exact: true }).click();
+  await expect(viewer.getByLabel('Text to share')).toHaveValue('Selected insight.');
   await assertNoHandoff(page);
-  await viewer.getByLabel('Message preview').fill('Edited selected insight.');
-  await viewer.getByRole('button', { name: 'Send to main chat', exact: true }).click();
-  await expect(viewer.locator('#handoff-status')).toHaveText('Sent to parent chat.');
-  const messages = await page.evaluate(() => window.hostMessages.filter(message => message.method === 'ui/message'));
+  await viewer.getByLabel('Text to share').fill('Edited selected insight.');
+  await viewer.getByRole('button', { name: "Add to Claude's context", exact: true }).click();
+  await expect(viewer.locator('#handoff-status')).toHaveText("Added. Ask Claude to use the advisor's answer.");
+  const messages = await page.evaluate(() => window.hostMessages.filter(message => message.method === 'ui/update-model-context'));
   expect(messages).toHaveLength(1);
-  expect(messages[0].params).toEqual({ role: 'user', content: [{ type: 'text', text: 'Advisor selection from example/advisor (result result-1):\n\nEdited selected insight.' }] });
+  expect(messages[0].params).toEqual({ content: [{ type: 'text', text: 'Advisor selection from example/advisor (result result-1):\n\nEdited selected insight.' }] });
   expect(messages[0].params.content[0].text).not.toContain('First paragraph.');
 });
 
@@ -42,9 +44,9 @@ test('rejects selections outside answer and prepares editable full answer separa
     window.getSelection().addRange(range);
     document.dispatchEvent(new Event('selectionchange'));
   });
-  await expect(viewer.getByRole('button', { name: 'Review selected text' })).toBeDisabled();
-  await viewer.getByRole('button', { name: 'Review full answer' }).click();
-  await expect(viewer.getByLabel('Message preview')).toHaveValue(result()._meta.advisorResult.answer);
+  await expect(viewer.getByRole('button', { name: 'Share selection with Claude', exact: true })).toHaveCount(0);
+  await viewer.getByRole('button', { name: 'Share with Claude', exact: true }).click();
+  await expect(viewer.getByLabel('Text to share')).toHaveValue(result()._meta.advisorResult.answer);
   await assertNoHandoff(page);
 });
 
@@ -53,7 +55,7 @@ test('polls partials without overlap and stops once completed', async ({ page })
     responses: { 'get_advisor_result:result-1': [result({ status: 'running', answer: 'Partial answer' }), result()] } });
   await expect(viewer.locator('#answer')).toHaveText('Partial answer');
   await expect(viewer.locator('#job-status')).toContainText('Running');
-  await expect(viewer.getByRole('button', { name: 'Review a summary' })).toBeDisabled();
+  await expect(await moreAction(viewer, 'Share a summary')).toBeDisabled();
   await expect(viewer.locator('#answer')).toContainText('Last paragraph.');
   await page.waitForTimeout(1400);
   expect(await page.evaluate(() => window.toolCounts['get_advisor_result:result-1'])).toBe(2);
@@ -70,21 +72,22 @@ test('separate charged summary job retains original and requires review before S
     'export_advisor_result:result-1': [{ content: [], structuredContent: { saved: true }, _meta: { advisorExport: { path: 'C:\\exports\\original.md' } } }],
   } });
   await expect(viewer.locator('#answer')).toContainText('Last paragraph.');
+  const summarize = await moreAction(viewer, 'Share a summary');
   await expect(viewer.getByText('Summaries use OpenRouter credits.', { exact: true })).toBeVisible();
-  await viewer.getByRole('button', { name: 'Review a summary' }).click();
+  await summarize.click();
   await expect(viewer.locator('#summary-status')).toContainText('Running');
   await expect(viewer.locator('#answer')).toHaveText(result()._meta.advisorResult.answer);
-  await expect(viewer.getByRole('button', { name: 'Send to main chat', exact: true })).toBeDisabled();
-  await expect(viewer.getByLabel('Message preview')).toHaveValue('Short summary');
+  await expect(viewer.getByRole('button', { name: "Add to Claude's context", exact: true })).toBeDisabled();
+  await expect(viewer.getByLabel('Text to share')).toHaveValue('Short summary');
   await expect(viewer.locator('#summary-status')).toContainText('$0.005');
-  await viewer.getByRole('button', { name: 'Save as file' }).click();
+  await (await moreAction(viewer, 'Save as file')).click();
   await expect(viewer.locator('#export-status')).toContainText('original.md');
   expect(await page.evaluate(() => window.hostMessages.filter(message => message.method === 'tools/call' && message.params.name === 'export_advisor_result').map(message => message.params.arguments.job_id))).toEqual(['result-1']);
   await assertNoHandoff(page);
-  await viewer.getByLabel('Message preview').fill('Reviewed short summary');
-  await viewer.getByRole('button', { name: 'Send to main chat', exact: true }).click();
-  await expect(viewer.locator('#handoff-status')).toContainText('Sent to parent chat.');
-  const messages = await page.evaluate(() => window.hostMessages.filter(message => message.method === 'ui/message'));
+  await viewer.getByLabel('Text to share').fill('Reviewed short summary');
+  await viewer.getByRole('button', { name: "Add to Claude's context", exact: true }).click();
+  await expect(viewer.locator('#handoff-status')).toContainText("Added. Ask Claude to use the advisor's answer.");
+  const messages = await page.evaluate(() => window.hostMessages.filter(message => message.method === 'ui/update-model-context'));
   expect(messages[0].params.content[0].text).toBe('Advisor summary from example/advisor (result result-1; summary summary-1):\n\nReviewed short summary');
 });
 
@@ -93,34 +96,11 @@ test('exports original result through app-only tool and displays returned local 
     'export_advisor_result:result-1': [{ content: [], structuredContent: { saved: true }, _meta: { advisorExport: { path: 'C:\\advisor-exports\\result-1.md' } } }],
   } });
   await expect(viewer.locator('#answer')).toContainText('Last paragraph.');
-  await viewer.getByRole('button', { name: 'Save as file' }).click();
+  await (await moreAction(viewer, 'Save as file')).click();
   await expect(viewer.locator('#export-status')).toHaveText('Saved Markdown: C:\\advisor-exports\\result-1.md');
   const calls = await page.evaluate(() => window.hostMessages.filter(message => message.method === 'tools/call' && message.params.name === 'export_advisor_result'));
   expect(calls[0].params.arguments).toEqual({ job_id: 'result-1' });
   await assertNoHandoff(page);
-});
-
-test('unsupported host offers copy instead of claiming send support', async ({ page }) => {
-  const { viewer } = await openAdvisor(page, { capabilities: { serverTools: {} }, responses: completed });
-  await expect(viewer.locator('#answer')).toContainText('First paragraph.');
-  await viewer.getByRole('button', { name: 'Review full answer' }).click();
-  await expect(viewer.getByRole('button', { name: 'Send to main chat', exact: true })).toBeDisabled();
-  await expect(viewer.getByRole('button', { name: 'Copy message' })).toBeVisible();
-  await expect(viewer.locator('#handoff-status')).toContainText('does not support sending');
-  await viewer.getByRole('button', { name: 'Copy message' }).click();
-  await expect(viewer.getByLabel('Copyable message')).toBeVisible();
-  await expect(viewer.getByLabel('Copyable message')).toHaveValue(/^Advisor answer from example\/advisor \(result result-1\):/);
-  await assertNoHandoff(page);
-});
-
-test('rejected Send is visibly unsuccessful and retains copy fallback', async ({ page }) => {
-  const { viewer } = await openAdvisor(page, { responses: completed, messageResponse: { isError: true } });
-  await expect(viewer.locator('#answer')).toContainText('First paragraph.');
-  await viewer.getByRole('button', { name: 'Review full answer' }).click();
-  await viewer.getByRole('button', { name: 'Send to main chat', exact: true }).click();
-  await expect(viewer.locator('#handoff-status')).toContainText('Host rejected');
-  await expect(viewer.getByRole('button', { name: 'Copy message' })).toBeVisible();
-  await expect(viewer.locator('#handoff-status')).not.toContainText('Sent to parent chat.');
 });
 
 test('hostile provider fields remain literal text and make no remote requests', async ({ page }) => {
@@ -140,14 +120,14 @@ test('denied polling clears partial result and preview and stops further fetches
     { isError: true, content: [{ type: 'text', text: 'Access denied: sign-in changed.' }], hold: 'deny' }],
   } });
   await expect(viewer.locator('#answer')).toHaveText('Private partial');
-  await viewer.getByRole('button', { name: 'Review full answer' }).click();
-  await expect(viewer.getByLabel('Message preview')).toHaveValue('Private partial');
+  await viewer.getByRole('button', { name: 'Share with Claude', exact: true }).click();
+  await expect(viewer.getByLabel('Text to share')).toHaveValue('Private partial');
   // Deliver the denial only once the preview holds the partial (no race with the 1 s poll).
   await page.evaluate(() => window.release('deny'));
   await expect(viewer.locator('#error')).toContainText('Access denied');
   await expect(viewer.locator('#answer')).toHaveText('');
-  await expect(viewer.getByLabel('Message preview')).toHaveValue('');
-  await expect(viewer.getByRole('button', { name: 'Send to main chat', exact: true })).toBeDisabled();
+  await expect(viewer.getByLabel('Text to share')).toHaveValue('');
+  await expect(viewer.getByRole('button', { name: "Add to Claude's context", exact: true })).toBeDisabled();
   await page.waitForTimeout(1400);
   expect(await page.evaluate(() => window.toolCounts['get_advisor_result:result-1'])).toBe(2);
   await assertNoHandoff(page);
@@ -161,7 +141,7 @@ test('interrupted result labels partial text and disables summary', async ({ pag
   await expect(viewer.locator('#error')).toContainText('Server restarted');
   await expect(viewer.locator('#cleanup')).toContainText('Cleanup pending');
   await expect(viewer.locator('#cost')).toContainText('unavailable');
-  await expect(viewer.getByRole('button', { name: 'Review a summary' })).toBeDisabled();
+  await expect(await moreAction(viewer, 'Share a summary')).toBeDisabled();
 });
 
 test('teardown prevents further polling and late rendering', async ({ page }) => {
@@ -176,7 +156,7 @@ test('teardown prevents further polling and late rendering', async ({ page }) =>
 });
 
 for (const action of [
-  { name: 'Review a summary', tool: 'summarize_advisor_result' },
+  { name: 'Share a summary', tool: 'summarize_advisor_result' },
   { name: 'Save as file', tool: 'export_advisor_result' },
 ]) {
   test(`denied ${action.tool} suppresses cached answer and handoff`, async ({ page }) => {
@@ -184,12 +164,12 @@ for (const action of [
       [`${action.tool}:result-1`]: [{ isError: true, content: [{ type: 'text', text: 'Access denied: workspace changed.' }] }],
     } });
     await expect(viewer.locator('#answer')).toContainText('First paragraph.');
-    await viewer.getByRole('button', { name: 'Review full answer' }).click();
-    await viewer.getByRole('button', { name: action.name }).click();
+    await viewer.getByRole('button', { name: 'Share with Claude', exact: true }).click();
+    await (await moreAction(viewer, action.name)).click();
     await expect(viewer.locator('#error')).toContainText('Access denied');
     await expect(viewer.locator('#answer')).toHaveText('');
-    await expect(viewer.getByLabel('Message preview')).toHaveValue('');
-    await expect(viewer.getByRole('button', { name: 'Send to main chat', exact: true })).toBeDisabled();
+    await expect(viewer.getByLabel('Text to share')).toHaveValue('');
+    await expect(viewer.getByRole('button', { name: "Add to Claude's context", exact: true })).toBeDisabled();
     await assertNoHandoff(page);
   });
 }
@@ -201,10 +181,10 @@ test('failed summary job keeps original, never retries inference and sends nothi
     'get_advisor_result:summary-1': [result({ ...summary, status: 'failed', answer: 'Unfinished summary', error: 'Provider interrupted the summary.' })],
   } });
   await expect(viewer.locator('#answer')).toContainText('Last paragraph.');
-  await viewer.getByRole('button', { name: 'Review a summary' }).click();
+  await (await moreAction(viewer, 'Share a summary')).click();
   await expect(viewer.locator('#summary-error')).toContainText('Provider interrupted');
   await expect(viewer.locator('#answer')).toHaveText(result()._meta.advisorResult.answer);
-  await expect(viewer.getByRole('button', { name: 'Send to main chat', exact: true })).toBeDisabled();
+  await expect(viewer.getByRole('button', { name: "Add to Claude's context", exact: true })).toBeDisabled();
   await page.waitForTimeout(1400);
   expect(await page.evaluate(() => window.toolCounts['summarize_advisor_result:result-1'])).toBe(1);
   expect(await page.evaluate(() => window.toolCounts['get_advisor_result:summary-1'])).toBe(1);
@@ -224,9 +204,9 @@ test('public body fields and invalid UI-only envelope are never rendered', async
 });
 
 test('host without server tools reports limitation and never calls public fallback tools', async ({ page }) => {
-  const { viewer } = await openAdvisor(page, { capabilities: { message: { text: {} } } });
+  const { viewer } = await openAdvisor(page, { capabilities: { updateModelContext: { text: {} } } });
   await expect(viewer.locator('#error')).toContainText('cannot retrieve the local answer');
-  await expect(viewer.getByRole('button', { name: 'Review full answer' })).toBeDisabled();
+  await expect(viewer.getByRole('button', { name: 'Share with Claude', exact: true })).toBeDisabled();
   expect(await page.evaluate(() => window.hostMessages.filter(message => message.method === 'tools/call'))).toEqual([]);
   await assertNoHandoff(page);
 });
@@ -242,7 +222,7 @@ test('initial waiting state and host themes remain accessible at narrow widths',
 });
 
 for (const action of [
-  { name: 'Send to main chat', capabilities: { serverTools: {}, message: { text: {} } } },
+  { name: "Add to Claude's context", capabilities: { serverTools: {}, updateModelContext: { text: {} } } },
   { name: 'Copy message', capabilities: { serverTools: {} } },
 ]) {
   for (const denied of [
@@ -254,14 +234,15 @@ for (const action of [
         responses: { 'get_advisor_result:result-1': [result(), denied] },
       });
       await expect(viewer.locator('#answer')).toContainText('First paragraph.');
-      await viewer.getByRole('button', { name: 'Review full answer' }).click();
-      await viewer.getByLabel('Message preview').fill('Private reviewed text');
+      await viewer.getByRole('button', { name: 'Share with Claude', exact: true }).click();
+      await viewer.getByLabel('Text to share').fill('Private reviewed text');
       await viewer.getByRole('button', { name: action.name, exact: true }).click();
       await expect(viewer.locator('#error')).toContainText(denied.isError ? 'Access denied' : 'Transport verification failed');
       await expect(viewer.locator('#answer')).toHaveText('');
-      await expect(viewer.getByLabel('Message preview')).toHaveValue('');
+      await expect(viewer.getByLabel('Text to share')).toHaveValue('');
       await expect(viewer.getByLabel('Copyable message')).toHaveValue('');
-      await expect(viewer.getByRole('button', { name: 'Send to main chat', exact: true })).toBeDisabled();
+      await expect(viewer.locator('#send')).toBeDisabled();
+      await expect(viewer.locator('#copy')).toBeHidden();
       await assertNoHandoff(page);
     });
   }
@@ -271,14 +252,14 @@ test('successful handoff revalidation preserves reviewed selection instead of re
   const { viewer } = await openAdvisor(page, { responses: { 'get_advisor_result:result-1': [result(), result({ answer: 'Updated owned answer' })] } });
   await expect(viewer.locator('#answer')).toContainText('Selected insight.');
   await selectAnswer(viewer, 'Selected insight.');
-  await viewer.getByRole('button', { name: 'Review selected text' }).click();
-  await viewer.getByLabel('Message preview').fill('My reviewed selected insight');
-  await viewer.getByRole('button', { name: 'Send to main chat', exact: true }).click();
-  await expect(viewer.locator('#handoff-status')).toHaveText('Sent to parent chat.');
+  await viewer.getByRole('button', { name: 'Share selection with Claude', exact: true }).click();
+  await viewer.getByLabel('Text to share').fill('My reviewed selected insight');
+  await viewer.getByRole('button', { name: "Add to Claude's context", exact: true }).click();
+  await expect(viewer.locator('#handoff-status')).toHaveText("Added. Ask Claude to use the advisor's answer.");
   expect(await page.evaluate(() => window.toolCounts['get_advisor_result:result-1'])).toBe(2);
-  const messages = await page.evaluate(() => window.hostMessages.filter(message => message.method === 'ui/message'));
+  const messages = await page.evaluate(() => window.hostMessages.filter(message => message.method === 'ui/update-model-context'));
   expect(messages[0].params.content[0].text).toBe('Advisor selection from example/advisor (result result-1):\n\nMy reviewed selected insight');
-  await expect(viewer.getByLabel('Message preview')).toHaveValue('My reviewed selected insight');
+  await expect(viewer.getByLabel('Text to share')).toHaveValue('My reviewed selected insight');
 });
 
 test('summary handoff rechecks original and distinct summary ownership before Send', async ({ page }) => {
@@ -288,13 +269,13 @@ test('summary handoff rechecks original and distinct summary ownership before Se
     'get_advisor_result:summary-1': [result({ ...summary, status: 'completed', answer: 'Summary draft' }), { isError: true, content: [{ type: 'text', text: 'Summary access denied.' }] }],
   } });
   await expect(viewer.locator('#answer')).toContainText('Last paragraph.');
-  await viewer.getByRole('button', { name: 'Review a summary' }).click();
-  await expect(viewer.getByLabel('Message preview')).toHaveValue('Summary draft');
-  await viewer.getByLabel('Message preview').fill('Reviewed summary');
-  await viewer.getByRole('button', { name: 'Send to main chat', exact: true }).click();
+  await (await moreAction(viewer, 'Share a summary')).click();
+  await expect(viewer.getByLabel('Text to share')).toHaveValue('Summary draft');
+  await viewer.getByLabel('Text to share').fill('Reviewed summary');
+  await viewer.getByRole('button', { name: "Add to Claude's context", exact: true }).click();
   await expect(viewer.locator('#error')).toContainText('Summary access denied');
   expect(await page.evaluate(() => window.toolCounts['get_advisor_result:result-1'])).toBe(2);
   expect(await page.evaluate(() => window.toolCounts['get_advisor_result:summary-1'])).toBe(2);
-  await expect(viewer.getByLabel('Message preview')).toHaveValue('');
+  await expect(viewer.getByLabel('Text to share')).toHaveValue('');
   await assertNoHandoff(page);
 });
