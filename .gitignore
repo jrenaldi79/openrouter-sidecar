@@ -9,3 +9,6 @@ ui/node_modules/
 ui/test-results/
 ui/playwright-report/
 .dev-state/
+
+# Subagent worktrees (Claude Code)
+.claude/worktrees/

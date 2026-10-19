@@ -44,6 +44,13 @@ https://sidecar-production-e110.up.railway.app/mcp
 
 The connector brings its own workflow guide (server instructions) and the class skills, adapted for hosted use, as prompts and `skill://` resources: `openrouter-image` and `architectural-render-polish`. Nothing needs installing in claude.ai or Claude Desktop, and Claude can pass these skills to an advisor.
 
+**Tool permissions.** claude.ai asks before each connector tool call; a server can't turn that off. It does group the Sidecar's tools under Connectors → OpenRouter Sidecar → Tool permissions, using the tools' MCP annotations (`src/openrouter_image_mcp/tool_annotations.py`):
+- **Read-only tools** are free lookups; setting the whole group to *Always allow* is safe.
+- **Interactive tools** have an in-chat app. The `Open…` viewers and `remask_image` are free; `generate_image`, `edit_image` and `send_advisor_message` cost money.
+- **Write/delete tools** create or change something. `ask_advisor` costs money; `delete_advisor_chat` and `unlink_openrouter` delete things. `create_image_upload`, `start_advisor_chat`, `set_sidecar_preferences` and `link_openrouter` are free.
+
+Reconnect the connector after an update that changes tools: claude.ai keeps the tool list from when it was added. In Claude Code, allow the free tools with `permissions.allow` entries such as `mcp__openrouter-sidecar__account_status`.
+
 Operators: see [docs/HOSTED_OPERATIONS.md](docs/HOSTED_OPERATIONS.md) for configuration, Auth0, Railway setup, deployment, key rotation and retention.
 
 ## Tools
@@ -216,11 +223,14 @@ stays in the database. In MCP Apps hosts, the viewer polls UI-only result
 metadata and displays streamed answer text, with the original user prompt collapsed.
 System prompts, appended skill instructions, shell output, and reasoning traces are
 not displayed. Opening, scrolling, polling, or exporting does not update the parent
-model context. Preview a selection or the full response, edit it, and explicitly
-click **Send to parent chat** to hand it back. **Summarize and send** uses the same
-advisor model and incurs inference, then shows an editable preview before sending.
-If host messaging is unsupported or rejected, use the explicit copy fallback. Use
-`get_advisor_job` to check status, or `open_advisor_result` to reopen a viewer.
+model context. While a reply streams, the viewer shows a live status with elapsed time.
+**Share with Claude** opens an editable preview of the answer; **Add to Claude's
+context** then adds it to Claude's context for the next turn, without posting a chat
+message. Ask Claude to use the advisor's answer after adding it. **More → Share a
+summary** uses the same advisor model and incurs inference before the same preview.
+**Send follow-up** messages the advisor in the same chat (paid). If the host can't
+update context, the viewer offers a copyable message instead. Use `get_advisor_job`
+to check status, or `open_advisor_result` to reopen a viewer.
 
 Jobs run inside the server process and continue while the viewer is closed. A restart
 (Claude Desktop closing the local server, or a hosted deploy) interrupts unfinished
