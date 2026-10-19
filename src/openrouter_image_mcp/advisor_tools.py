@@ -33,6 +33,7 @@ ADVISOR_ARGUMENTS = {
     "summarize_advisor_result": {"job_id"},
     "share_advisor_result": {"job_id", "summary_job_id"},
     "read_shared_advisor_result": {"job_id"},
+    "wait_for_advisor_share": {"job_id", "wait_s"},
 } | PREFERENCE_ARGUMENTS
 
 
@@ -117,8 +118,9 @@ def register_advisor_tools(server: MCPServer, service: AdvisorService, jobs: Adv
         skill files. Claude selects the skills; a file path alone is not sufficient.
         The sandbox shell has no outbound network and receives no API credentials.
         Starts a background job and returns status and its job_id only. The full
-        answer appears in the advisor MCP App, not here. When the user shares it from
-        the viewer, call read_shared_advisor_result() to read what they shared.
+        answer appears in the advisor MCP App, not here. Then call
+        wait_for_advisor_share(job_id) to continue as soon as the user shares it; if
+        they share later, call read_shared_advisor_result() to read what they shared.
         Check get_advisor_job for status or call open_advisor_result to reopen the
         viewer. App shutdown can interrupt work. No raw container/file selectors, arbitrary HTTP requests, or provider options exist.
         Generated container files can remain for 30 days. No automatic inference retry.

@@ -17,7 +17,7 @@ READ_ONLY = {
     "account_status", "list_image_models", "get_image_model", "list_chat_models", "resolve_advisor_model",
     "list_advisor_chats", "get_advisor_chat", "get_advisor_job", "wait_advisor_job", "get_advisor_result",
     "get_sidecar_preferences", "get_sidecar_settings", "get_sidecar_demo", "get_image_download",
-    "read_shared_advisor_result",
+    "read_shared_advisor_result", "wait_for_advisor_share",
 }
 # claude.ai shows a read-only tool's result as a plain call, never its MCP App.
 OPENS_APP = {"open_advisor_result", "open_sidecar_settings", "open_image_uploader"}

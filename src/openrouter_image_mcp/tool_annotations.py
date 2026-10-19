@@ -36,6 +36,7 @@ ANNOTATIONS: dict[str, ToolAnnotations] = {
                      "get_sidecar_demo", "get_image_download"), _READ),
     # Marks shares read; free, and only bookkeeping on the caller's own results.
     "read_shared_advisor_result": _READ,
+    "wait_for_advisor_share": _READ,
     "share_advisor_result": _hints(idempotent=True),
     # Free, but never read-only: claude.ai shows a read-only tool's result as a plain
     # call and doesn't render its MCP App.

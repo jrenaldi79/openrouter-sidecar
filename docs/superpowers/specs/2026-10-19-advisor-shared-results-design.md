@@ -37,12 +37,15 @@ Claude read that as `open_advisor_result` and opened a second viewer.
    tell Claude to call `read_shared_advisor_result()` when the user says they shared an
    answer, and never to open another viewer to read it.
 
-## Later: waiting for a share
+## Waiting for a share
 
-Once live checks in claude.ai show the per-call time limit and whether the viewer stays
-usable during a tool call, a `wait_for_advisor_share(job_id, wait_s)` tool can park Claude
-until the student shares (repeated calls, about ten minutes in total). It reads the same
-saved shares, so a share made after Claude stops waiting is not lost.
+`wait_for_advisor_share(job_id, wait_s)` keeps Claude on the call while the student reads:
+it polls the saved share every second, reports progress every ten seconds, and returns the
+answer (marked read) as soon as the student shares. Each call waits up to 300 seconds
+(default 120); `send_advisor_message` tells Claude to call it, call again while waiting,
+and stop after about ten minutes in total. A share made after Claude stops is still read
+later with `read_shared_advisor_result`. claude.ai's own per-call time limit is still to be
+measured live; lower the default if it cuts calls off.
 
 ## Privacy
 
