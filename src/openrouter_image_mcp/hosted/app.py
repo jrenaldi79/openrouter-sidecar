@@ -30,6 +30,7 @@ from ..assets import AssetStore, LocalDirBlobs
 from ..auth import AUTH_URL
 from ..preference_tools import register_preference_tools
 from ..server import SERVER_NAME, _tool_errors
+from ..tool_annotations import annotate
 from .guidance import INSTRUCTIONS, register_guidance
 from .health import MAINTENANCE, Health
 from .image_tools import register_image_tools
@@ -200,4 +201,4 @@ def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transpor
     health.register(server)
     server.hosted = {"links": links, "workspaces": workspaces, "gate": gate, "health": health,
                      **images}
-    return server
+    return annotate(server)

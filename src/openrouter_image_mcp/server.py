@@ -53,6 +53,7 @@ from .preference_tools import register_preference_tools
 from .preferences import PreferenceService
 from .remask import remask
 from .service import ImageService, ProgressFn, ServiceResult
+from .tool_annotations import annotate
 
 SERVER_NAME = "openrouter-sidecar"
 CATALOG_PREFIX = "Couldn't reach the OpenRouter catalog"
@@ -702,12 +703,10 @@ def build_server(
             "failures": [],
         }, meta=preview_meta([done.preview_jpeg]))
 
-    for fn in (
-        account_status, auth_login, auth_logout, list_image_models, get_image_model,
-        generate_image, edit_image, remask_image,
-    ):
+    for fn in (account_status, auth_login, auth_logout, list_image_models, get_image_model,
+               generate_image, edit_image, remask_image):
         _add(server, fn)
-    return server
+    return annotate(server)
 
 
 def run() -> None:

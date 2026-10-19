@@ -129,6 +129,7 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/service.py](../src/openrouter_image_mcp/service.py)
 - [src/openrouter&#95;image&#95;mcp/session&#95;files.py](../src/openrouter_image_mcp/session_files.py)
 - [src/openrouter&#95;image&#95;mcp/storage.py](../src/openrouter_image_mcp/storage.py)
+- [src/openrouter&#95;image&#95;mcp/tool&#95;annotations.py](../src/openrouter_image_mcp/tool_annotations.py)
 
 ### [src/openrouter&#95;image&#95;mcp/hosted](../src/openrouter_image_mcp/hosted/CLAUDE.md): Hosted remote MCP (Railway): authenticated multi-tenant Streamable HTTP server with Auth0 verification, per-principal OpenRouter key linking and vault, cohort workspaces, limits, image assets with signed uploads and downloads, health, sweeper and retention.
 
