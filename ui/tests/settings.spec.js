@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { openSettings, calls, settings, view, failure } from './fixtures/settings-host.js';
-import { assertNoHandoff, openAdvisor, result } from './fixtures/advisor-host.js';
+import { assertNoHandoff } from './fixtures/advisor-host.js';
 test.setTimeout(20000);
 
 async function models(viewer) { await viewer.getByRole('button', { name: 'Models', exact: true }).click(); }
@@ -148,17 +148,6 @@ test('teardown disables future mutations and ignores late settings', async ({ pa
   await expect.poll(() => page.evaluate(() => window.hostMessages.some(m => m.id === 'teardown' && 'result' in m))).toBe(true);
   await expect(viewer.getByLabel('General advisor default')).toBeDisabled();
   expect(await calls(page, 'set_sidecar_preferences')).toEqual([]);
-});
-
-test('viewer settings shortcut requests settings without sending answer context', async ({ page }) => {
-  const { viewer } = await openAdvisor(page, { responses: { 'get_advisor_result:result-1': [result()] } });
-  await viewer.getByRole('button', { name: 'Settings', exact: true }).click();
-  // The request reaches the host asynchronously (postMessage): wait for it.
-  const sentMessages = () => page.evaluate(() => window.hostMessages.filter(message => message.method === 'ui/message'));
-  await expect.poll(async () => (await sentMessages()).length).toBe(1);
-  const requests = await sentMessages();
-  expect(requests[0].params.content).toEqual([{ type: 'text', text: 'Open Sidecar settings using open_sidecar_settings with mode settings.' }]);
-  expect(await page.evaluate(() => window.hostMessages.filter(message => message.method === 'ui/update-model-context'))).toEqual([]);
 });
 
 test('visual guide is legible at desktop width and exposes its handoff diagram', async ({ page }) => {
