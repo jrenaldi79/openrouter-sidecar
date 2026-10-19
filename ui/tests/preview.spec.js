@@ -219,3 +219,31 @@ test('matches previews to images by index and tolerates malformed lists', async 
   await expect(viewer.getByRole('img', { name: 'first.svg' })).toBeVisible();
   await expect(viewer.getByText('Preview unavailable', { exact: true })).toHaveCount(1);
 });
+
+// claude.ai delivers tool results to the app without the result's _meta. The JPEG
+// previews still arrive as the result's image content blocks, which the model sees anyway.
+const imageBlock = (mimeType = 'image/jpeg') => ({ type: 'image', mimeType, data: jpeg.slice('data:image/jpeg;base64,'.length) });
+const textBlock = { type: 'text', text: 'Asset: img_…' };
+
+test('renders previews from image content when the host drops _meta', async ({ page }) => {
+  const { viewer, requests } = await openViewer(page);
+  await result(page, sample(), { _meta: undefined, content: [textBlock, imageBlock()] });
+  await expect(viewer.getByRole('img', { name: 'render.png' })).toBeVisible();
+  await expect.poll(() => viewer.getByRole('img').evaluate(img => img.complete && img.naturalWidth)).toBe(40);
+  expect(requests).toEqual([]);
+});
+
+test('does not guess when image content does not line up with the images', async ({ page }) => {
+  const { viewer } = await openViewer(page);
+  const two = sample({ images: [{ filename: 'first.svg', path: 'a' }, { filename: 'second.png', path: 'b' }] });
+  await result(page, two, { _meta: undefined, content: [textBlock, imageBlock()] });
+  await expect(viewer.getByText('Preview unavailable', { exact: true })).toHaveCount(2);
+  await expect(viewer.getByRole('img')).toHaveCount(0);
+});
+
+test('ignores image content that is not a JPEG preview', async ({ page }) => {
+  const { viewer } = await openViewer(page);
+  await result(page, sample(), { _meta: undefined, content: [textBlock, imageBlock('image/svg+xml')] });
+  await expect(viewer.getByText('Preview unavailable', { exact: true })).toBeVisible();
+  await expect(viewer.getByRole('img')).toHaveCount(0);
+});

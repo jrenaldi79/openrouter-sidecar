@@ -63,9 +63,16 @@ function downloadButton(image, caption) {
 // hosts may show structuredContent to the model, so it never carries image bytes.
 // No remote URLs, SVG, or result HTML is ever inserted into the page.
 const JPEG_DATA_URI = /^data:image\/jpeg;base64,(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
-function previewAt(result, index) {
+// Some hosts (claude.ai) deliver the result without _meta; then use the JPEG image
+// content blocks, but only when there is exactly one per image so none is misplaced.
+function previewAt(result, index, count) {
   const previews = result._meta?.sidecarPreviews;
-  const uri = Array.isArray(previews) ? previews[index] : null;
+  let uri = Array.isArray(previews) ? previews[index] : null;
+  if (!Array.isArray(previews)) {
+    const blocks = (Array.isArray(result.content) ? result.content : []).filter(item => item?.type === 'image');
+    const block = blocks.length === count ? blocks[index] : null;
+    uri = block?.mimeType === 'image/jpeg' && typeof block.data === 'string' ? `data:image/jpeg;base64,${block.data}` : null;
+  }
   return typeof uri === 'string' && JPEG_DATA_URI.test(uri) && uri.length > 'data:image/jpeg;base64,'.length ? uri : null;
 }
 
@@ -95,7 +102,7 @@ function render(result) {
   for (const [index, image] of images.entries()) {
     const figure = document.createElement('figure');
     const placeholder = () => textElement('p', 'Preview unavailable', 'no-preview');
-    const source = previewAt(result, index);
+    const source = previewAt(result, index, images.length);
     if (source) {
       const preview = document.createElement('img');
       preview.alt = typeof image?.filename === 'string' ? image.filename : 'Saved image';
