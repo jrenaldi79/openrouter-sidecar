@@ -17,7 +17,7 @@ Those remain acceptance steps for you.
 | `scripts/dev/fake_identity.py` | Local issuer. It serves a JWKS on `127.0.0.1:9400` and mints contract-shaped RS256 tokens (`permissions`, profile claim). |
 | `scripts/dev/fake_openrouter.py` | Local OpenRouter on `127.0.0.1:9500`. It covers the PKCE page, code exchange, `/key`, `/models` and `/responses`. Replies describe the files and turns the advisor saw. |
 | `scripts/dev/run_sidecar.sh` | `serve-http` with dev flags. `SIDECAR_DEV_INSECURE_ISSUER` and `SIDECAR_DEV_OPENROUTER_URL` are accepted only for localhost. |
-| `scripts/dev/e2e_local.py` | Driver that runs 33 checks and prints PASS/FAIL. It never prints tokens or keys. |
+| `scripts/dev/e2e_local.py` | Driver that runs 38 checks and prints PASS/FAIL. It never prints tokens or keys. |
 | `.claude/launch.json` | Starts the three servers (`fake-identity`, `fake-openrouter`, `sidecar-http`). |
 
 ## Run it
@@ -61,5 +61,16 @@ uv run python scripts/dev/e2e_local.py --state .dev-state
   - another student can't continue, read or list the first student's session or job;
   - a 2028 student is routed to the 2028 workspace.
 - **Logs:** no bearer tokens or `sk-or` keys appear. Single-use link tokens and OAuth codes are withheld from logs (fixed during this run).
+
+## Result: 2026-10-18, M3 hosted images
+
+38/38 checks passed against Postgres 16, with `ASSET_DIR` under `.dev-state/assets`. The five new checks:
+- `create_image_upload` + `PUT` creates image assets;
+- `edit_image` with a mask returns an asset id and a download link;
+- `remask_image` re-blends for $0.00;
+- the signed download link returns the PNG;
+- another student gets "unavailable" for the first student's asset.
+
+Access logs show `/uploads/[withheld]` and `/assets/[withheld]` in place of the signed tokens.
 
 A manual pass in the in-app browser of the link pages (fake sign-in → confirm page → "Linked") also succeeded, and the browser-linked user then completed `ask_advisor`.

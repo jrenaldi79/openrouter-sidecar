@@ -100,10 +100,11 @@ class Running:
         return h.token(sub=sub, workspace=workspace, aud=[self.settings.resource], **overrides)
 
     @asynccontextmanager
-    async def client(self, token):
+    async def client(self, token, extensions=None):
         headers = {"Authorization": f"Bearer {token}"}
         async with (httpx2.AsyncClient(headers=headers, timeout=30) as http,
-                    Client(streamable_http_client(self.url, http_client=http), mode="legacy") as c):
+                    Client(streamable_http_client(self.url, http_client=http), mode="legacy",
+                           extensions=extensions) as c):
             yield c
 
 

@@ -63,3 +63,20 @@ def test_daily_spend_cap_uses_recorded_costs(store):
     with pytest.raises(RateLimitedError, match="daily"):
         limits.admit(A)
     limits.admit(B)
+
+
+def test_image_calls_have_their_own_window_and_concurrency(store):
+    clock = [1000.0]
+    limits = Limits(store, max_concurrent=1, per_minute=2, daily_usd=10, clock=lambda: clock[0])
+    with limits.image_call(A):
+        with pytest.raises(RateLimitedError, match="image"), limits.image_call(A):
+            pass
+        with limits.image_call(B):  # other principals are unaffected
+            pass
+    # Third this minute (the refused one counted too).
+    with pytest.raises(RateLimitedError, match="image"), limits.image_call(A):
+        pass
+    limits.admit(A)  # advisor admission is separate
+    clock[0] += 61
+    with limits.image_call(A):
+        pass

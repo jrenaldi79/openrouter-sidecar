@@ -89,11 +89,12 @@ ProgressFn = Callable[[float, float, str], Awaitable[None]]
 
 @dataclass
 class SavedImage:
-    path: Path
-    sidecar: Path
+    path: Path | None  # None when saved through a sink (hosted assets)
+    sidecar: Path | None
     preview_jpeg: bytes | None
     cost_usd: float | None
     note: str | None
+    asset_id: str | None = None
 
 
 @dataclass
@@ -129,6 +130,8 @@ class _Job:
     fit_model: bool = False
     previews: int = 0
     provider: dict | None = None  # the request's `provider` object: options keyed by slug
+    # Hosted: stores outputs as assets instead of files (sink.save(...) -> asset id).
+    sink: Any = None
 
 
 def _error_text(exc: Exception) -> str:
@@ -234,6 +237,7 @@ class ImageService:
         seed: int | None = None, background: str | None = None, output_format: str | None = None,
         output_dir: str | None = None, filename_prefix: str | None = None,
         provider_options: dict | None = None, progress: ProgressFn | None = None,
+        sink: Any = None,
     ) -> ServiceResult:
         send = {"aspect_ratio": aspect_ratio, "resolution": resolution, "size": size,
                 "quality": quality, "seed": seed, "background": background,
@@ -242,14 +246,14 @@ class ImageService:
         m = await self._catalog.get(model)
         notes = self._validate(m, n, send, provider_options, input_count=0)
         provider = await self._provider_object(m, provider_options)
-        directory, dir_note = choose_dir(
+        directory, dir_note = (Path(), None) if sink is not None else choose_dir(
             out_dir or self._settings.output_dir, self._settings.output_dir
         )
         job = _Job(
             tool="generate_image", prompt=prompt, model=m, n=n, send=send,
             provider_options=provider_options, data_urls=[], inputs=[], directory=directory,
             stem=filename_prefix or prompt_slug(prompt), notes=notes + ([dir_note] if dir_note else []),
-            provider=provider,
+            provider=provider, sink=sink,
         )
         return await self._run(job, progress)
 
@@ -260,7 +264,7 @@ class ImageService:
         quality: str | None = None, seed: int | None = None, background: str | None = None,
         output_format: str | None = None, output_dir: str | None = None,
         filename_prefix: str | None = None, provider_options: dict | None = None,
-        progress: ProgressFn | None = None,
+        progress: ProgressFn | None = None, sink: Any = None,
     ) -> ServiceResult:
         if fit not in ("preserve", "model"):
             raise BadRequestError(f"fit must be 'preserve' or 'model', got {fit!r}")
@@ -306,7 +310,7 @@ class ImageService:
             elif plan.strategy == "none_supported":
                 notes.append(f"{m.id} has no aspect_ratio setting; outputs were cropped to {w}×{h}.")
 
-        directory, dir_note = choose_dir(
+        directory, dir_note = (Path(), None) if sink is not None else choose_dir(
             out_dir or primary.path.parent, self._settings.output_dir
         )
         if dir_note:
@@ -316,7 +320,7 @@ class ImageService:
             provider_options=provider_options, data_urls=data_urls, inputs=prepared,
             directory=directory, stem=filename_prefix or primary.path.stem, notes=notes,
             plan=plan, mask=mask, mask_feather_px=mask_feather_px, fit_model=fit == "model",
-            provider=provider,
+            provider=provider, sink=sink,
         )
         return await self._run(job, progress)
 
@@ -540,13 +544,8 @@ class ImageService:
                 preview = make_preview(final)
                 job.previews += 1
 
-        path = output_path(job.directory, job.stem, job.model.id, index, ext, now)
-        layer = unmasked_path(path) if unmasked is not None else None
-        if layer is not None:
-            write_bytes_atomic(layer, unmasked)
-        write_bytes_atomic(path, data)
         stamp = now if now.tzinfo is not None else now.astimezone()
-        sidecar = write_sidecar(path, {
+        meta = {
             "tool": job.tool,
             "created_at": stamp.isoformat(timespec="seconds"),
             "model": job.model.id,
@@ -564,10 +563,20 @@ class ImageService:
                 for p in job.inputs
             ],
             "mask": mask_meta,
-            "unmasked_path": layer.as_posix() if layer is not None else None,
+            "unmasked_path": None,
             "fit": fit,
-        })
-        return SavedImage(path, sidecar, preview, cost, "; ".join(notes) or None)
+        }
+        note = "; ".join(notes) or None
+        if job.sink is not None:
+            asset_id = job.sink.save(job, data=data, ext=ext, unmasked=unmasked, meta=meta, index=index)
+            return SavedImage(None, None, preview, cost, note, asset_id)
+        path = output_path(job.directory, job.stem, job.model.id, index, ext, now)
+        layer = unmasked_path(path) if unmasked is not None else None
+        if layer is not None:
+            write_bytes_atomic(layer, unmasked)
+        write_bytes_atomic(path, data)
+        meta["unmasked_path"] = layer.as_posix() if layer is not None else None
+        return SavedImage(path, write_sidecar(path, meta), preview, cost, note)
 
     @staticmethod
     def _sidecar_params(job: _Job, call_n: int) -> dict:

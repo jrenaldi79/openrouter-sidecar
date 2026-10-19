@@ -1,9 +1,9 @@
 """Local stand-in for OpenRouter (development only). No real keys, no spend.
 
 Implements just what the hosted sidecar calls: the PKCE sign-in page and code
-exchange, key info, the model catalog, and Responses (streaming and not). Replies
-describe what the advisor received (files, prior turns) so an e2e run can check
-that session state is restored.
+exchange, key info, the model catalogs, Responses (streaming and not) and image
+generation. Replies describe what the advisor received (files, prior turns) so an
+e2e run can check that session state is restored. Images are flat test pictures.
 
     python scripts/dev/fake_openrouter.py --port 9500
 """
@@ -14,13 +14,16 @@ import argparse
 import base64
 import hashlib
 import html
+import io
 import json
 import re
 import secrets
 import time
+from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 
 import uvicorn
+from PIL import Image
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import (
@@ -31,6 +34,7 @@ from starlette.responses import (
 from starlette.routing import Route
 
 MODEL = "openai/fake-advisor"
+FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixtures"  # image model catalog
 _codes: dict[str, dict] = {}   # code -> {challenge, workspace, label}
 _keys: dict[str, dict] = {}    # key -> {workspace, label}
 calls: list[dict] = []          # what each /responses call carried (for inspection)
@@ -78,7 +82,9 @@ async def key_info(request: Request):
                                   "usage_daily": 0.0, "usage_monthly": 0.0, "limit": None}})
 
 
-async def models(_request: Request):
+async def models(request: Request):
+    if request.query_params.get("output_modalities") == "image":
+        return JSONResponse(json.loads((FIXTURES / "models_image.json").read_text()))
     return JSONResponse({"data": [{
         "id": MODEL, "name": "Fake advisor", "created": int(time.time()) - 86400,
         "pricing": {"prompt": "0", "completion": "0"}, "context_length": 100000,
@@ -122,10 +128,25 @@ async def responses(request: Request):
     return StreamingResponse(events(), media_type="text/event-stream")
 
 
+async def image_models(_request: Request):
+    return JSONResponse(json.loads((FIXTURES / "images_models.json").read_text()))
+
+
+async def images(request: Request):
+    if not _owner(request):
+        return JSONResponse({"error": {"message": "invalid key"}}, 401)
+    buffer = io.BytesIO()
+    Image.new("RGB", (640, 480), (40, 160, 90)).save(buffer, "PNG")
+    return JSONResponse({"id": "gen-fake", "provider": "fake", "usage": {"cost": 0.0},
+                         "data": [{"b64_json": base64.b64encode(buffer.getvalue()).decode(),
+                                   "media_type": "image/png"}]})
+
+
 def app() -> Starlette:
     return Starlette(routes=[
         Route("/auth", auth_page), Route("/api/v1/auth/keys", exchange, methods=["POST"]),
         Route("/api/v1/key", key_info), Route("/api/v1/models", models),
+        Route("/api/v1/images/models", image_models), Route("/api/v1/images", images, methods=["POST"]),
         Route("/api/v1/responses", responses, methods=["POST"])])
 
 

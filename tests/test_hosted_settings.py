@@ -82,3 +82,10 @@ def test_dev_openrouter_url_only_for_local_development():
         load_hosted_settings(BASE | {"SIDECAR_DEV_OPENROUTER_URL": "http://127.0.0.1:9500"})
     with pytest.raises(ValueError, match="SIDECAR_DEV_OPENROUTER_URL"):
         load_hosted_settings(BASE | DEV | {"SIDECAR_DEV_OPENROUTER_URL": "https://evil.example"})
+
+
+def test_asset_dir_is_optional_and_absolute():
+    assert load_hosted_settings(BASE).asset_dir is None  # image tools stay off
+    assert load_hosted_settings(BASE | {"ASSET_DIR": "/data/assets"}).asset_dir == "/data/assets"
+    with pytest.raises(ValueError, match="ASSET_DIR"):
+        load_hosted_settings(BASE | {"ASSET_DIR": "data/assets"})

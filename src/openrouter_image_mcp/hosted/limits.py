@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import threading
 import time
-from collections import defaultdict, deque
+from collections import Counter, defaultdict, deque
+from contextlib import contextmanager
 from datetime import UTC, datetime
 
 from ..advisor_results import AdvisorResults
@@ -24,16 +25,17 @@ class Limits:
         self.results, self.clock = AdvisorResults(store), clock
         self.max_concurrent, self.per_minute, self.daily_usd = max_concurrent, per_minute, daily_usd
         self._recent: dict[str, deque] = defaultdict(deque)
+        self._image_calls: Counter = Counter()
         self._lock = threading.Lock()
 
-    def _window(self, owner: str) -> None:
+    def _window(self, owner: str, what: str = "advisor requests") -> None:
         now = self.clock()
         with self._lock:
             recent = self._recent[owner]
             while recent and recent[0] <= now - 60:
                 recent.popleft()
             if len(recent) >= self.per_minute:
-                raise RateLimitedError("Too many advisor requests this minute.",
+                raise RateLimitedError(f"Too many {what} this minute.",
                                        max(1, int(recent[0] + 60 - now)))
             recent.append(now)
 
@@ -55,3 +57,18 @@ class Limits:
     def admit(self, scope) -> None:
         self._durable(scope.owner, scope.workspace)
         self._window(scope.owner)
+
+    @contextmanager
+    def image_call(self, scope):
+        """Image calls run inline (no job rows), so in-flight calls are counted in memory."""
+        self._window("image|" + scope.owner, "image requests")
+        key = (scope.owner, scope.workspace)
+        with self._lock:
+            if self._image_calls[key] >= self.max_concurrent:
+                raise RateLimitedError(f"Only {self.max_concurrent} image calls can run at a time.", 30)
+            self._image_calls[key] += 1
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._image_calls[key] -= 1

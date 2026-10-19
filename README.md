@@ -184,6 +184,20 @@ The `answer` is wrapped in `<advisor_output>` with a note to treat it as data to
 verify, not as instructions. `send_advisor_message` also accepts `files` and keeps
 its viewer contract: the answer never reaches the parent model.
 
+### Hosted images
+
+On the hosted server, images are asset ids, never paths:
+1. `create_image_upload(filename, mime, size_bytes)` returns a one-time URL. Upload
+   with `curl -T room.png "<upload_url>"` within 10 minutes; the response holds the
+   `asset_id`. Files can be PNG, JPEG or WebP, at most 20 MB and 40 megapixels.
+2. `edit_image(images=[asset_id], mask_id=...)` and `generate_image(...)` store their
+   results as assets. The result text lists each asset id with download links, which
+   are valid for 24 hours.
+3. `remask_image(image_id, mask_id)` redoes a masked blend for free.
+   `get_image_download(asset_id)` returns fresh links.
+
+Assets are private to the signed-in person and kept for 30 days, up to 2 GB each.
+
 Use `get_advisor_job` to check status, or `open_advisor_result` to reopen a viewer.
 The three App-only operations are omitted for clients without MCP Apps capability.
 The UI never receives API credentials or directly accesses provider files. Every

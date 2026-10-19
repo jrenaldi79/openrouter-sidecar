@@ -10,6 +10,8 @@ _JWT_RE = re.compile(r"eyJ[A-Za-z0-9_\-]{8,}\.eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_
 # Logs only (tool output must keep them): single-use link tokens and OAuth codes.
 _LINK_RE = re.compile(r"lnk_[0-9a-f]{32}\.\d+\.[A-Za-z0-9_\-]+")
 _CODE_RE = re.compile(r"([?&]code=)[^&\s\"']+")
+# Signed image upload/download tokens in request paths (access logs).
+_TRANSFER_RE = re.compile(r"(/(?:uploads|assets)/)(?:upl|img)_[0-9a-f]{32}\.[A-Za-z0-9_.\-]+")
 _HANDLER_MARK = "_openrouter_image_mcp"
 
 
@@ -18,7 +20,8 @@ def redact(text: str) -> str:
 
 
 def redact_log(text: str) -> str:
-    return _CODE_RE.sub(r"\1[withheld]", _LINK_RE.sub("lnk_[link withheld]", redact(text)))
+    text = _LINK_RE.sub("lnk_[link withheld]", redact(text))
+    return _TRANSFER_RE.sub(r"\1[withheld]", _CODE_RE.sub(r"\1[withheld]", text))
 
 
 class RedactingFilter(logging.Filter):

@@ -21,6 +21,7 @@ export MCP_RESOURCE_URI="http://127.0.0.1:${PORT}/mcp"
 export DATABASE_URL="${DATABASE_URL:?set DATABASE_URL to a disposable Postgres database}"
 export VAULT_KEYS="$(cat "$STATE/vault")"
 export LINK_SIGNING_KEY="$(cat "$STATE/link")"
+export ASSET_DIR="${ASSET_DIR:-$(cd "$STATE" && pwd)/assets}"
 export HOST=127.0.0.1 PORT
 
 exec uv run openrouter-image-mcp serve-http

@@ -76,3 +76,15 @@ def test_logs_withhold_link_tokens_and_oauth_codes(capsys):
 def test_tool_text_redaction_keeps_link_urls():
     # Users must receive the link in tool output; only logs withhold it.
     assert logs.redact(f"Open {LINK}") == f"Open {LINK}"
+
+
+def test_logs_withhold_image_transfer_tokens(capsys):
+    upload = "/uploads/upl_0123456789abcdef0123456789abcdef.1792372091.Zm9vYmFyLXNpZw"
+    download = "/assets/img_0123456789abcdef0123456789abcdef.1792372091.image.c2lnbmF0dXJl"
+    with _configured_logging() as log:
+        log.info('"PUT %s HTTP/1.1" 200', upload)
+        log.info('"GET %s HTTP/1.1" 200', download)
+    err = capsys.readouterr().err
+    assert "Zm9vYmFyLXNpZw" not in err and "c2lnbmF0dXJl" not in err
+    assert "/uploads/[withheld]" in err and "/assets/[withheld]" in err
+    assert logs.redact(download) == download  # tool output keeps the link

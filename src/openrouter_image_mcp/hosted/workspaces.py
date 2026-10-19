@@ -22,6 +22,7 @@ from ..config import ADVISOR_MAX_TIMEOUT_S, COHORT_WORKSPACES, Settings
 from ..errors import AuthRequiredError, BadRequestError
 from ..onboarding import OnboardingDemos
 from ..preferences import PreferenceService
+from ..service import ImageService
 from .credentials import HostedCredentials
 from .principal import current_principal
 
@@ -37,6 +38,7 @@ class WorkspaceServices:
     demos: OnboardingDemos
     catalog: Catalog
     http: OpenRouterClient
+    images: ImageService
 
     async def close(self) -> None:
         await self.demos.close()
@@ -94,6 +96,7 @@ def build_workspaces(target, links, *, profile_claim: str, admit, timeout_s: flo
                                 credentials=credentials)
         # Image demos write local files; they return with hosted images (M3).
         demos = OnboardingDemos(advisors, jobs, preferences, image_runner=None)
+        catalog = Catalog(http)
         services[workspace] = WorkspaceServices(settings, advisors, jobs, preferences, demos,
-                                                Catalog(http), http)
+                                                catalog, http, ImageService(http, catalog, settings))
     return services

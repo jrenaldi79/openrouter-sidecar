@@ -23,6 +23,7 @@ one deliberately. Never paste secrets into chat, issues or logs.
 | `PROFILE_CLAIM` | no | Default `https://mpd.northwestern.edu/profile` |
 | `SIDECAR_MAINTENANCE` | no | `true` keeps the server closed: tool calls are refused and `/ready` reports maintenance. See §4 |
 | `SIDECAR_SANDBOX_ENABLED` | no | Keep **unset**. Sandbox stays disabled until per-student isolation exists |
+| `ASSET_DIR` | for images | Absolute path on the mounted Railway volume, e.g. `/data/assets`. Unset keeps the image tools off |
 | `RETENTION_DAYS` | no | Default 90 (`purge`) |
 | `PORT` / `HOST` | no | Railway sets `PORT`. `HOST` defaults to `0.0.0.0` |
 
@@ -41,7 +42,8 @@ python3 -c 'import secrets;print(secrets.token_urlsafe(48))'
 **Per-principal limits** (code defaults in `hosted/limits.py`):
 - 2 concurrent advisor jobs;
 - 20 requests per minute;
-- $5.00 per day, counted from the job costs OpenRouter reports.
+- $5.00 per day, counted from the job costs OpenRouter reports;
+- image calls (`generate_image`, `edit_image`): 2 at a time and 20 per minute, counted separately. The daily dollar cap doesn't include image spend yet, because image calls are inline and record no job row.
 
 ## 2. Auth0 (shared MPD tenant)
 
@@ -67,6 +69,7 @@ Tell the "MPD MCP Interview Coach tool" session before any tenant change. Each r
 2. Add a service from this repo. Railway builds the `Dockerfile`.
 3. **Settings:**
    - one replica;
+   - a **volume** mounted at `/data` (image assets live under `ASSET_DIR=/data/assets`). The volume ties the service to one replica;
    - health check path `/health`;
    - **autodeploy off**, because deploys go through §4;
    - private networking to Postgres.
@@ -76,7 +79,8 @@ Tell the "MPD MCP Interview Coach tool" session before any tenant change. Each r
    - add the connector in claude.ai (`https://<domain>/mcp`) and sign in;
    - run `link_openrouter` and open the link;
    - run `ask_advisor` with a file, then a follow-up with the same `chat_id`;
-   - confirm a second test account can't see the first account's chats.
+   - confirm a second test account can't see the first account's chats;
+   - images: `create_image_upload`, `curl -T` the file, `edit_image` with a mask, `remask_image`, then open the download link. A second account must get "unavailable" for the first account's asset id.
    
    Record the results under "M1 acceptance" in `docs/superpowers/specs/2026-10-18-hosted-spikes.md` (create it on first use).
 
@@ -126,6 +130,8 @@ railway run openrouter-image-mcp purge --apply
 ```
 
 The first command is a dry run. Review its counts before running `--apply`. To automate it, add a Railway cron service with the same image and the command `openrouter-image-mcp purge --apply` (weekly).
+
+**Images are swept by the server itself.** Assets expire 30 days after creation and become unreadable at once. Each hour the serving instance deletes expired blobs from the volume and then their rows, and drops upload tickets a day after they expire. `purge` can't do this, because `railway run` executes on your machine, which has no access to the volume. Each account has a 2 GB storage cap, enforced on every upload and result.
 
 ## 7. Incidents
 

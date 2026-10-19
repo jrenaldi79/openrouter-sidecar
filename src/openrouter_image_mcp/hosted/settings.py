@@ -25,6 +25,7 @@ class HostedSettings:
     sandbox_enabled: bool = False
     maintenance: bool = False
     dev_openrouter_url: str | None = None
+    asset_dir: str | None = None
 
 
 def _secure_or_local(url: str, name: str) -> None:
@@ -70,6 +71,14 @@ def _dev_openrouter(env: Mapping[str, str], resource: str) -> str | None:
     return url.rstrip("/")
 
 
+def _asset_dir(env: Mapping[str, str]) -> str | None:
+    # Image blobs live on a mounted volume; unset keeps the image tools off.
+    path = env.get("ASSET_DIR") or None
+    if path is not None and not path.startswith("/"):
+        raise ValueError("ASSET_DIR must be an absolute path (a mounted volume).")
+    return path
+
+
 def load_hosted_settings(env: Mapping[str, str]) -> HostedSettings:
     missing = [name for name in _REQUIRED if not env.get(name)]
     if missing:
@@ -91,4 +100,5 @@ def load_hosted_settings(env: Mapping[str, str]) -> HostedSettings:
         sandbox_enabled=env.get("SIDECAR_SANDBOX_ENABLED", "").lower() in _TRUE,
         maintenance=env.get("SIDECAR_MAINTENANCE", "").lower() in _TRUE,
         dev_openrouter_url=_dev_openrouter(env, resource),
+        asset_dir=_asset_dir(env),
     )

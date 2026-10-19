@@ -330,6 +330,65 @@ def _add(server: MCPServer, fn: Callable[..., Any]) -> None:
     )
 
 
+def catalog_tools(catalog: Catalog) -> tuple[Callable[..., Any], Callable[..., Any]]:
+    """The free model-discovery tools, shared by the local and hosted servers."""
+
+    async def list_image_models(
+        query: str | None = None,
+        accepts_images: bool | None = None,
+        author: str | None = None,
+        sort: Literal["newest", "price"] = "newest",
+    ) -> str:
+        """List the image models available on OpenRouter right now, as a markdown table.
+
+        Use this before `generate_image` or `edit_image` to choose a model and see which
+        options it takes. The catalog is live (cached for 10 minutes), so don't rely on
+        remembered model ids. Columns: id, name, inputs ("text", or "text+image (max N)"
+        input images), aspect ratios, resolutions, quality values, max n per call, seed
+        support, whether the provider moderates prompts (yes/no/?), and a price summary
+        ($/img-unit per image-output unit, $/image, or $/tok per completion token).
+        Call `get_image_model` for one model's per-provider details.
+
+        Args:
+            query: Case-insensitive text to find in the model id or name.
+            accepts_images: true for models that take input images (needed by
+                `edit_image`); false for text-only models.
+            author: Only this author's models: the part of the id before "/".
+            sort: "newest" (default, newest first) or "price" (cheapest first).
+        """
+        with _tool_errors():
+            models = await catalog.all()
+        if query:
+            needle = query.lower()
+            models = [m for m in models if needle in m.id.lower() or needle in m.name.lower()]
+        if accepts_images is not None:
+            models = [m for m in models if m.accepts_images == accepts_images]
+        if author:
+            models = [m for m in models if m.id.split("/", 1)[0].lower() == author.lower()]
+        if sort == "price":
+            models = sorted(models, key=price_key)
+        if not models:
+            return "No image models match those filters. Call `list_image_models` with fewer filters."
+        return redact(_table(models))
+
+    async def get_image_model(model_id: str) -> str:
+        """Show full details for one image model.
+
+        Returns the description, the capabilities, and one section per provider endpoint
+        with its supported parameters and allowed values, the passthrough parameters usable
+        in `provider_options`, and its pricing line items.
+
+        Args:
+            model_id: Exact model id from `list_image_models`.
+        """
+        with _tool_errors():
+            m = await catalog.get(model_id)
+            endpoints = await catalog.endpoints(model_id) if m.route == "images" else None
+        return redact(_model_details(m, endpoints))
+
+    return list_image_models, get_image_model
+
+
 # ------------------------------------------------------------------ server
 
 
@@ -434,60 +493,7 @@ def build_server(
             keystore.delete_key(workspace_id=settings.workspace_id)
             return settings.target + "\n" + LOGOUT_MSG
 
-    # -------------------------------------------------------- discovery
-
-    async def list_image_models(
-        query: str | None = None,
-        accepts_images: bool | None = None,
-        author: str | None = None,
-        sort: Literal["newest", "price"] = "newest",
-    ) -> str:
-        """List the image models available on OpenRouter right now, as a markdown table.
-
-        Use this before `generate_image` or `edit_image` to choose a model and see which
-        options it takes. The catalog is live (cached for 10 minutes), so don't rely on
-        remembered model ids. Columns: id, name, inputs ("text", or "text+image (max N)"
-        input images), aspect ratios, resolutions, quality values, max n per call, seed
-        support, whether the provider moderates prompts (yes/no/?), and a price summary
-        ($/img-unit per image-output unit, $/image, or $/tok per completion token).
-        Call `get_image_model` for one model's per-provider details.
-
-        Args:
-            query: Case-insensitive text to find in the model id or name.
-            accepts_images: true for models that take input images (needed by
-                `edit_image`); false for text-only models.
-            author: Only this author's models: the part of the id before "/".
-            sort: "newest" (default, newest first) or "price" (cheapest first).
-        """
-        with _tool_errors():
-            models = await catalog.all()
-        if query:
-            needle = query.lower()
-            models = [m for m in models if needle in m.id.lower() or needle in m.name.lower()]
-        if accepts_images is not None:
-            models = [m for m in models if m.accepts_images == accepts_images]
-        if author:
-            models = [m for m in models if m.id.split("/", 1)[0].lower() == author.lower()]
-        if sort == "price":
-            models = sorted(models, key=price_key)
-        if not models:
-            return "No image models match those filters. Call `list_image_models` with fewer filters."
-        return redact(_table(models))
-
-    async def get_image_model(model_id: str) -> str:
-        """Show full details for one image model.
-
-        Returns the description, the capabilities, and one section per provider endpoint
-        with its supported parameters and allowed values, the passthrough parameters usable
-        in `provider_options`, and its pricing line items.
-
-        Args:
-            model_id: Exact model id from `list_image_models`.
-        """
-        with _tool_errors():
-            m = await catalog.get(model_id)
-            endpoints = await catalog.endpoints(model_id) if m.route == "images" else None
-        return redact(_model_details(m, endpoints))
+    list_image_models, get_image_model = catalog_tools(catalog)
 
     # ----------------------------------------------------------- images
 

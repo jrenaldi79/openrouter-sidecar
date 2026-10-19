@@ -14,7 +14,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 
 from .. import __version__, storage
-from ..advisor_store import AdvisorStore
+from ..advisor_store import AdvisorStore, Scope
 from ..advisor_tools import enforce_advisor_arguments, register_advisor_tools
 from ..apps import (
     ImageApps,
@@ -24,16 +24,21 @@ from ..apps import (
     register_gallery,
     register_settings,
 )
+from ..assets import AssetStore, LocalDirBlobs
 from ..auth import AUTH_URL
 from ..preference_tools import register_preference_tools
 from ..server import SERVER_NAME, _tool_errors
-from .health import Health
+from .health import MAINTENANCE, Health
+from .image_tools import register_image_tools
+from .images import HostedImages
 from .limits import Limits
 from .link_routes import link_routes
 from .links import LinkStore
 from .openrouter_keys import exchange_code, verify_key
 from .principal import current_principal
 from .settings import HostedSettings
+from .sweeper import Sweeper
+from .uploads import TransferTokens, transfer_routes
 from .vault import Vault
 from .verifier import Auth0Verifier
 from .workspaces import ByWorkspace, Gate, build_workspaces
@@ -95,6 +100,26 @@ def _register_account_tools(server: MCPServer, links: LinkStore, settings: Hoste
         server.add_tool(fn, description=inspect.cleandoc(fn.__doc__), structured_output=False)
 
 
+def _register_images(server: MCPServer, settings: HostedSettings, target, services: dict,
+                     gate: Gate, admission: Limits) -> dict:
+    """Image tools and transfer routes; only with a blob volume (ASSET_DIR)."""
+    def scope_for() -> Scope:
+        gate.check()
+        who = current_principal(settings.profile_claim)
+        return Scope(who.key, who.workspace_id)
+
+    assets = AssetStore(target, LocalDirBlobs(settings.asset_dir))
+    transfers = TransferTokens(target, settings.link_signing_key, settings.public_origin)
+    hosted = HostedImages(assets, transfers, services["images"], scope_for, max_input_edge=2048,
+                          admit=admission.image_call)
+    register_image_tools(server, hosted, services["catalog"], _tool_errors)
+    for route in transfer_routes(transfers, assets):
+        server.custom_route(route.path, sorted(route.methods - {"HEAD"}))(route.endpoint)
+    # Only the instance holding the single-owner lock (serving, or in maintenance) sweeps.
+    sweeper = Sweeper(assets, transfers, active=lambda: gate.reason in (None, MAINTENANCE))
+    return {"assets": assets, "transfers": transfers, "sweeper": sweeper}
+
+
 def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transport=None,
                         exchange=exchange_code, verify=verify_key, auth_url: str = AUTH_URL,
                         limits: dict | None = None) -> MCPServer:
@@ -109,13 +134,19 @@ def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transpor
                                   sandbox_enabled=settings.sandbox_enabled)
     health = Health(target, gate, maintenance=settings.maintenance)
 
+    images: dict = {}
+
     @asynccontextmanager
     async def lifespan(_server: MCPServer) -> AsyncIterator[dict]:
         await health.start()
+        if "sweeper" in images:
+            await images["sweeper"].start()
         try:
             yield {}
         finally:
             gate.reason = "Server is shutting down."
+            if "sweeper" in images:
+                await images["sweeper"].stop()
             for item in workspaces.values():
                 await item.close()
             await health.stop()
@@ -129,7 +160,7 @@ def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transpor
                                      jwks_uri=settings.jwks_uri, key_resolver=key_resolver,
                                      profile_claim=settings.profile_claim),
     )
-    for name in ("advisors", "jobs", "preferences", "demos", "catalog", "settings"):
+    for name in ("advisors", "jobs", "preferences", "demos", "catalog", "settings", "images"):
         services[name] = ByWorkspace(workspaces, settings.profile_claim, gate, name)
     register_gallery(server)
     register_advisor_viewer(server)
@@ -143,6 +174,9 @@ def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transpor
     _register_account_tools(server, links, settings, gate)
     for route in link_routes(links, exchange=exchange, verify=verify, auth_url=auth_url):
         server.custom_route(route.path, sorted(route.methods - {"HEAD"}))(route.endpoint)
+    if settings.asset_dir:
+        images.update(_register_images(server, settings, target, services, gate, admission))
     health.register(server)
-    server.hosted = {"links": links, "workspaces": workspaces, "gate": gate, "health": health}
+    server.hosted = {"links": links, "workspaces": workspaces, "gate": gate, "health": health,
+                     **images}
     return server

@@ -30,6 +30,7 @@ from openrouter_image_mcp.config import COHORT_WORKSPACES
 
 RESULTS: list[tuple[str, bool, str]] = []
 MODEL = "openai/fake-advisor"
+IMAGE_MODEL = "openai/gpt-image-2.5-sunburst"
 
 
 def check(name: str, ok: bool, detail: str = "") -> bool:
@@ -153,6 +154,44 @@ async def isolation_checks(stack: Stack, alice_chat: dict):
     check("token without workspace_id is refused with 403", response.status_code == 403)
 
 
+def _png(color) -> bytes:
+    import io
+
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("L" if isinstance(color, int) else "RGB", (320, 240), color).save(buffer, "PNG")
+    return buffer.getvalue()
+
+
+async def _upload(c, data: bytes, name: str) -> str:
+    ticket = (await c.call_tool("create_image_upload", {"filename": name, "mime": "image/png",
+                                                        "size_bytes": len(data)})).structured_content
+    async with httpx.AsyncClient() as http:
+        return (await http.put(ticket["upload_url"], content=data)).json().get("asset_id", "")
+
+
+async def image_checks(stack: Stack, alice: str):
+    async with stack.client(alice) as c:
+        source = await _upload(c, _png((180, 60, 60)), "room.png")
+        mask = await _upload(c, _png(255), "mask.png")
+        check("upload link creates image assets", source.startswith("img_") and mask.startswith("img_"))
+        edited = await c.call_tool("edit_image", {"prompt": "add a lamp", "model": IMAGE_MODEL,
+                                                  "images": [source], "mask_id": mask})
+        out = re.search(r"Asset: (img_[0-9a-f]+)", text(edited))
+        check("edit_image returns an asset id and download link", out and not edited.is_error
+              and "/assets/img_" in text(edited), text(edited)[:200])
+        remasked = await c.call_tool("remask_image", {"image_id": out.group(1) if out else "", "mask_id": mask})
+        check("remask_image re-blends for free", not remasked.is_error and "$0.00" in text(remasked))
+        links = (await c.call_tool("get_image_download", {"asset_id": source})).structured_content
+    async with httpx.AsyncClient() as http:
+        got = await http.get(links["image_url"])
+    check("signed download link returns the image", got.status_code == 200 and got.content[:4] == b"\x89PNG")
+    async with stack.client(stack.token("email|bob", "2027")) as c:
+        denied = await c.call_tool("get_image_download", {"asset_id": source})
+    check("bob cannot fetch alice's image", denied.is_error and "unavailable" in text(denied))
+
+
 async def unlink_checks(stack: Stack, alice: str):
     async with stack.client(alice) as c:
         await c.call_tool("unlink_openrouter", {})
@@ -175,6 +214,7 @@ async def run(stack: Stack) -> int:
         return 1
     first = await headless_checks(stack, alice)
     await isolation_checks(stack, first)
+    await image_checks(stack, alice)
     await unlink_checks(stack, alice)
     failed = [name for name, ok, _ in RESULTS if not ok]
     print(f"\n{len(RESULTS) - len(failed)}/{len(RESULTS)} checks passed (synthetic local run)")
