@@ -74,6 +74,16 @@ Live results only. The synthetic multi-user run (fakes for Auth0 and OpenRouter)
   - a free `remask_image` rendered the gallery with its preview, filename, asset id and Download button;
   - `open_image_uploader` rendered the drop zone.
 
+- **Stdio retirement gate (parity checklist), 2026-10-19, through the live connector:**
+  - **Generate:** `google/gemini-3.1-flash-lite-image` returned two 1264x848 images (3:2) for $0.0672.
+  - **n above the model's max:** asking for n=2 from a max-1 model split into two billed calls, with the note "model max n is 1; will make 2 calls".
+  - **Edit with references and `fit=preserve`:** two input assets gave a 1264x848 result from 1264x848 inputs ($0.0342). The metadata records the fit (`crop_back`, no padding or upscale).
+  - **Masked edit, remask and cost reporting:** passed earlier (above). Every result reports its cost.
+  - **Previews:** claude.ai renders the gallery (above), and Claude Code shows them inline as images, with no base64 in the model-visible result.
+  - **Advisor in claude.ai (after `1ad1c0f`):** "show it to me" used `start_advisor_chat` and `send_advisor_message`, and the viewer streamed. `open_advisor_result` and `open_sidecar_settings` now render as apps (labelling them read-only had hidden them). Share with Claude sent the full answer, and Claude then read it via "Check the app on screen". "Quietly check" used `ask_advisor`.
+  - **Skills:** the user's `no-ai-slop` plugin skill was passed in full as a skill packet, and the output followed it. A canary skill's arbitrary rule was followed, while the same prompt without the skill ignored it.
+  - **Result:** the gate passed, and stdio was retired.
+
 **Still open:**
 
 - **Uploader drop and gallery Download in claude.ai:** needs a person. The app's sandboxed iframe isn't reachable by browser automation, and downloads need the user's OK. The same upload path (link, PUT, asset id) passes live through the connector.
