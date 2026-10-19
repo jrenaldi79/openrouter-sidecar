@@ -96,7 +96,7 @@ Operators: see [docs/HOSTED_OPERATIONS.md](docs/HOSTED_OPERATIONS.md) for config
 | `get_advisor_result` | App-only: retrieves owned partial or final answer text for the viewer. |
 | `summarize_advisor_result` | App-only: starts a paid summary job, which the viewer shares in place of a long answer. |
 | `share_advisor_result` | App-only: records that the user shared a result (or its summary) with Claude. |
-| `wait_for_advisor_share` | Waits (up to 5 minutes a call) while the user reads in the viewer, and returns the answer as soon as they share it. |
+| `wait_for_advisor_share` | Waits (up to 5 minutes a call) while the user reads in the viewer, and returns the answer as soon as they share any answer from that advisor chat. |
 | `read_shared_advisor_result` | Returns the advisor answers the user shared from the viewer, as untrusted text, and marks them read. |
 | `get_sidecar_settings` | App-only: loads model choices, pricing, context limits and the cohort. |
 | `run_sidecar_demo` | App-only: starts an explicitly selected tiny advisor, history or skill demo (the one-image demo is unavailable on the server). |

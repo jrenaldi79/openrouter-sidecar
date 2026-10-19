@@ -41,11 +41,15 @@ Claude read that as `open_advisor_result` and opened a second viewer.
 
 `wait_for_advisor_share(job_id, wait_s)` keeps Claude on the call while the student reads:
 it polls the saved share every second, reports progress every ten seconds, and returns the
-answer (marked read) as soon as the student shares. Each call waits up to 300 seconds
-(default 120); `send_advisor_message` tells Claude to call it, call again while waiting,
-and stop after about ten minutes in total. A share made after Claude stops is still read
-later with `read_shared_advisor_result`. claude.ai's own per-call time limit is still to be
-measured live; lower the default if it cuts calls off.
+answer (marked read) as soon as the student shares. The `job_id` names the advisor chat:
+a share of any answer in it, including follow-ups sent from the viewer, ends the wait. Each
+call waits up to 300 seconds (the default); `send_advisor_message` tells Claude to call it in
+the same turn, call again while waiting, and stop after about ten minutes in total. A share
+made after Claude stops is still read later with `read_shared_advisor_result`.
+
+Checked live in claude.ai on 2026-10-19: the viewer stays usable while the call runs, a
+Share ends the wait at once, and a 300-second call with no share ran to completion.
+Summaries run on `SIDECAR_SUMMARY_MODEL` (`advisor_summary.py`).
 
 ## Privacy
 

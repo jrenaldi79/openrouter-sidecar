@@ -109,7 +109,9 @@ def register_advisor_tools(server: MCPServer, service: AdvisorService, jobs: Adv
         """Consult a side advisor in the viewer, where the user can watch and read the reply.
 
         Use this (after start_advisor_chat) when the user wants to follow along; use
-        ask_advisor when you need the answer yourself.
+        ask_advisor when you need the answer yourself. Then call
+        wait_for_advisor_share(job_id) straight away, in the same turn, so you continue
+        as soon as the user clicks Share instead of asking them to come back.
 
         Sends only this deliberate brief, this advisor's saved history, and optional
         shareable skill text to OpenRouter. This costs inference and possibly sandbox
@@ -118,9 +120,8 @@ def register_advisor_tools(server: MCPServer, service: AdvisorService, jobs: Adv
         skill files. Claude selects the skills; a file path alone is not sufficient.
         The sandbox shell has no outbound network and receives no API credentials.
         Starts a background job and returns status and its job_id only. The full
-        answer appears in the advisor MCP App, not here. Then call
-        wait_for_advisor_share(job_id) to continue as soon as the user shares it; if
-        they share later, call read_shared_advisor_result() to read what they shared.
+        answer appears in the advisor MCP App, not here. If the user shares after
+        you've stopped waiting, call read_shared_advisor_result() to read it.
         Check get_advisor_job for status or call open_advisor_result to reopen the
         viewer. App shutdown can interrupt work. No raw container/file selectors, arbitrary HTTP requests, or provider options exist.
         Generated container files can remain for 30 days. No automatic inference retry.

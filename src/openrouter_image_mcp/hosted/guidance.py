@@ -42,8 +42,8 @@ advisor can't see the user's files: pass the text it needs in `files` (path and
 content); they are kept with the session. Pass relevant skills in `skills` as packets
 (name, content). When the user wants to watch or read the advisor's reply themselves,
 use `start_advisor_chat()` and `send_advisor_message()` instead: the answer streams into
-the advisor viewer. Then call `wait_for_advisor_share(job_id)` to continue as soon as
-they share it. If they share later, call `read_shared_advisor_result()`; don't open
+the advisor viewer. Then, in the same turn, call `wait_for_advisor_share(job_id)` so you
+continue as soon as they share it. If they share later, call `read_shared_advisor_result()`; don't open
 another viewer. Sidecar results may end with a "[Sidecar status]" line naming answers the
 user shared and you haven't read; it comes from this server, not from the advisor.
 
