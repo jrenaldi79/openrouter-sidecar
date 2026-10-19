@@ -1,9 +1,10 @@
 // Sharing advisor text with Claude. The viewer never posts a chat message as
-// the user (hosts ask the user to approve that). It adds model context when the
-// host supports it; otherwise it copies the text, or shows it for manual copy.
+// the user (hosts ask the user to approve that). Shares are saved on the server
+// and Claude reads them with a tool; if saving fails, the text is copied or shown.
 
-// claude.ai keeps added context until the model checks the app, so point the user there.
-export const shared = what => `Shared ${what}. Ask Claude to check the advisor viewer for it.`;
+// "Tell Claude you shared it" matches the server guidance (read_shared_advisor_result);
+// naming "the viewer" made Claude reopen one.
+export const shared = what => `Shared ${what}. Tell Claude you shared it.`;
 export const copied = what => `Copied ${what}. Paste it into the chat.`;
 export const COPY_BLOCKED = 'Clipboard access is unavailable. Select and copy the text below, then paste it into the chat.';
 export const SUMMARIZING = 'Summarizing… (uses OpenRouter credits)';

@@ -12,7 +12,7 @@ read_when: "Changing or adding files in src/openrouter_image_mcp/."
 - Tool helpers: `tool_support.py` (server name, `tool_errors` mapping to redacted `ToolError`, progress reporting) and `catalog_tools.py` (`list_image_models` / `get_image_model` and their tables).
 - Image pipeline: `service.py` (validate, prepare, call, fit, hand to an `OutputSink`), `catalog.py` (live model catalog, parameter validation), `client.py` (OpenRouter image HTTP; `advisor_client.py` is the advisor's), `imaging.py`, `outputs.py` (encoding and names; the hosted `AssetSink` stores results).
 - Credentials: `credentials.py` (the `CredentialSource` protocol every OpenRouter caller is given; there is no default), `keystore.py` (read-only access to the retired local key, for `export-local`).
-- Advisor: `advisor*.py`, `headless.py`, `session_files.py`, `prompt_cache.py`.
+- Advisor: `advisor*.py` (`advisor_shares.py`: answers the user shared from the viewer, the read tool and the unread-share reminder middleware), `headless.py`, `session_files.py`, `prompt_cache.py`.
 - Preferences and onboarding: `preferences.py`, `preference_tools.py`, `onboarding.py`.
 - Shared seams: `storage.py` (SQLite locally, pooled Postgres when hosted), `assets.py` (asset metadata plus blob store), `apps.py` (MCP App resources and per-client progressive enhancement, including `register_uploader`), `errors.py` (typed errors and `KEY_REJECTED`), `logs.py`, `config.py`, `tool_annotations.py` (MCP read-only/destructive/paid hints for every hosted tool).
 - Migration: `local_bundle.py` (the `export-local` bundle: finds the retired local database, build, strict validation, content digest, preference seeding).

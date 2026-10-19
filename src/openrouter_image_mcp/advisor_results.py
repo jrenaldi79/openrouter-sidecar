@@ -32,6 +32,9 @@ class AdvisorResults:
                 process_id TEXT NOT NULL, lease_token TEXT NOT NULL,
                 heartbeat_until REAL NOT NULL
             )""")
+            # Shared with Claude from the viewer (advisor_shares.py).
+            for column in ("shared_kind", "shared_summary_id", "shared_at", "share_read_at"):
+                db.ensure_column("advisor_jobs", column, "TEXT")
             db.execute("CREATE UNIQUE INDEX IF NOT EXISTS advisor_active_job ON "
                        "advisor_jobs(chat_id) WHERE status IN ('queued','running')")
             db.commit()

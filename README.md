@@ -95,6 +95,8 @@ Operators: see [docs/HOSTED_OPERATIONS.md](docs/HOSTED_OPERATIONS.md) for config
 | `resolve_advisor_model` | Resolves Gemini, ChatGPT, Claude or a one-off exact model ID without inference. |
 | `get_advisor_result` | App-only: retrieves owned partial or final answer text for the viewer. |
 | `summarize_advisor_result` | App-only: starts a paid summary job, which the viewer shares in place of a long answer. |
+| `share_advisor_result` | App-only: records that the user shared a result (or its summary) with Claude. |
+| `read_shared_advisor_result` | Returns the advisor answers the user shared from the viewer, as untrusted text, and marks them read. |
 | `get_sidecar_settings` | App-only: loads model choices, pricing, context limits and the cohort. |
 | `run_sidecar_demo` | App-only: starts an explicitly selected tiny advisor, history or skill demo (the one-image demo is unavailable on the server). |
 | `get_sidecar_demo` | App-only: reads an owned image demo status and preview without inference. |
@@ -212,15 +214,16 @@ metadata and displays streamed answer text, with the original user prompt collap
 System prompts, appended skill instructions, shell output, and reasoning traces are
 not displayed. Opening, scrolling or polling does not update the parent model context.
 While a reply streams, the viewer shows a live status with elapsed time.
-**Share with Claude** is one click: it adds the answer to Claude's context without
-posting a chat message. Answers over 3,000 characters are summarized first by the same
+**Share with Claude** is one click: it saves the share on the server without posting a
+chat message, and Claude reads it with `read_shared_advisor_result` (Claude's next Sidecar
+call also notes any unread share). Answers over 3,000 characters are summarized first by the same
 advisor model (paid; the status line shows progress), and shorter ones are shared whole
 for free. If the summary fails, the viewer says so and offers the full answer instead.
 **More → Share full answer** always shares the whole answer for free; **More** also
-holds **Copy answer**. After sharing, ask Claude to check the advisor viewer for it.
-**Send follow-up** messages the advisor in the same chat (paid). If the host can't
-update context, sharing copies the text to the clipboard, or shows it read-only for
-manual copy when the clipboard is blocked. Use `get_advisor_job` to check status, or
+holds **Copy answer**. After sharing, tell Claude you shared it.
+**Send follow-up** messages the advisor in the same chat (paid). If the share can't be
+saved, sharing copies the text to the clipboard, or shows it read-only for manual copy
+when the clipboard is blocked. Use `get_advisor_job` to check status, or
 `open_advisor_result` to reopen a viewer.
 
 Jobs run inside the server process and continue while the viewer is closed. A deploy

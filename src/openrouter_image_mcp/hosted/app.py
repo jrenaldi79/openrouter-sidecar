@@ -14,6 +14,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 
 from .. import __version__, storage
+from ..advisor_shares import AdvisorShares, register_share_tools, share_reminder
 from ..advisor_store import AdvisorStore, Scope
 from ..advisor_tools import enforce_advisor_arguments, register_advisor_tools
 from ..apps import (
@@ -117,6 +118,7 @@ def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transpor
                                   admit=admission.admit, transport=transport,
                                   sandbox_enabled=settings.sandbox_enabled)
     health = Health(target, gate, maintenance=settings.maintenance, asset_dir=settings.asset_dir)
+    shares = AdvisorShares(ByWorkspace(workspaces, settings.profile_claim, gate, "jobs"))
 
     images: dict = {}
 
@@ -142,7 +144,7 @@ def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transpor
         SERVER_NAME, version=__version__, lifespan=lifespan, icons=app_icons(),
         instructions=INSTRUCTIONS,
         extensions=[ImageApps()], middleware=[enforce_advisor_arguments, negotiate_apps,
-                    key_middleware(provisioner, settings.profile_claim, gate)],
+                    key_middleware(provisioner, settings.profile_claim, gate), share_reminder(shares)],
         auth=AuthSettings(issuer_url=settings.issuer, resource_server_url=settings.resource,
                           required_scopes=[settings.permission], validate_token_resource=True),
         token_verifier=Auth0Verifier(issuer=settings.issuer, resource=settings.resource,
@@ -156,6 +158,7 @@ def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transpor
     register_settings(server)
     register_advisor_tools(server, services["advisors"], services["jobs"], tool_errors,
                            preferences=services["preferences"])
+    register_share_tools(server, shares, tool_errors)
     register_preference_tools(server, services["preferences"], services["demos"],
                               services["catalog"], services["settings"], tool_errors)
     register_account_tools(server, provisioner, _principal(settings, gate), transport=transport,

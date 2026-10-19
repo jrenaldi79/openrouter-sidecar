@@ -31,6 +31,8 @@ ADVISOR_ARGUMENTS = {
     "open_advisor_result": {"job_id"},
     "get_advisor_result": {"job_id"},
     "summarize_advisor_result": {"job_id"},
+    "share_advisor_result": {"job_id", "summary_job_id"},
+    "read_shared_advisor_result": {"job_id"},
 } | PREFERENCE_ARGUMENTS
 
 
@@ -116,7 +118,7 @@ def register_advisor_tools(server: MCPServer, service: AdvisorService, jobs: Adv
         The sandbox shell has no outbound network and receives no API credentials.
         Starts a background job and returns status and its job_id only. The full
         answer appears in the advisor MCP App, not here. When the user shares it from
-        the viewer, check the app on screen (its widget context) to read what they shared.
+        the viewer, call read_shared_advisor_result() to read what they shared.
         Check get_advisor_job for status or call open_advisor_result to reopen the
         viewer. App shutdown can interrupt work. No raw container/file selectors, arbitrary HTTP requests, or provider options exist.
         Generated container files can remain for 30 days. No automatic inference retry.
@@ -236,7 +238,8 @@ def register_advisor_tools(server: MCPServer, service: AdvisorService, jobs: Adv
 
         Reading or scrolling in the MCP App does not share the result with the parent
         model. The user can share the answer (a summary when it is long); after they
-        do, check the app on screen (its widget context) to read it.
+        do, call read_shared_advisor_result(). Never call this tool to read a shared
+        answer: it opens a second viewer.
         """
         with tool_errors():
             return status_result(jobs.status(job_id))

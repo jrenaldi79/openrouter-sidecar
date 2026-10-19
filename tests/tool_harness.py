@@ -15,6 +15,11 @@ from mcp.server.mcpserver import MCPServer
 from openrouter_image_mcp import __version__
 from openrouter_image_mcp.advisor import AdvisorService
 from openrouter_image_mcp.advisor_jobs import AdvisorJobs
+from openrouter_image_mcp.advisor_shares import (
+    AdvisorShares,
+    register_share_tools,
+    share_reminder,
+)
 from openrouter_image_mcp.advisor_tools import (
     enforce_advisor_arguments,
     register_advisor_tools,
@@ -44,6 +49,7 @@ def settings_for(workspace: str) -> Settings:
 def build_tool_server(http: OpenRouterClient, advisors: AdvisorService) -> MCPServer:
     """Advisor, preference and settings tools for `advisors.workspace_id`; the caller owns the clients."""
     jobs = AdvisorJobs(advisors)
+    shares = AdvisorShares(jobs)
     preferences = PreferenceService(advisors)
     demos = OnboardingDemos(advisors, jobs, preferences, image_runner=None)
 
@@ -56,11 +62,13 @@ def build_tool_server(http: OpenRouterClient, advisors: AdvisorService) -> MCPSe
             await jobs.close()
 
     server = MCPServer(SERVER_NAME, version=__version__, lifespan=lifespan, icons=app_icons(),
-                       extensions=[ImageApps()], middleware=[enforce_advisor_arguments, negotiate_apps])
+                       extensions=[ImageApps()], middleware=[enforce_advisor_arguments, negotiate_apps,
+                                                         share_reminder(shares)])
     register_gallery(server)
     register_advisor_viewer(server)
     register_settings(server)
     register_advisor_tools(server, advisors, jobs, tool_errors, preferences=preferences)
+    register_share_tools(server, shares, tool_errors)
     register_preference_tools(server, preferences, demos, Catalog(http),
                               settings_for(advisors.workspace_id), tool_errors)
     return annotate(server)

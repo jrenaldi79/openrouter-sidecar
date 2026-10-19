@@ -74,7 +74,8 @@ async def test_tool_descriptions_do_not_describe_a_local_install(db_target, tmp_
 # claude.ai keeps what an app adds to context and the model fetches it on demand
 # ("check the app on screen"), so the tools must tell Claude to look there.
 CHECK_APP = re.compile(r"check the app on screen", re.IGNORECASE)
-APP_HANDOFF_TOOLS = {"send_advisor_message", "open_advisor_result", "open_image_uploader"}
+APP_HANDOFF_TOOLS = {"open_image_uploader"}
+SHARE_READERS = {"send_advisor_message", "open_advisor_result"}
 
 
 async def test_app_handoff_tools_tell_claude_to_check_the_app(db_target, tmp_path):
@@ -83,6 +84,8 @@ async def test_app_handoff_tools_tell_claude_to_check_the_app(db_target, tmp_pat
         listed = {tool.name: tool.description or "" for tool in (await client.list_tools()).tools}
         opened = await client.call_tool("open_image_uploader", {})
     assert {name for name in APP_HANDOFF_TOOLS if not CHECK_APP.search(listed[name])} == set()
+    # Shared advisor answers are saved on the server and read with a plain tool.
+    assert {name for name in SHARE_READERS if "read_shared_advisor_result()" not in listed[name]} == set()
     assert "appears in the conversation" not in listed["open_image_uploader"] + opened.content[0].text
     assert CHECK_APP.search(opened.content[0].text)
     assert "chooses what to send to the parent chat" not in listed["send_advisor_message"]

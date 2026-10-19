@@ -29,6 +29,7 @@ Use maintained guidance, status, and reference documents for current decisions. 
 | Document | Status | Description | Read when |
 | --- | --- | --- | --- |
 | [Hosted Sidecar M2–M5 Implementation Plan (outline)](superpowers/plans/2026-10-18-hosted-sidecar-m2-m5.md) | pending | Task-by-task implementation plan: Hosted Sidecar M2–M5 Implementation Plan (outline). | Tracing why the implementation looks the way it does, or continuing this plan. |
+| [Advisor shared results design](superpowers/specs/2026-10-19-advisor-shared-results-design.md) | maintained | Share with Claude saves the shared answer on the server; Claude reads it with a plain tool and is reminded on its next Sidecar call | When changing how the advisor viewer hands an answer back to Claude |
 | [Provisioned student OpenRouter keys](superpowers/specs/2026-10-19-provisioned-student-keys-design.md) | completed | Design for issuing each student an OpenRouter key automatically from a management key, replacing the OpenRouter linking flow | Changing how the hosted Sidecar gets, stores, checks or removes a student's OpenRouter key, or operating student keys |
 
 ## History
@@ -102,6 +103,7 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/advisor&#95;jobs.py](../src/openrouter_image_mcp/advisor_jobs.py)
 - [src/openrouter&#95;image&#95;mcp/advisor&#95;payload.py](../src/openrouter_image_mcp/advisor_payload.py)
 - [src/openrouter&#95;image&#95;mcp/advisor&#95;results.py](../src/openrouter_image_mcp/advisor_results.py)
+- [src/openrouter&#95;image&#95;mcp/advisor&#95;shares.py](../src/openrouter_image_mcp/advisor_shares.py)
 - [src/openrouter&#95;image&#95;mcp/advisor&#95;store.py](../src/openrouter_image_mcp/advisor_store.py)
 - [src/openrouter&#95;image&#95;mcp/advisor&#95;tools.py](../src/openrouter_image_mcp/advisor_tools.py)
 - [src/openrouter&#95;image&#95;mcp/apps.py](../src/openrouter_image_mcp/apps.py)

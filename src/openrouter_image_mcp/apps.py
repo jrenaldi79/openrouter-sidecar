@@ -23,7 +23,7 @@ PREVIEWS_META = "sidecarPreviews"
 ADVISOR_UI_TOOLS = frozenset({"send_advisor_message", "open_advisor_result"})
 SETTINGS_UI_TOOLS = frozenset({"open_sidecar_settings"})
 LOGO_SIZE = 225  # mpd-logo.png is square
-APP_ONLY_TOOLS = frozenset({"get_advisor_result", "summarize_advisor_result",
+APP_ONLY_TOOLS = frozenset({"get_advisor_result", "summarize_advisor_result", "share_advisor_result",
                             "get_sidecar_settings", "run_sidecar_demo", "get_sidecar_demo",
                             "open_image_uploader"})
 

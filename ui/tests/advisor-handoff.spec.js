@@ -76,19 +76,31 @@ test('the caption says a summary uses OpenRouter credits', async ({ page }) => {
   await expect(viewer.locator('#share-note')).toBeVisible();
 });
 
-test('hosts without context updates copy the summary to the clipboard', async ({ page }) => {
+const shares = page => page.evaluate(() => window.shares ?? []);
+const shareFails = { 'share_advisor_result:result-1': [{ isError: true, content: [{ type: 'text', text: 'Share failed.' }] }] };
+
+test('hosts without context updates still save the summary for Claude to read', async ({ page }) => {
   const { viewer } = await openAdvisor(page, { capabilities: copyOnly, responses: longWithSummary() });
   await expect(viewer.locator('#answer')).toHaveText(longAnswer);
+  await shareButton(viewer).click();
+  await expect(viewer.locator('#handoff-status')).toHaveText(SHARED_SUMMARY);
+  expect(await shares(page)).toEqual([{ job_id: 'result-1', summary_job_id: 'summary-1' }]);
+  await assertNoHandoff(page);
+});
+
+test('a failed save says nothing was shared and copies instead', async ({ page }) => {
+  const { viewer } = await openAdvisor(page, { responses: { ...completed, ...shareFails } });
+  await expect(viewer.locator('#answer')).toContainText('Last paragraph.');
   await fakeClipboard(viewer);
   await shareButton(viewer).click();
-  await expect(viewer.locator('#handoff-status')).toHaveText('Copied a summary. Paste it into the chat.');
-  expect(await copied(viewer)).toBe(framedSummary('Short summary'));
-  await expect(viewer.getByLabel('Copyable message')).toBeHidden();
+  await expect(viewer.locator('#handoff-status')).toHaveText(
+    'Share failed. Nothing was shared with Claude. Copied the full answer. Paste it into the chat.');
+  expect(await copied(viewer)).toBe(framed(answer));
   await assertNoHandoff(page);
 });
 
 test('a blocked clipboard shows the text read-only for manual copy', async ({ page }) => {
-  const { viewer } = await openAdvisor(page, { capabilities: copyOnly, responses: completed });
+  const { viewer } = await openAdvisor(page, { capabilities: copyOnly, responses: { ...completed, ...shareFails } });
   await expect(viewer.locator('#answer')).toContainText('First paragraph.');
   await viewer.locator('body').evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined }));
   await shareButton(viewer).click();
@@ -99,15 +111,13 @@ test('a blocked clipboard shows the text read-only for manual copy', async ({ pa
   await assertNoHandoff(page);
 });
 
-test('a rejected context update says nothing was added and copies instead', async ({ page }) => {
+test('a rejected context update still counts as shared: the saved share is what Claude reads', async ({ page }) => {
   const { viewer } = await openAdvisor(page, { responses: completed,
     contextResponse: { rpcError: { code: -32000, message: 'Context rejected.' } } });
   await expect(viewer.locator('#answer')).toContainText('Last paragraph.');
-  await fakeClipboard(viewer);
   await shareButton(viewer).click();
-  await expect(viewer.locator('#handoff-status')).toHaveText(
-    "Context rejected. Nothing was added to Claude's context. Copied the full answer. Paste it into the chat.");
-  expect(await copied(viewer)).toBe(framed(answer));
+  await expect(viewer.locator('#handoff-status')).toHaveText(SHARED_FULL);
+  expect(await shares(page)).toEqual([{ job_id: 'result-1' }]);
   expect(await contexts(page)).toHaveLength(1);
 });
 

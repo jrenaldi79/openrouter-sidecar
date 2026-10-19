@@ -1,7 +1,9 @@
 // One-click sharing for the advisor viewer. "Share with Claude" sends a paid
 // summary of a long completed answer, or the answer itself when it is short;
 // "Share full answer" and "Copy answer" always use the answer. Every path
-// rechecks ownership first and frames the text with its source.
+// rechecks ownership first and frames the text with its source. A share is saved
+// on the server (share_advisor_result), where Claude reads it with
+// read_shared_advisor_result; model context is added as well where the host has it.
 import { SUMMARIZING, addToContext, canAddContext, copyOrShow, handoffText, shared } from './advisor-handoff.js';
 
 // Answers up to this many characters are shared whole: a summary would cost
@@ -78,20 +80,30 @@ async function summarize(ctx, source, token) {
   }
 }
 
-// Adds the framed text to Claude's context, or copies it when the host can't
-// (or refuses). Never posts a chat message.
+// Records the share on the server; the server builds the text from stored results.
+async function save(ctx, snapshot) {
+  const args = snapshot.summaryId ? { job_id: snapshot.sourceId, summary_job_id: snapshot.summaryId }
+    : { job_id: snapshot.sourceId };
+  const result = await ctx.app.callServerTool({ name: 'share_advisor_result', arguments: args },
+    { signal: ctx.signal(), timeout: 15000 });
+  if (result.isError) throw new Error(ctx.toolError(result));
+}
+
+// Saves the share (and adds model context where the host supports it), or copies the
+// framed text when saving fails. Never posts a chat message.
 async function deliver(ctx, snapshot, body, token, copyOnly) {
   const text = handoffText(snapshot, body);
   const what = snapshot.summaryId ? 'a summary' : 'the full answer';
   let prefix = '';
-  if (!copyOnly && canAddContext(ctx.app)) {
+  if (!copyOnly) {
     try {
       status(ctx, 'Sharing…');
-      await addToContext(ctx.app, text, ctx.signal());
+      await save(ctx, snapshot);
+      if (canAddContext(ctx.app)) await addToContext(ctx.app, text, ctx.signal()).catch(() => {});
       return shared(what);
     } catch (error) {
       if (!ctx.current(token)) return '';
-      prefix = `${string(error?.message) || 'The host did not accept the text.'} Nothing was added to Claude's context. `;
+      prefix = `${string(error?.message) || 'The Sidecar did not save the share.'} Nothing was shared with Claude. `;
     }
   }
   return prefix + await copyOrShow(ctx.element, text, what);

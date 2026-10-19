@@ -65,7 +65,11 @@ export async function openAdvisor(page, {
         const index = window.toolCounts[key] ?? 0;
         window.toolCounts[key] = index + 1;
         const sequence = responses[key] ?? [];
-        const next = sequence[Math.min(index, sequence.length - 1)] ?? { isError: true, content: [{ type: 'text', text: 'Missing test result' }] };
+        // Saving a share succeeds unless a test scripts it.
+        const saved = message.params.name === 'share_advisor_result'
+          ? { content: [{ type: 'text', text: 'Shared.' }], structuredContent: { shared: true } } : null;
+        const next = sequence[Math.min(index, sequence.length - 1)] ?? saved ?? { isError: true, content: [{ type: 'text', text: 'Missing test result' }] };
+        if (message.params.name === 'share_advisor_result') window.shares = [...(window.shares ?? []), message.params.arguments];
         if (message.params.name === 'get_advisor_result') {
           window.pollTimes.push(performance.now());
           window.activeFetches++;
@@ -103,8 +107,8 @@ export const longWithSummary = (summaries = [summaryResult()]) => ({
   'get_advisor_result:summary-1': summaries,
 });
 
-export const SHARED_SUMMARY = 'Shared a summary. Ask Claude to check the advisor viewer for it.';
-export const SHARED_FULL = 'Shared the full answer. Ask Claude to check the advisor viewer for it.';
+export const SHARED_SUMMARY = 'Shared a summary. Tell Claude you shared it.';
+export const SHARED_FULL = 'Shared the full answer. Tell Claude you shared it.';
 export const shareButton = viewer => viewer.getByRole('button', { name: 'Share with Claude', exact: true });
 export const toolCount = (page, key) => page.evaluate(name => window.toolCounts[name] ?? 0, key);
 
