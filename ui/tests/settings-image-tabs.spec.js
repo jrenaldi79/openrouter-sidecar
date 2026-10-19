@@ -13,8 +13,9 @@ test('Create and Edit are distinct keyboard accessible previews with no model ca
   await create.press('ArrowRight');
   await expect(edit).toBeFocused();
   await expect(edit).toHaveAttribute('aria-selected', 'true');
+  // Hovering the selected tab keeps the selected (Northwestern purple) fill.
   await edit.hover();
-  await expect(edit).toHaveCSS('background-color', 'rgb(164, 67, 43)');
+  await expect(edit).toHaveCSS('background-color', 'rgb(78, 42, 132)');
   await expect(viewer.locator('#image-create-panel')).toBeHidden();
   await expect(viewer.getByRole('slider')).toBeVisible();
   await edit.press('Home');
