@@ -205,12 +205,12 @@ async def test_summary_new_job_preserves_original(rig):
     await terminal(jobs, job["job_id"])
     summary = await jobs.summarize(job["job_id"])
     assert summary["kind"] == "summary" and summary["source_job_id"] == job["job_id"]
-    assert summary["model"] == MODEL and "answer" not in summary
+    assert summary["model"] == jobs.summary_model and "answer" not in summary
     await terminal(jobs, summary["job_id"])
     assert jobs.view(job["job_id"])["prompt"] == "Prompt"
     assert jobs.view(job["job_id"])["answer"] == "Final advice"
     request = [r for r in state["seen"] if r.url.path.endswith("/responses")][-1]
-    assert "concise" in json.loads(request.content)["input"][-1]["content"].lower()
+    assert "Final advice" in json.loads(request.content)["input"][-1]["content"]  # see test_advisor_summary
 
 
 async def test_close_immediately_after_enqueue_persists_interruption_without_provider(rig):

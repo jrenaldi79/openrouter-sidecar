@@ -217,8 +217,9 @@ not displayed. Opening, scrolling or polling does not update the parent model co
 While a reply streams, the viewer shows a live status with elapsed time.
 **Share with Claude** is one click: it saves the share on the server without posting a
 chat message, and Claude reads it with `read_shared_advisor_result` (Claude's next Sidecar
-call also notes any unread share). Answers over 3,000 characters are summarized first by the same
-advisor model (paid; the status line shows progress), and shorter ones are shared whole
+call also notes any unread share). Answers over 3,000 characters are summarized first by a fast
+summary model, Gemini 3.5 Flash Lite unless `SIDECAR_SUMMARY_MODEL` says otherwise (paid,
+a fraction of a cent; it sees only the answer, and the status line shows progress), and shorter ones are shared whole
 for free. If the summary fails, the viewer says so and offers the full answer instead.
 **More → Share full answer** always shares the whole answer for free; **More** also
 holds **Copy answer**. After sharing, tell Claude you shared it.

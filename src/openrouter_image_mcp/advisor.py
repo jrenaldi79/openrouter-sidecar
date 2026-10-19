@@ -241,7 +241,7 @@ class AdvisorService:
     async def send(self, chat_id: str, prompt: str, skills: list[SkillPacket] | None = None,
                    *, files: list[FilePacket] | None = None, replace_files: bool = False,
                    on_text=None, _scope=None, _lease_token=None, _guard=None,
-                   _summary_answer=None, _demo_limits=None, _before_request=None,
+                   _demo_limits=None, _before_request=None,
                    _stream_guard=None) -> dict:
         if _demo_limits not in (None, (256, 1)):
             raise ValueError('Invalid internal demo limits')
@@ -250,10 +250,6 @@ class AdvisorService:
             self._current(_scope)
             scope = _scope
         chat, skills, bundle, brief = self._prepare(chat_id, prompt, skills, key, scope, files)
-        if _summary_answer is not None:
-            if not isinstance(_summary_answer, str) or len(_summary_answer) > 100_000:
-                raise BadRequestError("Advisor summary source is invalid.")
-            brief += "\n\n<advisor_result>\n" + redact(_summary_answer) + "\n</advisor_result>"
 
         def guard():
             self._current(scope)

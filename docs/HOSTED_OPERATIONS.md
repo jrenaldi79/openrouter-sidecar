@@ -25,6 +25,7 @@ one deliberately. Never paste secrets into chat, issues or logs.
 | `PROFILE_CLAIM` | no | Default `https://mpd.northwestern.edu/profile` |
 | `SIDECAR_MAINTENANCE` | no | `true` keeps the server closed: tool calls are refused and `/ready` reports maintenance. See §4 |
 | `SIDECAR_SANDBOX_ENABLED` | no | Keep **unset**. Sandbox stays disabled until per-student isolation exists |
+| `SIDECAR_SUMMARY_MODEL` | no | Model for share summaries of long advisor answers. Default `google/gemini-3.5-flash-lite` |
 | `ASSET_DIR` | for images | Absolute path on the mounted Railway volume, e.g. `/data/assets`. Unset keeps the image tools off |
 | `RETENTION_DAYS` | no | Default 90 (`purge`) |
 | `PORT` / `HOST` | no | Railway sets `PORT`. `HOST` defaults to `0.0.0.0` |

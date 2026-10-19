@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from ..advisor_summary import DEFAULT_SUMMARY_MODEL
+
 _REQUIRED = ("AUTH0_ISSUER", "MCP_RESOURCE_URI", "DATABASE_URL", "VAULT_KEYS", "LINK_SIGNING_KEY")
 _LOCAL_HOSTS = {"localhost", "127.0.0.1"}
 _TRUE = {"1", "true", "yes"}
@@ -24,6 +26,8 @@ class HostedSettings:
     permission: str = "sidecar:use"
     profile_claim: str = "https://mpd.northwestern.edu/profile"
     sandbox_enabled: bool = False
+    # Fast model for share summaries (advisor_summary.py); changeable without a deploy.
+    summary_model: str = DEFAULT_SUMMARY_MODEL
     maintenance: bool = False
     dev_openrouter_url: str | None = None
     asset_dir: str | None = None
@@ -102,6 +106,7 @@ def load_hosted_settings(env: Mapping[str, str]) -> HostedSettings:
         permission=env.get("MCP_PERMISSION", "sidecar:use"),
         profile_claim=env.get("PROFILE_CLAIM", "https://mpd.northwestern.edu/profile"),
         sandbox_enabled=env.get("SIDECAR_SANDBOX_ENABLED", "").lower() in _TRUE,
+        summary_model=env.get("SIDECAR_SUMMARY_MODEL", "").strip() or DEFAULT_SUMMARY_MODEL,
         maintenance=env.get("SIDECAR_MAINTENANCE", "").lower() in _TRUE,
         dev_openrouter_url=_dev_openrouter(env, resource),
         asset_dir=_asset_dir(env),

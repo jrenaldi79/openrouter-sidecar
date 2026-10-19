@@ -105,6 +105,7 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/advisor&#95;results.py](../src/openrouter_image_mcp/advisor_results.py)
 - [src/openrouter&#95;image&#95;mcp/advisor&#95;shares.py](../src/openrouter_image_mcp/advisor_shares.py)
 - [src/openrouter&#95;image&#95;mcp/advisor&#95;store.py](../src/openrouter_image_mcp/advisor_store.py)
+- [src/openrouter&#95;image&#95;mcp/advisor&#95;summary.py](../src/openrouter_image_mcp/advisor_summary.py)
 - [src/openrouter&#95;image&#95;mcp/advisor&#95;tools.py](../src/openrouter_image_mcp/advisor_tools.py)
 - [src/openrouter&#95;image&#95;mcp/apps.py](../src/openrouter_image_mcp/apps.py)
 - [src/openrouter&#95;image&#95;mcp/assets.py](../src/openrouter_image_mcp/assets.py)

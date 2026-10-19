@@ -109,7 +109,7 @@ class AdvisorResults:
                              (scope.owner, scope.workspace, chat_id)).fetchone()
             return row["id"] if row else None
 
-    def create(self, scope, chat, prompt, process_id, *, kind="message", source_job_id=None):
+    def create(self, scope, chat, prompt, process_id, *, kind="message", source_job_id=None, model=None):
         job_id, token = "job_" + secrets.token_hex(16), secrets.token_hex(16)
         with self.connection() as db:
             db.execute("BEGIN IMMEDIATE")
@@ -124,7 +124,7 @@ class AdvisorResults:
             db.execute("INSERT INTO advisor_jobs (id,owner,workspace,chat_id,model,title,status,"
                        "prompt,kind,source_job_id,created_at,process_id,lease_token,heartbeat_until) "
                        "VALUES (?,?,?,?,?,?,'queued',?,?,?,?,?,?,?)",
-                       (job_id, scope.owner, scope.workspace, chat.id, chat.model, chat.title,
+                       (job_id, scope.owner, scope.workspace, chat.id, model or chat.model, chat.title,
                         prompt, kind, source_job_id, datetime.now(UTC).isoformat(),
                         process_id, token, time.time() + HEARTBEAT_S))
             return dict(self._row(db, scope, job_id))

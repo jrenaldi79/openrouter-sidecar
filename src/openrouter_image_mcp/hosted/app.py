@@ -116,7 +116,8 @@ def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transpor
     admission = Limits(AdvisorStore(target), **(limits or {}))
     workspaces = build_workspaces(target, keys, profile_claim=settings.profile_claim,
                                   admit=admission.admit, transport=transport,
-                                  sandbox_enabled=settings.sandbox_enabled)
+                                  sandbox_enabled=settings.sandbox_enabled,
+                                  summary_model=settings.summary_model)
     health = Health(target, gate, maintenance=settings.maintenance, asset_dir=settings.asset_dir)
     shares = AdvisorShares(ByWorkspace(workspaces, settings.profile_claim, gate, "jobs"))
 

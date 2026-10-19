@@ -19,6 +19,7 @@ def test_loads_required_values():
     assert s.profile_claim == "https://mpd.northwestern.edu/profile"
     assert s.public_origin == "https://sidecar.example"
     assert s.sandbox_enabled is False
+    assert s.summary_model == "google/gemini-3.5-flash-lite"
 
 
 @pytest.mark.parametrize("key,value", [
@@ -97,3 +98,8 @@ def test_management_key_is_optional_and_kept_out_of_repr():
     settings = load_hosted_settings(BASE | {"OPENROUTER_MANAGEMENT_KEY": "sk-or-v1-management"})
     assert settings.management_key == "sk-or-v1-management"
     assert "sk-or-v1-management" not in repr(settings)
+
+
+def test_summary_model_can_be_changed_without_a_deploy():
+    assert load_hosted_settings(BASE | {"SIDECAR_SUMMARY_MODEL": "anthropic/claude-haiku-5.5"}).summary_model \
+        == "anthropic/claude-haiku-5.5"

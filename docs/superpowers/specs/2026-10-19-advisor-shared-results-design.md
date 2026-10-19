@@ -32,7 +32,7 @@ Claude read that as `open_advisor_result` and opened a second viewer.
    (the viewer's polls) are skipped. A failed lookup never fails the tool.
 4. **Viewer.** After saving the share, the viewer still calls `updateModelContext` (best
    effort, for hosts that inject it) and says "Shared a summary. Tell Claude you shared it."
-   If saving fails it falls back to model context, then copy, as before.
+   If saving fails it copies the text (or shows it for manual copy).
 5. **Guidance.** `send_advisor_message`, `open_advisor_result` and the server instructions
    tell Claude to call `read_shared_advisor_result()` when the user says they shared an
    answer, and never to open another viewer to read it.
