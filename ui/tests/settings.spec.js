@@ -4,6 +4,7 @@ import { assertNoHandoff, openAdvisor, result } from './fixtures/advisor-host.js
 test.setTimeout(20000);
 
 async function models(viewer) { await viewer.getByRole('button', { name: 'Models', exact: true }).click(); }
+async function brands(viewer) { await viewer.locator('#brand-defaults > summary').click(); }
 
 
 test('loads full catalog once, shows cohort and per-million pricing, autosaves successive choices', async ({ page }) => {
@@ -15,6 +16,7 @@ test('loads full catalog once, shows cohort and per-million pricing, autosaves s
   expect(await calls(page, 'get_sidecar_settings')).toHaveLength(1);
   await viewer.getByLabel('General advisor default').selectOption('openai/example');
   await expect(viewer.locator('#save-status')).toContainText('Saved');
+  await brands(viewer);
   await viewer.getByLabel('ChatGPT / OpenAI default').selectOption('openai/example');
   await expect(viewer.locator('#save-status')).toContainText('Saved');
   expect(await calls(page, 'set_sidecar_preferences')).toEqual([
@@ -186,7 +188,7 @@ test('setup offers the five open weight families, with no Claude or stale choice
   catalog.push({ id: 'google/future', family: 'google', created: created + 5 * 86400 });
   catalog.push({ id: 'other/unauthorized', family: 'open_weight', created });
   const { viewer } = await openSettings(page, { responses: { get_sidecar_settings: [settings({ models: [...view().models, ...catalog] })] } });
-  await models(viewer);
+  await models(viewer); await brands(viewer);
   await expect(viewer.getByLabel('Open Weight default')).toBeVisible();
   for (const id of approved) {
     await expect(viewer.locator('#open_weight option')).toContainText([id]);
@@ -205,6 +207,7 @@ test('open weight default autosaves independently and legacy excluded defaults a
   await expect(viewer.locator('#general-info')).toContainText('no longer eligible');
   await viewer.getByLabel('General advisor default').selectOption('qwen/qwen-example');
   await expect(viewer.locator('#save-status')).toContainText('Saved');
+  await brands(viewer);
   await viewer.getByLabel('Open Weight default').selectOption('qwen/qwen-example');
   await expect(viewer.locator('#save-status')).toContainText('Saved');
   expect((await calls(page, 'set_sidecar_preferences'))[1]).toEqual({ settings_id: 'settings-1', expected_revision: 2, family_defaults: { open_weight: 'qwen/qwen-example' } });

@@ -6,225 +6,200 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
 <title>OpenRouter Sidecar setup and settings</title>
 <style>
-:root { color-scheme:light; --bg:#faf9fc; --fg:#292532; --muted:#6e667a; --line:#e4deec; --card:#fff; --soft:#f3eef9; --purple:#4e2a84; --accent:#7451a8; --error:#a12626; }
-@media (prefers-color-scheme:dark) { :root:not([data-theme="light"]) { color-scheme:dark; --bg:#19161f; --fg:#f1edf7; --muted:#bcb2ca; --line:#40364d; --card:#231e2b; --soft:#30263e; --purple:#6b46a1; --accent:#bc9de4; --error:#ffb4ab; } }
-:root[data-theme="dark"] { color-scheme:dark; --bg:#19161f; --fg:#f1edf7; --muted:#bcb2ca; --line:#40364d; --card:#231e2b; --soft:#30263e; --purple:#6b46a1; --accent:#bc9de4; --error:#ffb4ab; }
-* { box-sizing:border-box; } [hidden] { display:none!important; } html { scrollbar-gutter:stable; }
-body { margin:0; font:14px/1.6 system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--fg); }
-main { width:100%; max-width:960px; padding:28px; margin:0 auto; display:flow-root; }
-.app-heading,.actions { display:flex; align-items:center; gap:12px; flex-wrap:wrap; } .app-logo { width:38px; height:38px; border-radius:9px; }
-.eyebrow { color:var(--accent); text-transform:uppercase; letter-spacing:.12em; font-size:11px; font-weight:750; margin:0 0 4px; }
-h1 { margin:0; font-size:26px; line-height:1.25; letter-spacing:-.04em; } h2 { margin:0 0 8px; font-size:23px; line-height:1.3; letter-spacing:-.025em; } h3 { margin:0 0 6px; font-size:15px; }
-p { margin:8px 0; overflow-wrap:anywhere; } .subtitle,.panel-intro { color:var(--muted); max-width:680px; margin:12px 0 22px; }
-.connection { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px 16px; border-top:1px solid var(--line); padding:12px 0; } #status { color:var(--muted); font-size:12px; margin:0; }
-button,select { font:inherit; border:1px solid var(--line); border-radius:9px; padding:9px 13px; background:var(--card); color:var(--fg); }
-button { cursor:pointer; font-weight:650; } button:hover:not(:disabled) { background:var(--soft); } button:disabled { opacity:.5; cursor:default; } button.primary { background:var(--purple); border-color:var(--purple); color:#fff; } button.primary:hover:not(:disabled) { background:#603898; }
-.connection button { font-size:12px; padding:6px 10px; }
-nav { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; padding:6px; margin:8px 0 26px; background:var(--soft); border-radius:12px; }
-nav button { border-color:transparent; background:transparent; text-align:left; display:flex; gap:9px; align-items:center; font-size:12px; padding:10px; min-width:0; }
-.step-number { flex-shrink:0; display:grid; place-items:center; width:22px; height:22px; border:1px solid var(--line); border-radius:50%; font-size:11px; color:var(--muted); }
-nav button[aria-current="step"] { background:var(--card); color:var(--accent); box-shadow:0 2px 6px #0000000a; } nav button[aria-current="step"] .step-number { background:var(--purple); color:#fff; border-color:var(--purple); }
-.card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:24px; min-width:0; }
-.hero { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:24px; align-items:center; }
-.mini-map { border:1px solid var(--line); border-radius:13px; background:var(--soft); padding:20px; display:grid; gap:10px; }
-.mini-node { background:var(--card); border:1px solid var(--line); padding:12px 14px; border-radius:9px; } .mini-node strong { display:block; } .mini-node span { color:var(--muted); font-size:12px; } .map-arrow { color:var(--accent); text-align:center; font-size:18px; line-height:1; }
-.badge { display:inline-block; border:1px solid var(--line); color:var(--accent); background:var(--soft); border-radius:99px; padding:3px 9px; font-size:11px; font-weight:650; }
-.grid,.model-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; } .grid { margin-top:18px; }
-.feature,.model-field { border:1px solid var(--line); border-radius:12px; padding:18px; background:var(--card); min-width:0; } .feature p { color:var(--muted); font-size:12px; margin:0; }
-.feature-icon { display:grid; place-items:center; width:32px; height:32px; border-radius:9px; background:var(--soft); color:var(--accent); margin-bottom:12px; font-weight:700; font-size:16px; }
-.model-field.general { grid-column:1/-1; } label { display:block; font-weight:650; margin:0 0 8px; } select { display:block; width:100%; max-width:100%; min-width:0; text-overflow:ellipsis; } :focus-visible { outline:3px solid var(--accent); outline-offset:3px; }
-.help { font-size:12px; color:var(--muted); } .model-field .help { margin-bottom:0; } .note { border:1px solid var(--line); background:var(--soft); padding:12px 16px; border-radius:0 9px 9px 0; color:var(--muted); font-size:12px; margin:20px 0; }
-#error { color:var(--error); } #warning { border:1px solid var(--line); padding-left:12px; color:var(--muted); } #error:empty,#warning:empty,#save-status:empty,#finish-status:empty { display:none; }
-.flow { display:grid; grid-template-columns:minmax(0,1fr) 20px minmax(0,1fr) 20px minmax(0,1fr); margin-top:22px; }
-.flow-node { border:1px solid var(--line); background:var(--card); border-radius:12px; padding:18px; min-width:0; } .flow-node.advisor { background:var(--soft); border-color:var(--accent); } .flow-node p { font-size:12px; color:var(--muted); } .flow-arrow { align-self:center; text-align:center; color:var(--accent); }
-.packet { border-top:1px solid var(--line); padding-top:10px; margin-top:12px; font-size:11px; color:var(--muted); } .packet span { display:block; margin-top:4px; } .flow-label { display:block; color:var(--accent); font-size:11px; text-transform:uppercase; letter-spacing:.07em; margin-bottom:8px; font-weight:700; }
-.return-options { display:flex; gap:6px; flex-wrap:wrap; margin-top:12px; } .return-options span { font-size:11px; padding:4px 7px; border-radius:6px; background:var(--soft); border:1px solid var(--line); }
-.example { border:1px solid var(--line); background:var(--soft); border-radius:12px; padding:18px; margin:18px 0; } .example p { margin:0; } .example .eyebrow { margin-bottom:8px; }
-.bottom-nav { justify-content:space-between; margin-top:24px; padding-top:18px; border-top:1px solid var(--line); } .bottom-nav #next { margin-left:auto; } #save-status,#finish-status { color:var(--accent); font-size:12px; } .save-actions { margin-top:20px; }
-@media (max-width:600px) { main { padding:20px 16px; } h1 { font-size:23px; } .card { padding:20px; } .hero,.grid,.model-grid { grid-template-columns:minmax(0,1fr); } .model-field.general { grid-column:auto; } nav button { justify-content:center; flex-direction:column; gap:5px; padding:8px 2px; font-size:11px; } .flow { grid-template-columns:minmax(0,1fr); } .flow-arrow { padding:6px; transform:rotate(90deg); } }
-/* Compact inline presentation; expanded details scroll inside the app. */
-main { padding:16px; } .app-logo { width:28px; height:28px; } h1 { font-size:20px; } h2 { font-size:20px; }
-.eyebrow,.feature-icon { display:none; }
-[data-panel="1"].card { padding:0; border:0; background:transparent; }
-.model-field { border:0; border-radius:0; background:transparent; }
+/* One accent (Northwestern purple), one warning tone, neutral surfaces. Spacing: 4/8/12/16/24. */
+:root { color-scheme:light; --bg:#fdfcfe; --fg:#261f30; --muted:#625a6e; --line:#e6e0ee; --soft:#f4f0fa; --purple:#4e2a84; --purple-hover:#3f2170; --accent:#5b3696; --warn:#8a5300; --warn-soft:#fff4dc; --error:#a12626; --error-soft:#fdeeee; }
+@media (prefers-color-scheme:dark) { :root:not([data-theme="light"]) { color-scheme:dark; --bg:#1c1922; --fg:#f1edf7; --muted:#b9b0c6; --line:#3a3245; --soft:#2a2335; --purple:#6b46a1; --purple-hover:#7b56b2; --accent:#c9b2ee; --warn:#f1ce82; --warn-soft:#3a2e18; --error:#ffb4ab; --error-soft:#3b2224; } }
+:root[data-theme="dark"] { color-scheme:dark; --bg:#1c1922; --fg:#f1edf7; --muted:#b9b0c6; --line:#3a3245; --soft:#2a2335; --purple:#6b46a1; --purple-hover:#7b56b2; --accent:#c9b2ee; --warn:#f1ce82; --warn-soft:#3a2e18; --error:#ffb4ab; --error-soft:#3b2224; }
+* { box-sizing:border-box; } [hidden] { display:none!important; } html { scrollbar-gutter:stable; scrollbar-color:var(--line) transparent; }
+body { margin:0; font:14px/1.5 system-ui,-apple-system,sans-serif; background:var(--color-background-primary, var(--bg)); color:var(--color-text-primary, var(--fg)); }
+main { max-width:880px; margin:0 auto; padding:16px 20px 20px; display:flow-root; }
+h1 { margin:0; font-size:16px; line-height:1.3; font-weight:650; }
+h2 { margin:0; font-size:20px; line-height:1.3; font-weight:650; letter-spacing:-.01em; }
+h3 { margin:0; font-size:14px; font-weight:650; }
+p { margin:0; overflow-wrap:anywhere; }
+.sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 ::selection { background:var(--soft); color:var(--fg); }
-html { scrollbar-color:var(--accent) var(--bg); }
-select { accent-color:var(--purple); }
-.subtitle { margin:6px 0 12px; font-size:12px; } .connection { padding:8px 0; } nav { margin:6px 0 14px; }
-.card { padding:16px; } .model-grid { gap:8px; } .model-field { padding:10px; } label { font-size:12px; margin-bottom:5px; }
-select { padding:7px 9px; font-size:12px; } .model-details { margin-top:5px; font-size:11px; color:var(--muted); }
-summary { cursor:pointer; } .panel-intro { margin:6px 0 12px; font-size:12px; } .note { margin:12px 0; padding:9px 12px; }
-.bottom-nav { margin-top:12px; padding-top:10px; } .save-actions { margin-top:10px; }
-@media(max-width:600px) {
- main { padding:12px; } h1 { font-size:18px; } .subtitle { display:none; } .card { padding:12px; }
- .connection #status { max-width:210px; font-size:11px; } nav { gap:2px; padding:4px; } nav button { font-size:11px; padding:8px 2px; gap:4px; }
- [data-panel="1"].card { padding:0; border:0; background:transparent; } .model-field { padding:7px 9px; } .catalog-details { padding:7px 9px; border:1px solid var(--line); border-radius:8px; margin-top:8px; }
- .step-number { display:none; } .grid { gap:8px; margin-top:10px; } .feature { padding:12px; } .feature-icon { display:none; }
- .flow { margin-top:10px; } .flow-node { padding:10px 12px; } .flow-node h3 { font-size:13px; margin-bottom:3px; } .flow-node p { margin:4px 0; }
- .packet { display:none; } .flow-arrow { padding:2px; } .flow-label { font-size:11px; margin-bottom:3px; } .return-options { margin-top:6px; }
- .hero { gap:10px; } .mini-map { padding:10px; gap:5px; } .mini-node { padding:8px 10px; } .example { padding:12px; margin:10px 0; }
-}
-.model-price { margin:5px 0 0; font-size:12px; color:var(--accent); line-height:1.5; font-variant-numeric:tabular-nums; }
-.model-field { padding:6px 0; }
-.task-badge,.required-tag { font-size:11px; font-weight:650; color:var(--accent); }
-.task-badge { display:block; } .required-tag { margin-left:5px; }
-nav button.needs-choice { border:1px solid var(--accent); background:var(--card); }
-@media(max-width:600px) { nav button { position:relative; } .task-badge { font-size:11px; line-height:1.2; } nav button.needs-choice { flex-direction:column; } .model-field { padding:5px 0; } }
-/* Stronger hierarchy for compact model selection. */
-.app-heading { background:var(--purple); color:#fff; padding:9px 12px; border-radius:12px; }
-nav { background:transparent; border:1px solid var(--line); }
-nav button[aria-current="step"],nav button.needs-choice { background:var(--purple); border-color:var(--purple); color:#fff; box-shadow:none; }
-nav button[aria-current="step"] .step-number,nav button.needs-choice .step-number { color:#fff; border-color:#ffffff80; background:transparent; }
-nav button.needs-choice .task-badge { color:#fff; }
-.model-field.general { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; }
-.required-tag { color:#fff; background:var(--purple); border-radius:4px; padding:2px 5px; }
-.model-price { display:flex; flex-wrap:wrap; gap:2px 12px; line-height:1.45; margin-top:7px; }
-.price-metric { color:var(--fg); font-size:12px; } .price-metric strong { color:var(--accent); font-size:15px; font-weight:750; }
-.price-context { color:var(--muted); font-size:11px; flex-basis:100%; }
-select { border-color:#867397; min-height:36px; }
-nav button[aria-current="step"]:hover,nav button.needs-choice:hover { background:var(--purple); color:#fff; }
-.model-field:not(.general) { border-bottom:1px solid var(--line); padding-bottom:9px; }
-@media(max-width:600px) { .model-field.general { padding:10px; } .app-heading { padding:8px 10px; } }
 
-/* Accent colors identify tasks; Northwestern purple remains the brand anchor. */
-:root { --teal:#116b61; --teal-soft:#e6f5ef; --coral:#a4432b; --coral-soft:#fff0e8; --amber:#825109; --amber-soft:#fff4dc; }
-:root[data-theme="dark"] { --teal:#9ad9c7; --teal-soft:#17392f; --coral:#ffb599; --coral-soft:#42281f; --amber:#f1ce82; --amber-soft:#3c301b; }
-@media(prefers-color-scheme:dark) { :root:not([data-theme="light"]) { --teal:#9ad9c7; --teal-soft:#17392f; --coral:#ffb599; --coral-soft:#42281f; --amber:#f1ce82; --amber-soft:#3c301b; } }
-nav { grid-template-columns:repeat(5,minmax(0,1fr)); }
-nav button { justify-content:center; flex-direction:column; gap:4px; text-align:center; padding:7px 3px; }
-.nav-icon { width:18px; height:18px; flex-shrink:0; }
-nav button[data-step="1"] { color:var(--amber); } nav button[data-step="2"] { color:var(--teal); } nav button[data-step="3"] { color:var(--coral); }
-nav button[data-step="1"][aria-current="step"],nav button[data-step="1"].needs-choice { background:#825109; border-color:#825109; color:#fff; }
-nav button[data-step="2"][aria-current="step"] { background:#116b61; border-color:#116b61; color:#fff; }
-nav button[data-step="3"][aria-current="step"] { background:#a4432b; border-color:#a4432b; color:#fff; }
-.model-field.general { background:var(--amber-soft); border-color:var(--amber); }
-.required-tag { background:#825109; }
-.price-metric:first-child strong { color:var(--teal); } .price-metric:nth-child(2) strong { color:var(--coral); }
-.model-details { margin-top:4px; } .model-details summary { font-size:11px; } .model-details .price-context { display:block; }
-.mini-map,.flow-node.advisor { background:var(--teal-soft); border-color:var(--teal); }
-.image-workflow { margin:12px 0; padding:14px; border-radius:12px; background:var(--coral-soft); color:var(--coral); }
-.image-stages { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
-.image-stages svg { width:100%; display:block; border-radius:8px; } .image-stages strong { display:block; text-align:center; margin-top:6px; font-size:12px; }
-.image-workflow figcaption { font-size:11px; margin-top:9px; text-align:center; }
-.image-capabilities { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 18px; }
-.image-capabilities h3 { color:var(--coral); font-size:14px; } .image-capabilities p { font-size:12px; margin:4px 0; }
-.mask-explainer { grid-column:1/-1; } .image-example { font-size:12px; margin:10px 0; }
-.image-tip { color:var(--teal); background:var(--teal-soft); border-radius:8px; padding:10px 12px; font-size:12px; }
-@media(max-width:600px) { .nav-icon { width:16px; height:16px; } .image-workflow { padding:10px; } .image-stages { gap:7px; } .image-capabilities { grid-template-columns:1fr; gap:8px; } }
+/* Buttons and fields */
+button,select { font:inherit; color:var(--fg); }
+button { cursor:pointer; font-size:13px; font-weight:600; line-height:1.2; padding:8px 14px; border:1px solid var(--line); border-radius:8px; background:transparent; }
+button:hover:not(:disabled) { background:var(--soft); } button:disabled { opacity:.45; cursor:default; }
+button.primary { background:var(--purple); border-color:var(--purple); color:#fff; } button.primary:hover:not(:disabled) { background:var(--purple-hover); }
+button.quiet { border-color:transparent; color:var(--muted); padding:6px 10px; }
+select { display:block; width:100%; max-width:480px; min-height:36px; padding:7px 10px; font-size:13px; border:1px solid var(--line); border-radius:8px; background:var(--bg); text-overflow:ellipsis; }
+select:hover:not(:disabled) { border-color:var(--muted); } select:disabled { opacity:.6; }
+summary { cursor:pointer; color:var(--muted); font-size:12px; width:fit-content; } summary:hover { color:var(--fg); }
 
-/* Keep optional rows compact when the app is embedded in a narrow chat. */
-@media(max-width:600px) {
- .model-grid { gap:4px; }
- .model-field:not(.general) { padding:2px 0 5px; }
- .model-field label { line-height:1.25; margin-bottom:4px; }
- .model-field.general { padding:8px 10px; }
- .model-price { margin:4px 0 0; }
- .model-details { margin-top:2px; }
- .model-details summary { line-height:1.4; }
- [data-panel="1"] > .help { margin:5px 0; }
-}
-.provider-mark { display:inline-flex; vertical-align:middle; margin-right:7px; } .provider-logo { width:20px; height:20px; object-fit:contain; background:#fff; border-radius:4px; padding:1px; }
+/* Header */
+.app-heading { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.app-logo { width:32px; height:32px; border-radius:8px; flex-shrink:0; }
+.heading-text { flex:1 1 200px; min-width:0; }
+.meta { display:flex; flex-wrap:wrap; gap:0 8px; color:var(--muted); font-size:12px; margin-top:2px; }
+.meta span:empty { display:none; }
+.actions { display:flex; align-items:center; gap:8px; margin-left:auto; }
 
-.product-hero { margin:12px 0; border-radius:12px; overflow:hidden; background:var(--coral-soft); }
-.product-hero > img { width:100%; height:auto; display:block; max-height:310px; object-fit:contain; }
-.product-hero figcaption { padding:10px 12px; font-size:12px; } .product-hero figcaption strong { display:block; color:var(--coral); } .product-hero figcaption span { color:var(--muted); }
-.mask-example summary { font-size:12px; color:var(--coral); margin:10px 0; }
-.image-stages img { width:100%; height:auto; display:block; border-radius:9px; }
-.provider-mark { gap:3px; } #open_weight-logo .provider-logo { width:17px; height:17px; }
-@media(max-width:600px) { .product-hero > img { max-height:190px; } }
-@media(max-width:600px) { .model-field label { display:flex; align-items:center; gap:6px; } .model-field .provider-mark { margin-right:0; } .model-field .provider-logo { width:17px; height:17px; } }
-@media(max-width:600px) { [data-panel="1"] .panel-intro { margin-bottom:9px; } }
+/* Messages */
+#error,#warning { margin-top:12px; padding:8px 12px; border-radius:8px; font-size:13px; }
+#error { background:var(--error-soft); color:var(--error); } #warning { background:var(--warn-soft); color:var(--fg); }
+#error:empty,#warning:empty,#save-status:empty,#finish-status:empty { display:none; }
 
-/* Short, outcome-focused walkthrough. */
-.outcome-list { list-style:none; display:flex; flex-wrap:wrap; gap:8px 20px; padding:0; margin:16px 0; font-size:12px; font-weight:650; }
-.outcome-list li:nth-child(1) { color:var(--teal); } .outcome-list li:nth-child(2) { color:var(--amber); } .outcome-list li:nth-child(3) { color:var(--coral); }
-.workspace-line { color:var(--muted); border-top:1px solid var(--line); padding-top:12px; font-size:12px; }
-.flow-node { padding:16px; } .flow-node p { margin:0; } .flow { margin-top:14px; }
-.skill-handoff { margin:16px 0 10px; font-size:13px; max-width:70ch; } .skill-handoff strong { color:var(--teal); }
-#sharing-details { margin:8px 0; }
-.edit-demo { margin:12px 0; border-radius:12px; overflow:hidden; background:var(--coral-soft); }
-.edit-comparison { position:relative; height:310px; background:#e8dfd5; overflow:hidden; }
-.edit-comparison img { width:100%; height:100%; object-fit:contain; display:block; }
-.edit-layer { position:absolute; inset:0; clip-path:inset(0 calc(100% - var(--reveal)) 0 0); }
+/* Stepper: a segmented progress bar with labels */
+nav { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:4px; margin:16px 0 24px; }
+nav button { border:0; border-top:3px solid var(--line); border-radius:0; padding:8px 2px 2px; background:none; color:var(--muted); font-size:12px; font-weight:500; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+nav button:hover:not(:disabled) { background:none; color:var(--fg); }
+nav button:has(~ [aria-current="step"]) { border-top-color:color-mix(in srgb, var(--purple) 45%, var(--line)); }
+nav button[aria-current="step"] { border-top-color:var(--purple); color:var(--accent); font-weight:650; }
+nav button.needs-choice { border-top-color:var(--warn); color:var(--warn); }
+nav button.needs-choice .step-label:not(#model-task) { display:none; }
+
+/* Panels */
+section { min-width:0; }
+.intro { color:var(--muted); margin:4px 0 16px; max-width:62ch; }
+.fine { color:var(--muted); font-size:12px; }
+.points { list-style:none; padding:0; margin:0 0 16px; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
+.points li { display:flex; gap:12px; align-items:flex-start; } .points p { color:var(--muted); font-size:13px; }
+.icon { flex-shrink:0; display:grid; place-items:center; width:32px; height:32px; border-radius:8px; background:var(--soft); color:var(--accent); }
+.icon svg { width:18px; height:18px; }
+
+/* Models */
+.model-field { min-width:0; } .model-field + .model-field { margin-top:0; }
+.model-field label { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; margin-bottom:6px; }
+.model-field.general label { font-size:14px; }
+.required-tag { font-size:11px; font-weight:600; color:var(--warn); background:var(--warn-soft); border-radius:4px; padding:1px 6px; }
+.provider-mark { display:inline-flex; } .provider-mark:empty { display:none; }
+.provider-logo { width:18px; height:18px; object-fit:contain; background:#fff; border-radius:4px; padding:1px; }
+.model-meta { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 12px; margin-top:6px; }
+.model-meta details[open] { flex-basis:100%; }
+.model-price { color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
+.price-metric strong { color:var(--fg); font-weight:600; } .price-metric + .price-metric::before { content:"· "; }
+.price-context { display:block; color:var(--muted); font-size:12px; }
+.model-details > div { margin-top:4px; }
+.brand-defaults { margin-top:24px; }
+.brand-defaults > summary { font-size:14px; font-weight:600; color:var(--fg); }
+.brand-defaults > summary .fine { font-weight:400; margin-left:6px; }
+.brand-defaults > .fine { margin:4px 0 12px; }
+.brand-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 24px; }
+.model-notes { display:flex; flex-wrap:wrap; gap:4px 16px; align-items:baseline; margin-top:16px; }
+.model-notes details p { margin-top:4px; max-width:62ch; }
+.save-actions { display:flex; align-items:center; gap:12px; margin-top:12px; } #save-status { color:var(--muted); font-size:12px; }
+
+/* Advisor flow */
+.flow { list-style:none; counter-reset:flow; padding:0; margin:0 0 16px; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
+.flow li { counter-increment:flow; display:grid; grid-template-columns:22px minmax(0,1fr); gap:2px 10px; align-content:start; padding-top:12px; border-top:1px solid var(--line); }
+.flow li::before { content:counter(flow); grid-row:span 2; display:grid; place-items:center; width:22px; height:22px; border-radius:50%; background:var(--soft); color:var(--accent); font-size:12px; font-weight:650; }
+.flow h3 { line-height:22px; } .flow p { color:var(--muted); font-size:13px; }
+.skill-handoff { margin-bottom:8px; max-width:62ch; } .skill-handoff strong { color:var(--accent); }
+details p { margin-top:4px; color:var(--muted); font-size:13px; max-width:62ch; }
+
+/* Images */
+#images-section { position:relative; }
+.image-tabs { display:flex; gap:2px; width:fit-content; padding:2px; margin-bottom:16px; border:1px solid var(--line); border-radius:8px; }
+.image-tabs [role="tab"] { min-width:76px; border:0; border-radius:6px; padding:6px 12px; color:var(--muted); }
+.image-tabs [aria-selected="true"],.image-tabs [aria-selected="true"]:hover:not(:disabled) { background:var(--purple); color:#fff; }
+.demo { margin:0 0 12px; width:min(100%, 520px); }
+.demo-frame { position:relative; aspect-ratio:1024/572; border-radius:8px; overflow:hidden; background:var(--soft); }
+.demo-frame img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
+.edit-layer { clip-path:inset(0 calc(100% - var(--reveal)) 0 0); }
 .comparison-divider { position:absolute; left:var(--reveal); top:0; bottom:0; width:2px; background:#fff; pointer-events:none; }
-.comparison-label { position:absolute; top:10px; padding:3px 7px; border-radius:4px; background:#fff; color:#292532; font-size:11px; font-weight:650; }
-.edited-label { left:10px; } .original-label { right:10px; }
-.edit-demo figcaption { padding:10px 14px; font-size:12px; color:var(--coral); }
-.edit-demo figcaption label { margin:0; color:var(--coral); }
-#image-compare { display:block; width:100%; accent-color:var(--coral); cursor:ew-resize; margin:7px 0; }
-.edit-request { padding:10px 14px; border-radius:8px; background:var(--soft); } .edit-request p { margin:0; font-size:13px; }
-@media(max-width:600px) { .edit-comparison { height:auto; aspect-ratio:16/9; } .edit-comparison > img:first-child { height:auto; } .edit-layer { height:100%!important; } .outcome-list { gap:8px 14px; } .flow-node { padding:12px; } }
+.comparison-label { position:absolute; top:8px; padding:2px 6px; border-radius:4px; background:#ffffffe6; color:#261f30; font-size:11px; font-weight:600; }
+.edited-label { left:8px; } .original-label { right:8px; }
+.demo figcaption { margin-top:8px; color:var(--muted); font-size:13px; font-style:italic; }
+.compare { display:flex; align-items:center; gap:12px; margin-top:8px; font-size:12px; color:var(--muted); }
+.compare label { flex-shrink:0; } #image-compare { flex:1; min-width:0; accent-color:var(--purple); cursor:ew-resize; }
 
-.image-tabs { display:flex; gap:4px; width:fit-content; margin:0 0 16px; padding:4px; background:var(--coral-soft); border-radius:9px; }
-.image-tabs [role="tab"] { min-width:92px; border:0; background:transparent; color:var(--coral); font-weight:650; }
-.image-tabs [aria-selected="true"], .image-tabs [aria-selected="true"]:hover:not(:disabled) { background:#a4432b; color:#fff; }
-.image-tabs [role="tab"]:focus-visible { outline:2px solid var(--coral); outline-offset:2px; }
-.creation-demo { margin:12px 0; border-radius:12px; overflow:hidden; background:var(--coral-soft); }
-.creation-demo img { display:block; width:100%; height:310px; object-fit:contain; background:#e8dfd5; }
-.creation-demo figcaption { padding:10px 14px; color:var(--coral); font-size:12px; }
-@media(max-width:600px) { .creation-demo img { height:auto; aspect-ratio:16/9; object-fit:contain; } }
+/* Finish */
+.example { margin:0 0 16px; padding:4px 0 4px 16px; border-left:3px solid var(--purple); font-size:15px; max-width:62ch; }
+#finish-status { margin-top:12px; color:var(--accent); font-size:13px; }
+
+/* Footer: Back on the left, the step's one primary action on the right */
+.bottom-nav { display:flex; align-items:center; gap:8px; margin-top:24px; padding-top:16px; border-top:1px solid var(--line); }
+.bottom-nav .primary { margin-left:auto; }
+/* While signed out, Sign in is the step's primary action. */
+main:has(#login:not([hidden])) #next { background:transparent; border-color:var(--line); color:var(--fg); }
+
+@media (min-width:640px) { #images-section .image-tabs { position:absolute; top:0; right:0; margin:0; } }
+@media (max-width:639px) { .points,.flow,.brand-grid { grid-template-columns:minmax(0,1fr); gap:12px; } .flow li { padding-top:8px; } }
+@media (max-width:480px) {
+  main { padding:12px; } h2 { font-size:18px; } .app-logo { width:28px; height:28px; }
+  nav { margin:12px 0 16px; } nav button { text-align:center; font-size:11px; }
+  #model-task { display:none!important; } nav button.needs-choice .step-label:not(#model-task) { display:inline; }
+  .compare { flex-wrap:wrap; gap:4px; }
+}
 </style>
 </head>
 <body>
 <main aria-labelledby="title">
-<header class="app-heading"><!-- APP_LOGO --><div><h1 id="title">Set up Sidecar</h1></div></header>
-
-<div class="connection"><p id="status" role="status" aria-live="polite">Connecting to Sidecar…</p><div class="actions"><button id="refresh" disabled>Refresh</button><button id="login" hidden disabled>Sign in</button></div></div>
+<header class="app-heading"><!-- APP_LOGO -->
+<div class="heading-text"><h1 id="title">Set up Sidecar</h1><p class="meta"><span id="workspace"></span><span id="status" role="status" aria-live="polite">Connecting to Sidecar…</span></p></div>
+<div class="actions"><button id="refresh" class="quiet" disabled>Refresh</button><button id="login" class="primary" hidden disabled>Sign in</button></div>
+</header>
 <p id="error" role="alert"></p><p id="warning" role="status" aria-live="polite"></p>
-<nav aria-label="Setup steps"><button data-step="0" aria-label="Setup" aria-current="step"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3 3 8l9 5 9-5-9-5Z M3 12l9 5 9-5 M3 16l9 5 9-5"/></svg><span>Setup</span></button><button data-step="1" aria-label="Models"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 7h16 M4 17h16 M8 4v6 M16 14v6"/></svg><span>Models</span><span id="model-task" aria-hidden="true" class="task-badge" hidden>Choose a model</span></button><button data-step="2" aria-label="How it works"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-6 3V6a2 2 0 0 1 2-2Z M7 9h10 M7 13h6"/></svg><span>Advisor</span></button><button data-step="3" aria-label="Images"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 6-6 4 4 3-3 5 5"/></svg><span>Images</span></button><button data-step="4" aria-label="Finish"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m5 12 4 4L19 6"/></svg><span>Finish</span></button></nav>
-<section data-panel="0" class="" aria-labelledby="setup-heading">
-<div class="card hero"><div><h2 id="setup-heading">More perspectives.<br>One main conversation.</h2><p class="panel-intro">Get a second opinion, explore alternatives, or create a visual.</p><span class="badge">You choose what comes back</span></div><div class="mini-map" aria-label="Main chat shares chosen context with an independent advisor"><div class="mini-node"><strong>Your main chat</strong><span>Your task and chosen context</span></div><div class="map-arrow" aria-hidden="true">↓</div><div class="mini-node"><strong>Your advisor</strong><span>A separate conversation</span></div></div></div>
-<ul class="outcome-list" aria-label="What Sidecar helps with"><li>Second opinions</li><li>Your skills</li><li>Create &amp; edit images</li></ul>
-<p id="workspace" class="workspace-line">Waiting for sign-in.</p>
-<p class="help">Setup is free. Model calls use OpenRouter credits.</p>
+<nav aria-label="Setup steps"><button data-step="0" aria-label="Setup" aria-current="step"><span class="step-label">Setup</span></button><button data-step="1" aria-label="Models"><span class="step-label">Models</span><span id="model-task" aria-hidden="true" class="step-label" hidden>Choose a model</span></button><button data-step="2" aria-label="How it works"><span class="step-label">Advisor</span></button><button data-step="3" aria-label="Images"><span class="step-label">Images</span></button><button data-step="4" aria-label="Finish"><span class="step-label">Finish</span></button></nav>
+
+<section data-panel="0" aria-labelledby="setup-heading">
+<h2 id="setup-heading">More perspectives. One main conversation.</h2>
+<p class="intro">Ask another model for a second opinion, explore alternatives or create a visual. You choose what comes back.</p>
+<ul class="points" aria-label="What Sidecar helps with">
+<li><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-6 3V6a2 2 0 0 1 2-2Z M7 9h10 M7 13h6"/></svg></span><div><h3>Second opinions</h3><p>A separate chat with another model.</p></div></li>
+<li><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M12 3 3 8l9 5 9-5-9-5Z M3 12l9 5 9-5 M3 16l9 5 9-5"/></svg></span><div><h3>Your skills</h3><p>Share skill instructions with the advisor.</p></div></li>
+<li><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 6-6 4 4 3-3 5 5"/></svg></span><div><h3>Create &amp; edit images</h3><p>Turn ideas into visuals.</p></div></li>
+</ul>
+<p class="fine">Setup is free. Model calls use OpenRouter credits.</p>
 </section>
-<section data-panel="1" class="card" hidden aria-labelledby="models-heading">
-<h2 id="models-heading">Choose your models</h2><p class="panel-intro">Choose a general advisor. Brand defaults are optional.</p>
-<div class="model-grid">
-<div class="model-field general"><label for="general"><span id="general-logo" class="provider-mark" aria-hidden="true"></span>General advisor default <span id="general-required" class="required-tag" aria-hidden="true">Required</span></label><select id="general" aria-describedby="general-info" required disabled></select><p id="general-info" class="model-price"></p><details id="general-details" class="model-details" hidden><summary>Model details</summary><div id="general-extra"></div></details></div>
-<div class="model-field"><label for="google"><span id="google-logo" class="provider-mark" aria-hidden="true"></span>Gemini / Google default</label><select id="google" aria-describedby="google-info" disabled></select><p id="google-info" class="model-price"></p><details id="google-details" class="model-details" hidden><summary>Model details</summary><div id="google-extra"></div></details></div>
-<div class="model-field"><label for="openai"><span id="openai-logo" class="provider-mark" aria-hidden="true"></span>ChatGPT / OpenAI default</label><select id="openai" aria-describedby="openai-info" disabled></select><p id="openai-info" class="model-price"></p><details id="openai-details" class="model-details" hidden><summary>Model details</summary><div id="openai-extra"></div></details></div>
-<div class="model-field"><label for="x-ai"><span id="x-ai-logo" class="provider-mark" aria-hidden="true"></span>Grok / xAI default</label><select id="x-ai" aria-describedby="x-ai-info" disabled></select><p id="x-ai-info" class="model-price"></p><details id="x-ai-details" class="model-details" hidden><summary>Model details</summary><div id="x-ai-extra"></div></details></div>
-<div class="model-field"><label for="open_weight"><span id="open_weight-logo" class="provider-mark" aria-hidden="true"></span>Open Weight default</label><select id="open_weight" aria-describedby="open_weight-info" disabled></select><p id="open_weight-info" class="model-price"></p><details id="open_weight-details" class="model-details" hidden><summary>Model details</summary><div id="open_weight-extra"></div></details></div>
-</div>
-<p class="help">USD per 1M tokens. Selections save automatically.</p>
-<details class="help"><summary>Eligible models</summary><p>Models added within six months; batch variants excluded. Open Weight: GLM, Qwen, Kimi, MiniMax, DeepSeek.</p></details>
-<div class="actions save-actions"><p id="save-status" role="status" aria-live="polite"></p><button id="retry-save" hidden>Retry save</button></div>
+
+<section data-panel="1" hidden aria-labelledby="models-heading">
+<h2 id="models-heading">Choose your models</h2><p class="intro">Pick the advisor Sidecar uses by default. Choices save automatically.</p>
+<div class="model-field general"><label for="general"><span id="general-logo" class="provider-mark" aria-hidden="true"></span>General advisor<span class="sr-only"> default</span><span id="general-required" class="required-tag" aria-hidden="true">Required</span></label><select id="general" aria-describedby="general-info" required disabled></select><div class="model-meta"><p id="general-info" class="model-price"></p><details id="general-details" class="model-details" hidden><summary>Details</summary><div id="general-extra"></div></details></div></div>
+<details id="brand-defaults" class="brand-defaults"><summary>Brand defaults<span id="brand-count" class="fine">Optional</span></summary>
+<p class="fine">Used when you ask for a brand by name, like “ask Gemini”.</p>
+<div class="brand-grid">
+<div class="model-field"><label for="google"><span id="google-logo" class="provider-mark" aria-hidden="true"></span>Gemini / Google<span class="sr-only"> default</span></label><select id="google" aria-describedby="google-info" disabled></select><div class="model-meta"><p id="google-info" class="model-price"></p><details id="google-details" class="model-details" hidden><summary>Details</summary><div id="google-extra"></div></details></div></div>
+<div class="model-field"><label for="openai"><span id="openai-logo" class="provider-mark" aria-hidden="true"></span>ChatGPT / OpenAI<span class="sr-only"> default</span></label><select id="openai" aria-describedby="openai-info" disabled></select><div class="model-meta"><p id="openai-info" class="model-price"></p><details id="openai-details" class="model-details" hidden><summary>Details</summary><div id="openai-extra"></div></details></div></div>
+<div class="model-field"><label for="x-ai"><span id="x-ai-logo" class="provider-mark" aria-hidden="true"></span>Grok / xAI<span class="sr-only"> default</span></label><select id="x-ai" aria-describedby="x-ai-info" disabled></select><div class="model-meta"><p id="x-ai-info" class="model-price"></p><details id="x-ai-details" class="model-details" hidden><summary>Details</summary><div id="x-ai-extra"></div></details></div></div>
+<div class="model-field"><label for="open_weight"><span id="open_weight-logo" class="provider-mark" aria-hidden="true"></span>Open Weight<span class="sr-only"> default</span></label><select id="open_weight" aria-describedby="open_weight-info" disabled></select><div class="model-meta"><p id="open_weight-info" class="model-price"></p><details id="open_weight-details" class="model-details" hidden><summary>Details</summary><div id="open_weight-extra"></div></details></div></div>
+</div></details>
+<div class="model-notes"><p class="fine">Prices in USD per 1M tokens.</p><details class="fine"><summary>Which models are listed?</summary><p>Models released in the last six months, without batch variants. Open Weight covers GLM, Qwen, Kimi, MiniMax and DeepSeek.</p></details></div>
+<div class="save-actions"><p id="save-status" role="status" aria-live="polite"></p><button id="retry-save" hidden>Retry save</button></div>
 </section>
-<section data-panel="2" hidden class="" aria-labelledby="how-heading">
-<h2 id="how-heading">Ask. Explore. Bring back.</h2><p class="panel-intro">A second opinion without filling your main chat.</p>
-<div class="flow" aria-label="Main chat sends selected context and relevant shareable skill instructions to a chosen advisor, then you review the result"><article class="flow-node"><h3>Your question</h3><p>Send the task and selected context.</p></article><div class="flow-arrow" aria-hidden="true">→</div><article class="flow-node advisor"><h3>Your advisor</h3><p>A separate chat with its own history.</p></article><div class="flow-arrow" aria-hidden="true">→</div><article class="flow-node"><h3>Back to main chat</h3><p>Share only the useful parts.</p><div class="return-options"><span>Selection</span><span>Full reply</span><span>Summary</span></div></article></div>
-<p class="skill-handoff"><strong>Your skills come along.</strong> Your main chat can pass relevant, shareable skill instructions to the advisor.</p>
-<details id="sharing-details" class="help"><summary>What gets shared?</summary><p>Only the context and skill instructions you choose. Your main chat's history, plugins and private files are not automatically sent.</p></details>
-<p class="help">Read here, bring back a reply, or Save as file.</p>
+
+<section data-panel="2" hidden aria-labelledby="how-heading">
+<h2 id="how-heading">Ask. Explore. Bring back.</h2><p class="intro">A second opinion without filling your main chat.</p>
+<ol class="flow" aria-label="Your main chat sends chosen context and skill instructions to an advisor, then you bring back what helps">
+<li><h3>Ask</h3><p>Your main chat sends the task and the context you choose.</p></li>
+<li><h3>Explore</h3><p>The advisor works in a separate chat with its own history.</p></li>
+<li><h3>Bring back</h3><p>A selection, the full reply or a summary. Or Save it as a file.</p></li>
+</ol>
+<p class="skill-handoff"><strong>Your skills come along.</strong> Your main chat can pass shareable skill instructions to the advisor.</p>
+<details id="sharing-details"><summary>What gets shared?</summary><p>Only the context and skill instructions you choose. Your main chat's history, plugins and private files are not automatically sent.</p></details>
 </section>
-<section data-panel="3" hidden class="" aria-label="Create and edit images">
+
+<section id="images-section" data-panel="3" hidden aria-label="Create and edit images">
 <div class="image-tabs" role="tablist" aria-label="Image capabilities">
 <button id="image-create-tab" role="tab" aria-selected="true" aria-controls="image-create-panel" tabindex="0">Create</button>
 <button id="image-edit-tab" role="tab" aria-selected="false" aria-controls="image-edit-panel" tabindex="-1">Edit</button>
 </div>
 <div id="image-create-panel" role="tabpanel" aria-labelledby="image-create-tab">
-<h2 id="images-heading">Turn an idea into an image.</h2><p class="panel-intro">Visualize product concepts, presentations and possibilities.</p>
-<figure class="creation-demo"><img src="PRODUCT_ASSET:product-original" alt="AI-generated product concept: a modular desk light with a teal head, aluminum stem and ivory base" width="1024" height="572"><figcaption>A product idea, made visible.</figcaption></figure>
-<div class="edit-request"><p>“Create a premium modular desk light with a teal head and an ivory base.”</p></div>
+<h2 id="images-heading">Turn an idea into an image.</h2><p class="intro">Visualize product concepts, presentations and possibilities.</p>
+<figure class="demo creation-demo"><div class="demo-frame"><img src="PRODUCT_ASSET:product-original" alt="AI-generated product concept: a modular desk light with a teal head, aluminum stem and ivory base" width="1024" height="572"></div><figcaption>“Create a premium modular desk light with a teal head and an ivory base.”</figcaption></figure>
 </div>
 <div id="image-edit-panel" role="tabpanel" aria-labelledby="image-edit-tab" hidden>
-<h2 id="image-edit-heading">Change one part. Keep the rest.</h2><p class="panel-intro">Focused edits preserve the surrounding image.</p>
-<figure class="edit-demo"><div class="edit-comparison" style="--reveal:50%"><img src="PRODUCT_ASSET:product-original" alt="Original product concept with a teal lamp head" width="1024" height="572"><img class="edit-layer" src="PRODUCT_ASSET:product-edited" alt="Edited product concept with a coral lamp head and the surrounding image preserved" width="1024" height="572"><span class="comparison-label edited-label">Edited</span><span class="comparison-label original-label">Original</span><span class="comparison-divider" aria-hidden="true"></span></div>
-<figcaption><label for="image-compare">Drag to compare</label><input id="image-compare" type="range" min="0" max="100" value="50" aria-label="Compare original and edited image"><span>New color. Same shape, lighting and background.</span></figcaption></figure>
-<div class="edit-request"><p>“Change the lamp head to coral. Keep everything else.”</p></div>
-
+<h2 id="image-edit-heading">Change one part. Keep the rest.</h2><p class="intro">Focused edits leave the rest of the image as it was.</p>
+<figure class="demo edit-demo"><div class="demo-frame edit-comparison" style="--reveal:50%"><img src="PRODUCT_ASSET:product-original" alt="Original product concept with a teal lamp head" width="1024" height="572"><img class="edit-layer" src="PRODUCT_ASSET:product-edited" alt="Edited product concept with a coral lamp head and the surrounding image preserved" width="1024" height="572"><span class="comparison-label edited-label">Edited</span><span class="comparison-label original-label">Original</span><span class="comparison-divider" aria-hidden="true"></span></div>
+<div class="compare"><label for="image-compare">Drag to compare</label><input id="image-compare" type="range" min="0" max="100" value="50" aria-label="Compare original and edited image"></div>
+<figcaption>“Change the lamp head to coral. Keep everything else.”</figcaption></figure>
 </div>
-<p class="help">AI-generated MPD example. These saved previews are free to view.</p>
+<p class="fine">AI-generated MPD examples. Free to view.</p>
 </section>
-<section data-panel="4" hidden class="card" aria-labelledby="finish-heading">
-<h2 id="finish-heading">You're ready for another perspective.</h2><p class="panel-intro">Start in your main chat with a request like this:</p>
-<div class="example"><p>“Ask Gemini to critique this product idea using our product-review skill.”</p></div>
-<p>Read the reply. Bring back what helps.</p>
-<p class="help">Defaults save automatically. Change them anytime in Settings.</p>
-<button id="finish" class="primary" disabled>Finish setup</button><p id="finish-status" role="status" aria-live="polite"></p>
+
+<section data-panel="4" hidden aria-labelledby="finish-heading">
+<h2 id="finish-heading">You're ready for another perspective.</h2><p class="intro">Try a request like this in your main chat:</p>
+<blockquote class="example">“Ask Gemini to critique this product idea using our product-review skill.”</blockquote>
+<p class="fine">Defaults save automatically. Change them anytime in Settings.</p>
+<p id="finish-status" role="status" aria-live="polite"></p>
 </section>
-<div class="actions bottom-nav"><button id="back" hidden>Back</button><button id="next">Next</button></div>
+
+<div class="bottom-nav"><button id="back" hidden>Back</button><button id="next" class="primary">Next</button><button id="finish" class="primary" hidden disabled>Finish setup</button></div>
 </main>
 <!-- BUNDLED_SCRIPT -->
 </body>

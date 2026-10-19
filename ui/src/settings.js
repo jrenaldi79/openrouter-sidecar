@@ -57,7 +57,7 @@ function block(message) {
     el(`${key}-details`).hidden = true; el(`${key}-details`).open = false;
   }
   el('workspace').textContent = 'Sign-in or workspace access needs confirmation.';
-  el('save-status').textContent = ''; el('finish-status').textContent = '';
+  el('save-status').textContent = ''; el('finish-status').textContent = ''; el('status').textContent = '';
   el('error').textContent = message; el('login').hidden = false; update();
 }
 function theme(context) {
@@ -69,7 +69,7 @@ function navigate(next) {
   document.querySelectorAll('[data-step]').forEach(button => {
     if (Number(button.dataset.step) === step) button.setAttribute('aria-current', 'step'); else button.removeAttribute('aria-current');
   });
-  el('back').hidden = step === 0; el('next').hidden = step === lastStep;
+  el('back').hidden = step === 0; el('next').hidden = step === lastStep; el('finish').hidden = step !== lastStep;
   update();
 }
 function update() {
@@ -84,6 +84,8 @@ function update() {
   el('model-task').textContent = needsModel ? 'Choose a model' : 'Models';
   el('model-task').hidden = !needsModel;
   el('general-required').hidden = !needsModel;
+  const brands = keys.filter(key => key !== 'general' && chosen(key)).length;
+  el('brand-count').textContent = brands ? `${brands} set` : 'Optional';
   el('next').disabled = step === 1 && (!ready || !clean() || needsModel);
   el('finish').disabled = !ready || !clean() || current.onboarding_completed === true
     || needsModel || keys.some(key => chosen(key) && !current.models.some(model => model.id === chosen(key)));
@@ -111,12 +113,6 @@ function options(select, models, selected) {
 function showModelInfo(key, model, unavailable = '') {
   const mark = el(`${key}-logo`);
   providerLogo(mark, model?.id || (key === 'general' || key === 'open_weight' ? '' : `${key}/`));
-  if (key === 'open_weight' && !model) {
-    mark.hidden = false;
-    for (const vendor of ['z-ai', 'qwen', 'moonshotai', 'minimax', 'deepseek']) {
-      const item = document.createElement('span'); providerLogo(item, `${vendor}/`); mark.append(item);
-    }
-  }
   const node = el(`${key}-info`);
   node.hidden = !chosen(key);
   node.replaceChildren();
@@ -148,7 +144,8 @@ function render() {
     showModelInfo(key, model, selected && !model ? 'Saved default is no longer eligible. Choose a current model.' : '');
   }
   el('workspace').textContent = `Signed in · Workspace: ${string(current.workspace_id) || 'configured workspace'}${string(current.cohort) ? ` · Cohort: ${current.cohort}` : ''}`;
-  el('status').textContent = 'Defaults ready · Free setup';
+  el('status').textContent = '';
+  if (keys.some(key => key !== 'general' && chosen(key) && !current.models.some(model => model.id === chosen(key)))) el('brand-defaults').open = true;
   el('login').hidden = true;
   if (current.onboarding_completed) el('finish-status').textContent = 'Onboarding completed. You can edit settings any time.';
   if (!el('warning').textContent && keys.some(key => chosen(key) && !current.models.some(model => model.id === chosen(key)))) {
@@ -159,9 +156,9 @@ function render() {
 }
 function accept(data) {
   if (data?.signed_in === false) {
-    block('Sign in to choose defaults, then use Refresh.'); loaded = true;
+    block(''); loaded = true;
     el('workspace').textContent = `Signed out · Workspace: ${string(data.workspace_id) || 'configured workspace'}${string(data.cohort) ? ` · Cohort: ${data.cohort}` : ''}`;
-    el('status').textContent = 'Your configured workspace is shown. Sign in, then choose Refresh.';
+    el('warning').textContent = 'Sign in to choose your models, then choose Refresh.';
     return;
   }
   if (!data || typeof data.settings_id !== 'string' || !data.settings_id || !Number.isInteger(data.revision) || !Array.isArray(data.models)) {
@@ -283,7 +280,7 @@ window.addEventListener('pagehide', dispose, { once: true });
 app.connect().then(() => {
   if (disposed) return;
   connected = true; theme(app.getHostContext()); update(); queueSize();
-  if (!canTools()) { el('error').textContent = 'This host does not support Sidecar app tools. Open Sidecar settings in a compatible host.'; return; }
+  if (!canTools()) { el('status').textContent = ''; el('error').textContent = 'This host does not support Sidecar app tools. Open Sidecar settings in a compatible host.'; return; }
   // Initial tool results arrive separately after connect; allow their full view.
   const timer = setTimeout(() => { timers.delete(timer); if (!disposed && !loaded && !loading) void load(); }, 25);
   timers.add(timer);

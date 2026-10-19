@@ -216,6 +216,7 @@ Filenames grouped by folder; each heading links that folder's note.
 - [ui/tests/settings-autosave.spec.js](../ui/tests/settings-autosave.spec.js)
 - [ui/tests/settings-image-tabs.spec.js](../ui/tests/settings-image-tabs.spec.js)
 - [ui/tests/settings-images.spec.js](../ui/tests/settings-images.spec.js)
+- [ui/tests/settings-layout.spec.js](../ui/tests/settings-layout.spec.js)
 - [ui/tests/settings-outcomes.spec.js](../ui/tests/settings-outcomes.spec.js)
 - [ui/tests/settings-resize.spec.js](../ui/tests/settings-resize.spec.js)
 - [ui/tests/settings-screenshots.spec.js](../ui/tests/settings-screenshots.spec.js)

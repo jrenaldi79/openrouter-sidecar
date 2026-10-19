@@ -21,6 +21,7 @@ test('Grok choices share general eligibility and autosave to their own default',
   await expect(viewer.locator('#general')).toContainText('Grok Example');
   await expect(viewer.locator('#x-ai')).not.toContainText('grok-old');
   await expect(viewer.locator('#x-ai')).not.toContainText('grok:batch');
+  await viewer.locator('#brand-defaults > summary').click();
   await viewer.getByLabel('Grok / xAI default').selectOption('x-ai/grok-example');
   await expect(viewer.locator('#save-status')).toContainText('Saved');
   expect(await calls(page, 'set_sidecar_preferences')).toEqual([{ settings_id: 'settings-1', expected_revision: 1, family_defaults: { 'x-ai': 'x-ai/grok-example' } }]);
