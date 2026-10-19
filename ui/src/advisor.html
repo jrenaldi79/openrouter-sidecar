@@ -58,7 +58,8 @@
 
     /* Answer toolbar: one share action and a small More menu. */
     .toolbar { display: flex; align-items: center; gap: 2px; margin-top: -6px; }
-    #prepare-full { display: inline-flex; gap: 6px; align-items: center; }
+    /* The call to action: share the answer with Claude. */
+    #prepare-full { display: inline-flex; gap: 6px; align-items: center; margin-right: 6px; padding: 8px 14px; font-size: 14px; }
     .more { position: relative; }
     .more > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
     .more > summary::-webkit-details-marker { display: none; }
@@ -74,10 +75,13 @@
     label { font-weight: 600; font-size: 13px; }
     textarea { display: block; width: 100%; min-height: 140px; resize: vertical; padding: 10px; border: 1px solid var(--color-border-primary, var(--line)); border-radius: 8px; background: var(--color-background-primary, var(--bg)); color: var(--color-text-primary, var(--fg)); font: inherit; }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    #send { background: var(--teal); border-color: var(--teal); color: var(--bg); }
+    #send { background: var(--purple); border-color: var(--purple); color: #fff; }
+    button.secondary { background: transparent; border-color: var(--purple); color: var(--purple); }
+    @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) button.secondary { color: #c9b8e8; } }
+    :root[data-theme="dark"] button.secondary { color: #c9b8e8; }
     #summary-text:empty { display: none; }
 
-    /* Follow-up composer: the primary action. */
+    /* Follow-up composer. */
     .composer { border: 1px solid var(--color-border-primary, var(--line)); border-radius: 12px; padding: 8px 8px 8px 12px; background: var(--color-background-primary, var(--bg)); }
     .composer:focus-within { border-color: var(--focus); box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus) 35%, transparent); }
     #follow-up { border: 0; padding: 4px 0; min-height: 52px; max-height: 160px; resize: vertical; background: transparent; outline: none; }
@@ -127,7 +131,7 @@
       <p id="answer-state" hidden></p>
     </section>
     <div class="toolbar" role="group" aria-label="Answer actions">
-      <button class="quiet-button" id="prepare-full" disabled><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M10 5 4 11l6 6M4 11h10a6 6 0 0 1 6 6v2"/></svg><span id="share-label">Share with Claude</span></button>
+      <button class="primary" id="prepare-full" disabled><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M10 5 4 11l6 6M4 11h10a6 6 0 0 1 6 6v2"/></svg><span id="share-label">Share with Claude</span></button>
       <details class="more" id="more">
         <summary>More</summary>
         <div class="more-menu" id="more-menu">
@@ -161,7 +165,7 @@
       <div class="composer">
         <label for="follow-up" class="visually-hidden">Message advisor</label>
         <textarea id="follow-up" placeholder="Ask the advisor a follow-up…" aria-describedby="follow-up-help" maxlength="50000" disabled></textarea>
-        <div class="composer-row"><p class="help" id="follow-up-help">Same chat and model. Uses OpenRouter credits.</p><button class="primary" id="follow-up-send" disabled>Send follow-up</button></div>
+        <div class="composer-row"><p class="help" id="follow-up-help">Same chat and model. Uses OpenRouter credits.</p><button class="secondary" id="follow-up-send" disabled>Send follow-up</button></div>
       </div>
       <p id="follow-up-status" role="status" aria-live="polite"></p>
     </section>

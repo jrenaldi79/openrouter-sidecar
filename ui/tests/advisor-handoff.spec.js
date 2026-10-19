@@ -116,3 +116,17 @@ test('the viewer has no settings button and never posts anything by itself', asy
   await page.waitForTimeout(1200);
   await assertNoHandoff(page);
 });
+
+test('Share with Claude is the filled call to action; follow-up send is secondary', async ({ page }) => {
+  const { viewer } = await openAdvisor(page, { responses: completed });
+  await expect(viewer.locator('#answer')).toContainText('Last paragraph.');
+  const purple = 'rgb(78, 42, 132)';
+  const style = (selector, prop) => viewer.locator(selector).evaluate((el, p) => getComputedStyle(el)[p], prop);
+  const share = viewer.getByRole('button', { name: 'Share with Claude', exact: true });
+  await expect(share).toBeEnabled();
+  expect(await style('#prepare-full', 'backgroundColor')).toBe(purple);
+  expect(await style('#prepare-full', 'color')).toBe('rgb(255, 255, 255)');
+  expect(await style('#follow-up-send', 'backgroundColor')).not.toBe(purple);
+  await share.click();
+  expect(await style('#send', 'backgroundColor')).toBe(purple);
+});
