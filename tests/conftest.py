@@ -87,5 +87,8 @@ def db_target(request, tmp_path):
     yield url
     import psycopg
 
+    from openrouter_image_mcp import storage
+
+    storage.close_pool(url)  # each test's URL gets its own pool; don't let them pile up
     with psycopg.connect(base, autocommit=True) as db:
         db.execute(f"DROP SCHEMA {schema} CASCADE")

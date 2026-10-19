@@ -7,10 +7,14 @@ translates the few SQLite-specific pieces they rely on:
   advisory lock, so mutating transactions keep the same serialized semantics.
 - ``rowid`` insertion order becomes a real ``BIGSERIAL`` column named ``rowid``.
 - ``REAL`` maps to ``DOUBLE PRECISION``; Python booleans bind as integers.
+
+Postgres sessions come from one pool per URL, so a store call costs a checkout,
+not a fresh connect and TLS handshake.
 """
 
 from __future__ import annotations
 
+import atexit
 import re
 import sqlite3
 import threading
@@ -19,6 +23,7 @@ from pathlib import Path
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
 
 DB_ERRORS = (sqlite3.Error, psycopg.Error)
 _WRITE_LOCK = 0x5ADEC0  # one global writer lock, matching SQLite semantics
@@ -26,6 +31,11 @@ _CREATE = re.compile(r"^\s*CREATE TABLE IF NOT EXISTS\s+(\w+)\s*\(", re.IGNORECA
 _REAL = re.compile(r"\bREAL\b")
 _schema_done: set[tuple[str, str]] = set()
 _schema_lock = threading.Lock()
+# One hosted replica: the event loop plus worker threads (partial saves, readiness).
+# Railway Postgres allows 100 connections.
+POOL_MAX = 20
+_pools: dict[str, ConnectionPool] = {}
+_pools_lock = threading.Lock()
 
 
 def is_postgres(target) -> bool:
@@ -49,10 +59,37 @@ def _row_without_rowid(cursor):
     return row
 
 
+def _pool(url: str) -> ConnectionPool:
+    with _pools_lock:
+        if url not in _pools:
+            # check= pings a pooled session before reuse, so a database restart
+            # costs a reconnect rather than a failed call.
+            _pools[url] = ConnectionPool(
+                url, min_size=1, max_size=POOL_MAX, max_idle=300, timeout=10,
+                kwargs={"row_factory": _row_without_rowid},
+                check=ConnectionPool.check_connection, name="sidecar-db", open=True)
+        return _pools[url]
+
+
+def close_pool(target) -> None:
+    """Close the pool for one Postgres URL (shutdown, tests); a no-op otherwise."""
+    with _pools_lock:
+        pool = _pools.pop(target, None) if isinstance(target, str) else None
+    if pool is not None:
+        pool.close()
+
+
+@atexit.register
+def _close_pools() -> None:
+    for url in list(_pools):
+        close_pool(url)
+
+
 class _Postgres:
     def __init__(self, url: str):
         self.url = url
-        self.connection = psycopg.connect(url, row_factory=_row_without_rowid)
+        self.pool = _pool(url)
+        self.connection = self.pool.getconn()
 
     def execute(self, sql: str, params: tuple = ()):
         text = sql.strip()
@@ -96,7 +133,7 @@ class _Postgres:
         self.connection.rollback()
 
     def close(self):
-        self.connection.close()
+        self.pool.putconn(self.connection)  # back to the pool; a broken session is discarded
 
 
 class _Sqlite:

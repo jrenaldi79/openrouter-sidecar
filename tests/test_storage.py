@@ -81,3 +81,58 @@ def test_database_errors_tuple_covers_both_backends():
 
     assert issubclass(sqlite3.OperationalError, storage.DB_ERRORS)
     assert issubclass(psycopg.OperationalError, storage.DB_ERRORS)
+
+
+def _postgres_only(target):
+    if not storage.is_postgres(target):
+        pytest.skip("connection pooling is Postgres-only; SQLite opens a local file")
+
+
+def _backend(db):
+    return db.execute("SELECT pg_backend_pid() AS pid").fetchone()["pid"]
+
+
+def _backends(target, calls):
+    pids = []
+    for _ in range(calls):
+        with storage.connect(target) as db:
+            pids.append(_backend(db))
+    return pids
+
+
+def test_postgres_reuses_sessions_across_calls(db_target):
+    _postgres_only(db_target)
+    # Sequential calls share a couple of pooled sessions, not a fresh connect + TLS each.
+    assert len(set(_backends(db_target, 20))) <= 2
+
+
+def test_postgres_nested_calls_get_their_own_sessions(db_target):
+    _postgres_only(db_target)
+    with storage.connect(db_target) as outer, storage.connect(db_target) as inner:
+        assert _backend(outer) != _backend(inner)
+
+
+def test_postgres_reused_session_starts_clean_after_an_error(db_target):
+    _postgres_only(db_target)
+    _seed(db_target)
+    with pytest.raises(RuntimeError), storage.connect(db_target) as db:
+        db.execute("BEGIN IMMEDIATE")
+        db.execute("UPDATE things SET owner='b'")
+        failed = _backend(db)
+        raise RuntimeError("abort")
+    reused = False
+    for _ in range(4):  # the pool rotates its idle sessions; the failed one comes round
+        with storage.connect(db_target) as db:
+            reused = reused or _backend(db) == failed
+            assert db.execute("SELECT COUNT(*) AS n FROM things WHERE owner='a'").fetchone()["n"] == 3
+            # The aborted transaction's write lock went with its rollback.
+            assert db.execute("SELECT pg_try_advisory_xact_lock(?) AS ok",
+                              (storage._WRITE_LOCK,)).fetchone()["ok"]
+    assert reused
+
+
+def test_closing_a_pool_releases_its_sessions(db_target):
+    _postgres_only(db_target)
+    before = set(_backends(db_target, 4))
+    storage.close_pool(db_target)
+    assert not before & set(_backends(db_target, 4))
