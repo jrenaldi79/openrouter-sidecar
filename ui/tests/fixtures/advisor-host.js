@@ -29,6 +29,17 @@ export async function openAdvisor(page, {
     window.toolCounts = {};
     window.activeFetches = 0;
     window.maxActiveFetches = 0;
+    window.released = new Set();
+    window.holds = [];
+    window.release = name => {
+      window.released.add(name);
+      const waiting = window.holds;
+      window.holds = [];
+      for (const [held, send] of waiting) {
+        if (held === name) send();
+        else window.holds.push([held, send]);
+      }
+    };
     const iframe = document.querySelector('iframe');
     const reply = (id, value) => iframe.contentWindow.postMessage({ jsonrpc: '2.0', id, ...value }, '*');
     window.notify = (method, params) => iframe.contentWindow.postMessage({ jsonrpc: '2.0', method, params }, '*');
@@ -55,10 +66,13 @@ export async function openAdvisor(page, {
           window.activeFetches++;
           window.maxActiveFetches = Math.max(window.maxActiveFetches, window.activeFetches);
         }
-        setTimeout(() => {
+        // A response with `hold: name` waits until the test calls window.release(name).
+        const { hold, ...value } = next;
+        const send = () => {
           if (message.params.name === 'get_advisor_result') window.activeFetches--;
-          reply(message.id, next.rpcError ? { error: next.rpcError } : { result: next });
-        }, delay);
+          reply(message.id, value.rpcError ? { error: value.rpcError } : { result: value });
+        };
+        setTimeout(() => (hold && !window.released.has(hold) ? window.holds.push([hold, send]) : send()), delay);
       }
     });
     iframe.srcdoc = html;

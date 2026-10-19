@@ -33,7 +33,8 @@ test('long answer scrolls internally without growing with its content', async ({
     expect(metrics.full).toBeGreaterThan(metrics.height);
     expect(metrics.overflow).toBe('auto');
     await viewer.locator('#answer').focus();
-    await viewer.locator('#answer').press('Control+End');
+    // End scrolls a focused pane on every platform; Control+End is a no-op on macOS.
+    await viewer.locator('#answer').press('End');
     expect(await viewer.locator('#answer').evaluate(el => el.scrollTop)).toBeGreaterThan(0);
     await page.locator('iframe').screenshot({ path: `../.venv/codex-install/advisor-follow-up-${width}.png` });
   }

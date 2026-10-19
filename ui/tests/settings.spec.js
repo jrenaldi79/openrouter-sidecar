@@ -153,7 +153,10 @@ test('teardown disables future mutations and ignores late settings', async ({ pa
 test('viewer settings shortcut requests settings without sending answer context', async ({ page }) => {
   const { viewer } = await openAdvisor(page, { responses: { 'get_advisor_result:result-1': [result()] } });
   await viewer.getByRole('button', { name: 'Settings', exact: true }).click();
-  const requests = await page.evaluate(() => window.hostMessages.filter(message => message.method === 'ui/message'));
+  // The request reaches the host asynchronously (postMessage): wait for it.
+  const sentMessages = () => page.evaluate(() => window.hostMessages.filter(message => message.method === 'ui/message'));
+  await expect.poll(async () => (await sentMessages()).length).toBe(1);
+  const requests = await sentMessages();
   expect(requests[0].params.content).toEqual([{ type: 'text', text: 'Open Sidecar settings using open_sidecar_settings with mode settings.' }]);
   expect(await page.evaluate(() => window.hostMessages.filter(message => message.method === 'ui/update-model-context'))).toEqual([]);
 });

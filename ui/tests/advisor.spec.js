@@ -137,11 +137,13 @@ test('hostile provider fields remain literal text and make no remote requests', 
 
 test('denied polling clears partial result and preview and stops further fetches', async ({ page }) => {
   const { viewer } = await openAdvisor(page, { responses: { 'get_advisor_result:result-1': [result({ status: 'running', answer: 'Private partial' }),
-    { isError: true, content: [{ type: 'text', text: 'Access denied: sign-in changed.' }] }],
+    { isError: true, content: [{ type: 'text', text: 'Access denied: sign-in changed.' }], hold: 'deny' }],
   } });
   await expect(viewer.locator('#answer')).toHaveText('Private partial');
   await viewer.getByRole('button', { name: 'Review full answer' }).click();
   await expect(viewer.getByLabel('Message preview')).toHaveValue('Private partial');
+  // Deliver the denial only once the preview holds the partial (no race with the 1 s poll).
+  await page.evaluate(() => window.release('deny'));
   await expect(viewer.locator('#error')).toContainText('Access denied');
   await expect(viewer.locator('#answer')).toHaveText('');
   await expect(viewer.getByLabel('Message preview')).toHaveValue('');

@@ -69,5 +69,4 @@ jobs:
       - run: npm run build
       - run: git diff --exit-code -- ../src/openrouter_image_mcp/ui
       - run: npx playwright install --with-deps chromium
-      # Quarantined: already failing before M4 (advisor viewer scroll); fix tracked separately.
-      - run: npm test -- --grep-invert "long answer scrolls internally"
+      - run: npm test
