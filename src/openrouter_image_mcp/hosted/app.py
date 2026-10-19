@@ -134,7 +134,7 @@ def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transpor
     workspaces = build_workspaces(target, links, profile_claim=settings.profile_claim,
                                   admit=admission.admit, transport=transport,
                                   sandbox_enabled=settings.sandbox_enabled)
-    health = Health(target, gate, maintenance=settings.maintenance)
+    health = Health(target, gate, maintenance=settings.maintenance, asset_dir=settings.asset_dir)
 
     images: dict = {}
 

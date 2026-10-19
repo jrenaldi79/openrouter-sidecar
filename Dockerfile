@@ -15,8 +15,12 @@ FROM python:3.12-slim
 RUN useradd --system --uid 10001 --home-dir /app sidecar
 WORKDIR /app
 COPY --from=build --chown=sidecar:sidecar /app /app
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 HOST=0.0.0.0 PORT=8000
-USER sidecar
+# No USER: the entrypoint starts as root only to own the mounted asset volume,
+# then drops to the sidecar user (uid 10001) before the server starts.
+ENTRYPOINT ["docker-entrypoint.sh"]
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD python -c "import os,urllib.request;urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"PORT\",\"8000\")}/health',timeout=4)"

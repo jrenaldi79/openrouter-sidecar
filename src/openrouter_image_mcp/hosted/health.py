@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+from pathlib import Path
 
 import psycopg
 from starlette.requests import Request
@@ -23,8 +25,10 @@ MAINTENANCE = "The Sidecar is under maintenance; retry in a few minutes."
 
 
 class Health:
-    def __init__(self, target, gate: Gate, *, maintenance: bool = False):
+    def __init__(self, target, gate: Gate, *, maintenance: bool = False,
+                 asset_dir: str | None = None):
         self.target, self.gate, self.maintenance = target, gate, maintenance
+        self.asset_dir = asset_dir
         self._owner: psycopg.Connection | None = None
 
     async def start(self) -> None:
@@ -51,9 +55,21 @@ class Health:
         except storage.DB_ERRORS:
             return False
 
+    def _assets_ok(self) -> bool:
+        """A mounted volume can be root-owned; uploads would fail with a 500 on every call."""
+        if not self.asset_dir:
+            return True
+        try:
+            Path(self.asset_dir).mkdir(parents=True, exist_ok=True)
+        except OSError:
+            return False
+        return os.access(self.asset_dir, os.W_OK | os.X_OK)
+
     async def ready(self) -> tuple[bool, str]:
         if not await asyncio.to_thread(self._database_ok):
             return False, "database unavailable"
+        if not await asyncio.to_thread(self._assets_ok):
+            return False, "asset storage is not writable"
         if self.gate.reason:
             return False, self.gate.reason
         return True, "ready"
