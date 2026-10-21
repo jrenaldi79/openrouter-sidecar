@@ -844,6 +844,7 @@ dependencies = [
     { name = "psycopg-pool" },
     { name = "pyjwt", extra = ["crypto"] },
     { name = "slack-sdk" },
+    { name = "tzdata" },
     { name = "uvicorn" },
 ]
 
@@ -867,6 +868,7 @@ requires-dist = [
     { name = "psycopg-pool", specifier = ">=3.2" },
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.15.1" },
     { name = "slack-sdk", specifier = "==3.45.0" },
+    { name = "tzdata", specifier = ">=2026.5" },
     { name = "uvicorn", specifier = ">=0.54.0" },
 ]
 
