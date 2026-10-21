@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Literal
@@ -12,9 +13,13 @@ _COMMAND_WORDS = frozenset({"ask", "compare", "models", "set", "usage", "remembe
 _RECALL = "what do you remember"
 _REMEMBER_PREFIX = "remember for this channel:"
 _LINK_SCHEMES = ("http://", "https://", "mailto:")
-_SANDBOX_WORDS = ("run ", "execute", "chart", "plot", "graph", "analyze", "analyse", "calculate")
+# Sandbox triggers are matched on whole words or stems, never substrings: "paragraph" is not "graph".
+_ACTION_STEMS = ("chart", "plot", "graph", "analy", "calculat", "comput", "visuali")
+_ACTION_VERBS = frozenset({"run", "execute"})
+_CODE_WORDS = frozenset({"code", "script", "python", "program"})
+_DATA_WORDS = frozenset({"data", "dataset", "csv", "spreadsheet", "numbers", "table"})
 # The caller passes only a flag, not the file name, so recognise the usual text-file extensions.
-_TEXT_EXTENSIONS = (".csv", ".tsv", ".txt", ".json", ".md", ".log", ".xml", ".yaml", ".yml")
+_TEXT_EXTENSIONS = frozenset({"csv", "tsv", "txt", "json", "md", "log", "xml", "yaml", "yml"})
 
 
 @dataclass(frozen=True)
@@ -208,9 +213,21 @@ def parse(text: str, aliases: Collection[str]) -> Intent:
     return Ask((), text)
 
 
+def _is_action(token: str) -> bool:
+    if token in _ACTION_VERBS:
+        return True
+    return token.startswith(_ACTION_STEMS) and not token.startswith("graphic")
+
+
 def wants_sandbox(question: str, has_text_file: bool) -> bool:
     """Whether the question needs code execution rather than a plain answer."""
     lowered = question.lower()
-    if "use sandbox" in lowered or any(word in lowered for word in _SANDBOX_WORDS):
+    if "use sandbox" in lowered:
         return True
-    return has_text_file and ("attached" in lowered or any(ext in lowered for ext in _TEXT_EXTENSIONS))
+    tokens = re.findall(r"[a-z]+", lowered)
+    if has_text_file:
+        return "attached" in tokens or any(t in _TEXT_EXTENSIONS or _is_action(t) for t in tokens)
+    words = set(tokens)
+    if words & _ACTION_VERBS and words & _CODE_WORDS:
+        return True
+    return any(_is_action(t) for t in tokens) and bool(words & _DATA_WORDS)

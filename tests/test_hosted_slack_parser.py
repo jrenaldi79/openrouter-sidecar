@@ -224,27 +224,54 @@ def test_other_bot_mention_is_not_ours():
 @pytest.mark.parametrize(
     "question",
     [
-        "please use sandbox for this",
-        "run this script",
-        "execute it",
-        "make a chart of sales",
+        "use sandbox for this",
+        "please USE SANDBOX",
+        "run this python script",
+        "execute the code",
+        "chart this data by month",
         "PLOT the data",
-        "graph this",
         "Analyze the numbers",
-        "analyse the numbers",
-        "calculate the total",
+        "analyse the dataset",
+        "calculate totals from the spreadsheet",
+        "plot the numbers in the csv",
     ],
 )
-def test_wants_sandbox_keywords(question):
+def test_wants_sandbox_positive_without_file(question):
     assert wants_sandbox(question, False) is True
 
 
-def test_wants_sandbox_negative():
-    assert wants_sandbox("what do you think?", False) is False
-    assert wants_sandbox("what do you think?", True) is False
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Give feedback on this graphic design poster",
+        "Rewrite this paragraph",
+        "Is this photograph well composed?",
+        "What is the plot of this story",
+        "Why do users abandon the flowchart step",
+        "analyze this logo",
+        "how do I calculate a fair price",
+        "we need to execute the launch plan",
+        "I run a small studio, advice?",
+        "make a chart of sales",
+        "what do you think?",
+    ],
+)
+def test_wants_sandbox_negative_without_file(question):
+    assert wants_sandbox(question, False) is False
+
+
+def test_wants_sandbox_file_with_action():
+    assert wants_sandbox("chart this by month", True) is True
+    assert wants_sandbox("chart this by month", False) is False
+    assert wants_sandbox("analyze the attached", True) is True
 
 
 @pytest.mark.parametrize("question", ["summarize data.csv", "read the attached", "look at notes.TXT"])
 def test_wants_sandbox_text_file_hints(question):
     assert wants_sandbox(question, True) is True
     assert wants_sandbox(question, False) is False
+
+
+@pytest.mark.parametrize("question", ["what do you think?", "Rewrite this paragraph", "graphic design feedback"])
+def test_wants_sandbox_file_without_intent(question):
+    assert wants_sandbox(question, True) is False
