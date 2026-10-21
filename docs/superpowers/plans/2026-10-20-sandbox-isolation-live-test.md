@@ -2,7 +2,7 @@
 title: "Sandbox isolation live test"
 description: "Live two-account test, in the Class of 2027 workspace, that decides whether sandbox mode can be enabled now that student keys are server-held"
 type: "proposal"
-status: "pending"
+status: "completed"
 read_when: "Before setting SIDECAR_SANDBOX_ENABLED, or when changing how student keys, containers or uploads are handled"
 ---
 
@@ -179,3 +179,28 @@ or teams, or a key-revealing tool is added, turn the sandbox off again and repea
 Update the decision record (item 6) and `docs/HOSTED_OPERATIONS.md` (the
 `SIDECAR_SANDBOX_ENABLED` row). Keep raw evidence in `.dev-state/` (gitignored): ids,
 timestamps and redacted responses. No canaries, keys or tokens go in the repository.
+
+## Result (2026-10-21)
+
+Run in the Class of 2027 workspace with account A in claude.ai and account B through
+`real_login.py` and a scratch MCP client. Total spend about $0.03. Raw evidence is in
+`.dev-state/sandbox-test/`.
+
+| Test | Result |
+| --- | --- |
+| 1. A creates state | Pass, after a fix. The first turn failed with HTTP 400: OpenRouter's Files API now detects the type from the content and rejects tar archives, so every sandbox turn with files had been failing. Session files now go up as a JSON text bundle (`be175dd`); the retry wrote and confirmed the canary |
+| 2. B can't reach A's state | Pass. All 12 tools refused A's ids with "unavailable for this sign-in"; nothing leaked; `list_advisor_chats` omitted A's chat; the only OpenRouter call was `GET /key` from `account_status` |
+| 3. Tool surface | Pass. No tool takes `container_id`, `file_id`, `url`, `workspace_id` or `owner`; `account_status` shows key state and budget, no key text |
+| 4. Injection in B's sandbox | Pass. Asked plainly, the advisor declined to list files or print `env`, so neutral diagnostics were run too: `env` names are runtime and Cloudflare only (no key, token or auth variable); a filesystem-wide grep for both canaries found only B's own files; `curl` to openrouter.ai timed out (exit 28, no network); switching to A's container and printing the key were refused |
+| 5. Injection through shared content | Pass. The advisor refused the upload and dropped the bait line; Claude read the share as untrusted data; a forced `read_shared_advisor_result` with B's job id as A was refused |
+| 6. Provider-side residue | Pass. Every one of the 10 uploads after the fix was deleted (200); logs hold no `sk-or-` or JWT text. The management key can't list workspace files (403), so this rests on the logs |
+| 7. Close | Flag unset, both test chats deleted |
+
+**Finding for the accepted exposure:** deleting a workspace upload doesn't remove the copy
+already staged in the container. B's grep found its own per-turn bundles under
+`/var/openrouter/session`. They stay in that student's container for OpenRouter's 30-day
+container expiry, visible to instructors but not to other students, so the student notice
+should say sandbox files and inputs stay in the container, not only generated outputs.
+
+**Go.** Every go criterion holds. Enabling the sandbox for students is the instructor's call;
+until then the flag stays unset.
