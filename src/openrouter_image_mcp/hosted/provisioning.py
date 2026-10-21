@@ -108,8 +108,8 @@ class KeyProvisioner:
             return await self._create(principal, team)
 
     async def _create(self, principal: Principal, team: TeamKey | None = None) -> StudentKey:
-        name = key_name(principal, _cohort(principal.workspace_id), team.label if team else None)
-        extra = {"guardrail": TEAM_GUARDRAIL} if team else {}
+        name = key_name(principal, _cohort(principal.workspace_id), team.label if team is not None else None)
+        extra = {"guardrail": TEAM_GUARDRAIL} if team is not None else {}
         try:
             created = await self.manager.create(name, principal.workspace_id, **extra)
         except ProviderError as exc:

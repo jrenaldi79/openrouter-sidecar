@@ -323,6 +323,8 @@ It needs `DATABASE_URL` (the public URL) and `VAULT_KEYS`, set as in step 4, sho
 
 **Auth0 setup (done in mpd-auth).** The Auth0 tenant is shared and managed in the `mpd-auth` repo, so nothing in this repo changes it. This section is the request for `mpd-auth`. Before any step, tell the Interview Coach and mpd-auth sessions and wait for their constraints. The user applies each tenant step and records it in the `mpd-auth` rollout log.
 
+**Applied 2026-10-21** with the user's approval (rollout log entry "MPD Sidecar Admin client"): client `COHyHxR7b5lVCmixSIrvsKlBVwrvQivZ` (`client_secret_post`, `authorization_code` only, RS256, `email` connection only), user grants `cgr_DHrheWveJvsgSdlW` (production) and `cgr_T65o9gaCZWqLCRBE` (local). `SIDECAR_ADMIN_CLIENT_ID` and `SIDECAR_ADMIN_CLIENT_SECRET` are set in Railway. The steps below are kept as the record of what the client needs.
+
 1. **Client.** Create a regular web application named **MPD Sidecar Admin** (confidential, authorization code).
 2. **Signing algorithm.** Set RS256 explicitly. A client created through the API or CLI can be left without `jwt_configuration.alg` and sign HS256, which the page refuses:
 
