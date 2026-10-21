@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from ..advisor_summary import DEFAULT_SUMMARY_MODEL
+from .admin.settings import AdminSettings, load_admin_settings
 from .slack.settings import SlackSettings, load_slack_settings
 
 _REQUIRED = ("AUTH0_ISSUER", "MCP_RESOURCE_URI", "DATABASE_URL", "VAULT_KEYS", "LINK_SIGNING_KEY")
@@ -36,6 +37,8 @@ class HostedSettings:
     management_key: str | None = field(default=None, repr=False)
     # Slack Sidecar (Socket Mode bot); None only when a settings object is built by hand.
     slack: SlackSettings | None = None
+    # The /admin page (Auth0 sign-in for Sidecar admins); None only when built by hand.
+    admin: AdminSettings | None = None
 
 
 def _secure_or_local(url: str, name: str) -> None:
@@ -98,11 +101,12 @@ def load_hosted_settings(env: Mapping[str, str]) -> HostedSettings:
     _check_issuer(issuer, resource, env)
     if len(env["LINK_SIGNING_KEY"]) < 32:
         raise ValueError("LINK_SIGNING_KEY must be at least 32 characters.")
+    public_origin = _origin(resource)
     return HostedSettings(
         issuer=issuer,
         jwks_uri=env.get("AUTH0_JWKS_URI") or issuer + ".well-known/jwks.json",
         resource=resource,
-        public_origin=_origin(resource),
+        public_origin=public_origin,
         database_url=env["DATABASE_URL"],
         vault_keys=env["VAULT_KEYS"],
         link_signing_key=env["LINK_SIGNING_KEY"],
@@ -115,4 +119,5 @@ def load_hosted_settings(env: Mapping[str, str]) -> HostedSettings:
         asset_dir=_asset_dir(env),
         management_key=env.get("OPENROUTER_MANAGEMENT_KEY") or None,
         slack=load_slack_settings(env),
+        admin=load_admin_settings(env, issuer=issuer, resource=resource, public_origin=public_origin),
     )

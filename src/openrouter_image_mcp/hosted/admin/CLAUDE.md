@@ -9,8 +9,10 @@ read_when: "Changing or adding files in src/openrouter_image_mcp/hosted/admin/."
 **Owns:**
 
 - `copy.py`: every sentence the page shows (plain text; templates escape it).
-- Being built (`docs/superpowers/plans/2026-10-21-slack-admin.md`): `settings.py` (admin settings, on by default),
-  `sessions.py` (pending logins and sessions), `audit.py` (the change log), `oidc.py` (Auth0 sign-in),
+- `settings.py`: `AdminSettings` and `load_admin_settings` (page on unless `SIDECAR_ADMIN_ENABLED` is false, 0 or no;
+  Auth0 client id and secret of at least 32 characters; callback and logout URLs; Secure cookies unless the origin is
+  local http). Unset client values mean "not configured", not an error. `HostedSettings.admin` carries it.
+- Being built (`docs/superpowers/plans/2026-10-21-slack-admin.md`): `sessions.py` (pending logins and sessions), `audit.py` (the change log), `oidc.py` (Auth0 sign-in),
   `views.py` with `templates/` and `public/` (the Interview Coach admin design system), `forms.py`, `routes.py` and
   `wiring.py`. The Slack side is `hosted/slack/channel_admin.py`.
 

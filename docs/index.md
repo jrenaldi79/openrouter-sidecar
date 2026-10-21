@@ -174,6 +174,7 @@ Filenames grouped by folder; each heading links that folder's note.
 
 - [src/openrouter&#95;image&#95;mcp/hosted/admin/&#95;&#95;init&#95;&#95;.py](../src/openrouter_image_mcp/hosted/admin/__init__.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/admin/copy.py](../src/openrouter_image_mcp/hosted/admin/copy.py)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/settings.py](../src/openrouter_image_mcp/hosted/admin/settings.py)
 
 ### [src/openrouter&#95;image&#95;mcp/hosted/skills](../src/openrouter_image_mcp/hosted/skills/CLAUDE.md): Hosted variants of the class skills, served to claude.ai and Desktop as MCP prompts and skill:// resources.
 
