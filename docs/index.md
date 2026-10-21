@@ -228,6 +228,8 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/&#95;&#95;init&#95;&#95;.py](../src/openrouter_image_mcp/hosted/slack/__init__.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/api.py](../src/openrouter_image_mcp/hosted/slack/api.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/asks.py](../src/openrouter_image_mcp/hosted/slack/asks.py)
+- [src/openrouter&#95;image&#95;mcp/hosted/slack/channel&#95;admin.py](../src/openrouter_image_mcp/hosted/slack/channel_admin.py)
+- [src/openrouter&#95;image&#95;mcp/hosted/slack/channel&#95;setup.py](../src/openrouter_image_mcp/hosted/slack/channel_setup.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/commands.py](../src/openrouter_image_mcp/hosted/slack/commands.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/context.py](../src/openrouter_image_mcp/hosted/slack/context.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/context&#95;files.py](../src/openrouter_image_mcp/hosted/slack/context_files.py)
