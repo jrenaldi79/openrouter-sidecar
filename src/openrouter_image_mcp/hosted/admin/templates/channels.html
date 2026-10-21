@@ -8,7 +8,7 @@
 {% endif %}
 {% set editable = overview.slack_note != copy.SLACK_OFF %}
 <table>
-  <thead><tr><th>Label</th><th>Channel</th><th>Cohort</th><th>Status</th><th>Default model</th><th>Daily cap</th><th>Concurrent</th><th><span class="sr">Actions</span></th></tr></thead>
+  <thead><tr><th>Label</th><th>Channel</th><th>Class</th><th>Status</th><th>Default model</th><th>Daily cap</th><th>Concurrent</th><th><span class="sr">Actions</span></th></tr></thead>
   <tbody>
   {% for row, name in overview.registered %}
   {% set shown = name if name == row.channel_id else "#" ~ name %}

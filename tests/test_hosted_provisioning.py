@@ -4,11 +4,11 @@ import asyncio
 import base64
 import hashlib
 import os
-from dataclasses import replace
 
 import httpx
 import pytest
 
+from openrouter_image_mcp.config import SLACK_WORKSPACE
 from openrouter_image_mcp.errors import (
     AuthRequiredError,
     BadRequestError,
@@ -79,7 +79,7 @@ def manager():
 
 @pytest.fixture
 def provisioner(store, manager):
-    return KeyProvisioner(store, manager, {WS})
+    return KeyProvisioner(store, manager, {WS}, team_workspaces={SLACK_WORKSPACE})
 
 
 def test_key_name_uses_email_or_a_stable_hash():
@@ -178,10 +178,9 @@ async def test_prepare_records_why_no_key_is_available(store):
     assert pending_reason() is None
 
 
-# The test workspace is not a real cohort workspace, so move the team into it.
-TEAM = replace(team_principal("T1", "C1", new_row(
+TEAM = team_principal("T1", "C1", new_row(
     "T1", "C1", "abbott", "2027", fusion_panel=("openai/gpt-x",), fusion_analyst="openai/gpt-x",
-    subagent_model="google/gemini-flash")), workspace_id=WS)
+    subagent_model="google/gemini-flash"))
 
 
 def test_team_key_name_uses_the_label():
@@ -200,8 +199,8 @@ async def fake_manager():
 
 async def test_team_key_name_and_guardrail(store, fake_manager):
     fake, manager = fake_manager
-    row = await KeyProvisioner(store, manager, {WS}).ensure(TEAM, team=TeamKey("abbott"))
-    assert fake.created_bodies() == [{"name": "Sidecar · abbott · 2027", "workspace_id": WS}]
+    row = await KeyProvisioner(store, manager, {WS}, team_workspaces={SLACK_WORKSPACE}).ensure(TEAM, team=TeamKey("abbott"))
+    assert fake.created_bodies() == [{"name": "Sidecar · abbott · 2027", "workspace_id": SLACK_WORKSPACE}]
     assert fake.assignments == [("g-team", [row.key_hash])]
     assert store.key_for(TEAM) == "sk-or-v1-fake1"
 
@@ -216,9 +215,9 @@ async def test_no_team_guardrail_no_key(store, fake_manager):
     fake, manager = fake_manager
     fake.guardrails[:] = [g for g in fake.guardrails if g["name"] != TEAM_GUARDRAIL]
     with pytest.raises(NoGuardrailError) as refused:
-        await KeyProvisioner(store, manager, {WS}).ensure(TEAM, team=TeamKey("abbott"))
+        await KeyProvisioner(store, manager, {WS}, team_workspaces={SLACK_WORKSPACE}).ensure(TEAM, team=TeamKey("abbott"))
     assert str(refused.value) == UNAVAILABLE  # the text students already see for any creation failure
-    assert fake.created_bodies() == [] and store.row(TEAM.key, WS) is None
+    assert fake.created_bodies() == [] and store.row(TEAM.key, SLACK_WORKSPACE) is None
 
 
 async def test_other_creation_failures_are_not_a_missing_guardrail(provisioner, manager):
@@ -256,7 +255,7 @@ async def test_team_key_goes_through_the_team_guardrail(provisioner, manager):
 
 async def test_recheck_recreates_with_team_name(provisioner, manager, store):
     await provisioner.ensure(TEAM, team=TeamKey("abbott"))
-    store.mark_rejected(TEAM.key, WS)
+    store.mark_rejected(TEAM.key, SLACK_WORKSPACE)
     manager.keys.pop("h1")  # deleted at OpenRouter
     row = await provisioner.ensure(TEAM, team=TeamKey("abbott"))
     assert row.key_hash == "h2" and row.key_name == "Sidecar · abbott · 2027"

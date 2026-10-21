@@ -264,3 +264,10 @@ async def test_a_refusal_keeps_the_input_when_the_model_list_is_down_too(rig):
     fresh = await rig.post(NEW.replace(CHAN, OTHER), register_form(label="other"))
     assert fresh.status_code == 422 and str(escape(copy.CATALOG_DOWN)) in fresh.text
     assert dict(form_pairs(fresh.text, NEW.replace(CHAN, OTHER)))["label"] == "other"
+
+
+async def test_a_label_that_looks_like_a_student_key_name_is_refused_on_the_page(rig):
+    response = await rig.post(NEW, register_form(label="user-0123456789"))
+    assert response.status_code == 422 and "student key name" in response.text
+    assert dict(form_pairs(response.text, NEW))["label"] == "user-0123456789"
+    assert rig.slack_rig.registry.all() == [] and rig.slack_rig.provisioner.creations == 0

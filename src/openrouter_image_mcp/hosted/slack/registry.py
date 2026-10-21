@@ -21,6 +21,8 @@ from ... import config, storage
 
 DEFAULT_ALIASES = {"gpt": "ChatGPT", "gemini": "Gemini", "grok": "Grok", "open": "open weight"}
 LABEL = re.compile(r"^[a-z0-9-]{1,40}$")
+# The name `provisioning.key_name` gives a student with no email, so a team label must not collide with it.
+STUDENT_KEY_NAME = re.compile(r"^user-[0-9a-f]{10}$")
 PANEL_SIZE = range(1, 9)
 _JSON = {"alias_map": dict, "fusion_panel": tuple, "fetch_allowlist": tuple, "invoker_allowlist": tuple}
 _KEYS = ("slack_team_id", "channel_id")
@@ -67,7 +69,7 @@ def new_row(team_id: str, channel_id: str, label: str, cohort: str, *, fusion_pa
         raise ValueError(f"Unknown cohort {cohort!r}.")
     optional.setdefault("default_model", "gemini")
     optional["alias_map"] = dict(optional.get("alias_map", DEFAULT_ALIASES))
-    return ChannelRow(team_id, channel_id, label, cohort, config.COHORT_WORKSPACES[cohort],
+    return ChannelRow(team_id, channel_id, label, cohort, config.SLACK_WORKSPACE,
                       fusion_panel=tuple(fusion_panel), fusion_analyst=fusion_analyst,
                       subagent_model=subagent_model, **optional)
 
@@ -75,8 +77,12 @@ def new_row(team_id: str, channel_id: str, label: str, cohort: str, *, fusion_pa
 def _validate(row: ChannelRow) -> None:
     if not LABEL.match(row.team_label):
         raise ValueError("team_label must match ^[a-z0-9-]{1,40}$.")
+    if STUDENT_KEY_NAME.match(row.team_label):
+        raise ValueError("team_label can't look like a student key name (user- followed by 10 hex digits).")
     if row.cohort not in config.COHORT_WORKSPACES:
         raise ValueError(f"Unknown cohort {row.cohort!r}.")
+    if row.workspace_id != config.SLACK_WORKSPACE:
+        raise ValueError("A Slack team's workspace must be the Slack workspace.")
     if len(row.fusion_panel) not in PANEL_SIZE:
         raise ValueError("fusion_panel needs 1 to 8 models.")
     if not (row.slack_team_id and row.channel_id):
@@ -166,8 +172,6 @@ class ChannelRegistry:
         unknown = set(changes) - allowed
         if unknown:
             raise ValueError(f"Cannot update: {', '.join(sorted(unknown))}.")
-        if "cohort" in changes and changes["cohort"] in config.COHORT_WORKSPACES:
-            changes["workspace_id"] = config.COHORT_WORKSPACES[changes["cohort"]]
         for name, kind in _JSON.items():
             if name in changes:
                 changes[name] = kind(changes[name])

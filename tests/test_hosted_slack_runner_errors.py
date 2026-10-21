@@ -6,6 +6,7 @@ import httpx
 import pytest
 from slack_runner_rig import THREAD, Rig, answer_item, body
 
+from openrouter_image_mcp.config import SLACK_WORKSPACE
 from openrouter_image_mcp.hosted.slack.replies import budget_text, provider_error_text
 from openrouter_image_mcp.hosted.slack.runner_steps import MODERATED
 
@@ -80,7 +81,7 @@ async def test_rejected_key_uses_team_wording(slack_rig):
 
 async def test_missing_key_posts_team_wording(slack_rig, keys):
     rig = slack_rig
-    keys.delete()
+    keys.delete(workspace_id=SLACK_WORKSPACE)
     await rig.run(rig.job(rig.chat()))
     (post,) = rig.slack.posts
     assert "this channel's Sidecar key" in post["text"] and "student" not in post["text"]

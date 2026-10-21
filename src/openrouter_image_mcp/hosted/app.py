@@ -27,7 +27,7 @@ from ..apps import (
     register_uploader,
 )
 from ..assets import AssetStore, LocalDirBlobs
-from ..config import COHORT_WORKSPACES
+from ..config import COHORT_WORKSPACES, SLACK_WORKSPACE
 from ..preference_tools import register_preference_tools
 from ..tool_annotations import annotate
 from ..tool_support import SERVER_NAME, tool_errors
@@ -127,7 +127,8 @@ def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transpor
     keys = StudentKeyStore(target, Vault(settings.vault_keys))
     # Without a management key the server still runs; only new student keys are refused.
     manager = KeyManager(settings.management_key, transport=transport) if settings.management_key else None
-    provisioner = KeyProvisioner(keys, manager, set(COHORT_WORKSPACES.values()))
+    provisioner = KeyProvisioner(keys, manager, set(COHORT_WORKSPACES.values()),
+                                 team_workspaces=frozenset({SLACK_WORKSPACE}))
     gate = Gate()
     services = {}
     admission = Limits(AdvisorStore(target), **(limits or {}))

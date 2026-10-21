@@ -18,6 +18,8 @@ COHORT_WORKSPACES = {
     "2027": "21082e84-ae02-4639-ad40-c7251b98ab10",
     "2028": "8804f9c5-afd2-4de3-8d9f-f74b3d58c651",
 }
+# The one OpenRouter workspace that holds every Slack team key and its team budget guardrail, whatever the class.
+SLACK_WORKSPACE = "8a738968-da7d-4d55-900a-16789ba50003"
 ADVISOR_MAX_TIMEOUT_S = 1800.0
 
 

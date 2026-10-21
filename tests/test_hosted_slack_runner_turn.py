@@ -6,6 +6,7 @@ import httpx
 import pytest
 from slack_runner_rig import CHANNEL, THREAD, Rig, body, call, wait_until
 
+from openrouter_image_mcp.config import SLACK_WORKSPACE
 from openrouter_image_mcp.errors import ProviderError
 from openrouter_image_mcp.hosted.slack import runner as runner_module
 from openrouter_image_mcp.hosted.slack import runner_turn
@@ -39,7 +40,7 @@ async def test_lost_key_mid_job_interrupts(slack_rig, keys, monkeypatch):
     never = asyncio.Event()
 
     async def respond(request):
-        keys.delete()  # the next heartbeat's ownership check fails and cancels the job
+        keys.delete(workspace_id=SLACK_WORKSPACE)  # the next heartbeat's ownership check fails and cancels the job
         await never.wait()
 
     rig.model.respond = respond
@@ -136,7 +137,7 @@ async def test_outer_cancel_propagates_and_keeps_spend(slack_rig):
 async def test_lost_lease_keeps_spend(slack_rig, keys, monkeypatch):
     rig = slack_rig
     monkeypatch.setattr(runner_module, "HEARTBEAT_S", 0.001)
-    _round_then_hang(rig, keys.delete)
+    _round_then_hang(rig, lambda: keys.delete(workspace_id=SLACK_WORKSPACE))
     await rig.run(rig.job(rig.chat()))
     (row,) = rig.job_rows()
     assert row["status"] == "interrupted" and row["cost_usd"] == pytest.approx(0.04)
@@ -155,7 +156,7 @@ async def test_cleanup_error_cannot_replace_a_cancel(slack_rig, keys, monkeypatc
         return await real(*args)
 
     monkeypatch.setattr(rig.advisors, "_cleanup", cleanup)
-    _round_then_hang(rig, keys.delete)
+    _round_then_hang(rig, lambda: keys.delete(workspace_id=SLACK_WORKSPACE))
     await rig.run(rig.job(rig.chat()))
     assert len(calls) == 2 and rig.slack.updates[-1]["text"] == runner_module.INTERRUPTED
     assert rig.job_rows()[0]["status"] == "interrupted"

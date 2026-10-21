@@ -8,6 +8,7 @@ from dataclasses import replace
 import pytest
 
 from openrouter_image_mcp.advisor_store import AdvisorAccessError, Scope
+from openrouter_image_mcp.config import SLACK_WORKSPACE
 from openrouter_image_mcp.errors import AuthRequiredError
 from openrouter_image_mcp.hosted.principal import Principal
 from openrouter_image_mcp.hosted.provisioning import NOT_READY
@@ -21,7 +22,6 @@ from openrouter_image_mcp.hosted.slack.registry import new_row
 from openrouter_image_mcp.hosted.student_keys import StudentKeyStore
 from openrouter_image_mcp.hosted.vault import Vault
 from tests import jwt_helpers as h
-from tests.helpers import WS_2027
 
 
 def _row(team="T1", channel="C1", label="abbott", **optional):
@@ -38,7 +38,7 @@ def test_principal_from_ids_and_row_only():
     principal = team_principal("T1", "C1", _row())
     assert principal.issuer == SLACK_ISSUER == "slack"
     assert principal.subject == "T1:C1"
-    assert (principal.workspace_id, principal.cohort) == (WS_2027, "2027")
+    assert (principal.workspace_id, principal.cohort) == (SLACK_WORKSPACE, "2027")
     assert principal.email is None
     for ids in (("T2", "C1"), ("T1", "C2")):
         with pytest.raises(ValueError):
@@ -51,28 +51,28 @@ def test_inactive_row_is_refused():
 
 
 def test_team_key_never_matches_student():
-    student = Principal(h.ISSUER, "T1:C1", WS_2027)
+    student = Principal(h.ISSUER, "T1:C1", SLACK_WORKSPACE)
     assert team_principal("T1", "C1", _row()).key != student.key
 
 
 def test_resolve_outside_context_refused(store):
     with pytest.raises(AuthRequiredError, match="No Slack channel in context"):
-        SlackCredentials(WS_2027, store).resolve()
+        SlackCredentials(SLACK_WORKSPACE, store).resolve()
 
 
 def test_forget_outside_context_refused(store):
     with pytest.raises(AuthRequiredError):
-        SlackCredentials(WS_2027, store).forget()
+        SlackCredentials(SLACK_WORKSPACE, store).forget()
 
 
 def test_resolve_inside_context(store):
     principal = team_principal("T1", "C1", _row())
-    credentials = SlackCredentials(WS_2027, store)
+    credentials = SlackCredentials(SLACK_WORKSPACE, store)
     with acting_as(principal):
         with pytest.raises(AuthRequiredError, match=NOT_READY):
             credentials.resolve()
         store.insert(principal, "sk-or-v1-team", "h1", "n")
-        assert credentials.resolve() == ("sk-or-v1-team", Scope("slack|T1:C1", WS_2027))
+        assert credentials.resolve() == ("sk-or-v1-team", Scope("slack|T1:C1", SLACK_WORKSPACE))
     with pytest.raises(AuthRequiredError):  # the context is reset on exit
         credentials.resolve()
 
@@ -82,7 +82,7 @@ def test_context_resets_after_an_exception(store):
     with pytest.raises(RuntimeError), acting_as(principal):
         raise RuntimeError("boom")
     with pytest.raises(AuthRequiredError):
-        SlackCredentials(WS_2027, store).resolve()
+        SlackCredentials(SLACK_WORKSPACE, store).resolve()
 
 
 def test_other_workspace_is_refused(store):
@@ -94,8 +94,8 @@ def test_other_workspace_is_refused(store):
 def test_check_and_forget_follow_the_store(store):
     principal = team_principal("T1", "C1", _row())
     store.insert(principal, "sk-or-v1-team", "h1", "n")
-    credentials = SlackCredentials(WS_2027, store)
-    scope = Scope(principal.key, WS_2027)
+    credentials = SlackCredentials(SLACK_WORKSPACE, store)
+    scope = Scope(principal.key, SLACK_WORKSPACE)
     credentials.check(scope)
     with acting_as(principal):
         credentials.forget()
@@ -104,7 +104,7 @@ def test_check_and_forget_follow_the_store(store):
 
 
 async def test_context_isolated_across_tasks(store):
-    credentials = SlackCredentials(WS_2027, store)
+    credentials = SlackCredentials(SLACK_WORKSPACE, store)
     teams = [team_principal("T1", "C1", _row()), team_principal("T1", "C2", _row("T1", "C2", "booth"))]
     for team in teams:
         store.insert(team, "sk-or-v1-" + team.subject, "h-" + team.subject, "n")

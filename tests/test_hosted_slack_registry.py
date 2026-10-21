@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 
 from openrouter_image_mcp import config, storage
@@ -20,7 +22,7 @@ def row(label="abbott", channel="C1", team="T1", cohort="2027", panel=PANEL, **o
 def test_new_row_defaults():
     r = row()
     assert r.default_model == "gemini"
-    assert r.workspace_id == config.COHORT_WORKSPACES["2027"]
+    assert r.cohort == "2027" and r.workspace_id == config.SLACK_WORKSPACE
     assert r.alias_map == DEFAULT_ALIASES and r.alias_map is not DEFAULT_ALIASES
     assert (r.daily_cap_usd, r.max_concurrent, r.active) == (4.0, 3, True)
     assert r.fetch_allowlist == () and r.invoker_allowlist == ()
@@ -59,6 +61,30 @@ def test_add_rejects_bad_rows(db_target):
     with pytest.raises(ValueError):
         row(cohort="1999")
     assert len(reg.all()) == 1
+
+
+@pytest.mark.parametrize("cohort", sorted(config.COHORT_WORKSPACES))
+def test_every_class_keeps_its_team_in_the_slack_workspace(cohort):
+    assert row(cohort=cohort).workspace_id == config.SLACK_WORKSPACE
+
+
+def test_add_refuses_a_row_outside_the_slack_workspace(db_target):
+    reg = ChannelRegistry(db_target)
+    with pytest.raises(ValueError, match="workspace"):
+        reg.add(replace(row(), workspace_id=config.COHORT_WORKSPACES["2027"]))
+    assert reg.all() == []
+
+
+def test_update_cohort_is_a_label_and_keeps_the_workspace(db_target):
+    reg = ChannelRegistry(db_target)
+    reg.add(row())
+    changed = reg.update("T1", "C1", cohort="2028")
+    assert changed.cohort == "2028" and changed.workspace_id == config.SLACK_WORKSPACE
+    with pytest.raises(ValueError):
+        reg.update("T1", "C1", workspace_id=config.COHORT_WORKSPACES["2028"])
+    with pytest.raises(ValueError):
+        reg.update("T1", "C1", cohort="1999")
+    assert reg.get("T1", "C1") == changed
 
 
 @pytest.mark.parametrize("bad", [

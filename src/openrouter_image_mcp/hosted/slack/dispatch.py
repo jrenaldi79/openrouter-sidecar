@@ -11,7 +11,6 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import logging
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 from functools import partial
 
@@ -68,7 +67,7 @@ class Deps:
     jobs: SlackJobs
     api: SlackApi
     limits: Limits
-    services: Mapping[str, SlackServices]  # by cohort
+    services: SlackServices  # the Slack workspace's
     settings: SlackSettings
     sandbox_enabled: bool
     # (owner, workspace, channel, thread_ts, alias, mode) -> lock around find-or-start of the thread's chat
@@ -171,11 +170,7 @@ class Dispatcher:
             await say(text)
             return
         principal = team_principal(row.slack_team_id, row.channel_id, row)
-        services = self.deps.services.get(row.cohort)
-        if services is None:
-            log.error("slack: no services for cohort %s", row.cohort)
-            await say(escape(FAILED))
-            return
+        services = self.deps.services
         if not await self._provisioned(principal, row, say):
             return
         with acting_as(principal):

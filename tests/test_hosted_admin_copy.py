@@ -4,7 +4,10 @@ from openrouter_image_mcp.hosted.admin import copy
 
 
 def test_templated_sentences_format():
-    assert copy.NO_GUARDRAIL.format(cohort="2027").startswith("The 2027 workspace has no")
+    assert copy.NO_GUARDRAIL == ("The Slack workspace in OpenRouter has no 'Sidecar team budget' guardrail, "
+                                 "so no team key can be made.")
+    assert copy.KEY_NOT_SERVED == "This server doesn't serve the Slack workspace"
+    assert copy.LABEL_FIXED == "The label names the team's key, so it doesn't change after the first save."
     assert copy.GUEST_BLOCKED.format(name="abbott", reason="has a guest member") == (
         "Sidecar can't be used in #abbott: it has a guest member.")
     assert copy.SETUP_UNFINISHED_TEXT.format(reason="x") == "Setup didn't finish: x."

@@ -43,7 +43,7 @@ log = logging.getLogger(__name__)
 
 SETUP_REASONS = (copy.SETTING_UP, copy.SETUP_UNFINISHED)
 # What the change log records of a row. The ids, creation time and welcome/warning marks are bookkeeping, and
-# the workspace follows the cohort.
+# the workspace is always the Slack workspace.
 UNTRACKED = {"slack_team_id", "channel_id", "created_at", "workspace_id", "welcomed_at", "warned_month"}
 TRACKED = tuple(f.name for f in fields(ChannelRow) if f.name not in UNTRACKED)
 
@@ -102,9 +102,9 @@ _KEY_REASONS = {NOT_SERVED: copy.KEY_NOT_SERVED, NOT_SET_UP: copy.KEY_NOT_SET_UP
 def failure_reason(error: Exception, row: ChannelRow) -> str:
     """A plain reason for a failed setup or model save, in admin words; raw error text never reaches the page."""
     if isinstance(error, NoGuardrailError):
-        return copy.NO_GUARDRAIL.format(cohort=row.cohort).rstrip(".")
+        return copy.NO_GUARDRAIL.rstrip(".")
     if isinstance(error, AuthRequiredError):
-        return _KEY_REASONS.get(error.message, copy.KEY_OTHER).format(cohort=row.cohort)
+        return _KEY_REASONS.get(error.message, copy.KEY_OTHER)
     if isinstance(error, BadRequestError):
         return copy.MODEL_NOT_ACCEPTED
     if isinstance(error, OpenRouterError):
@@ -140,16 +140,15 @@ def team_of(row: ChannelRow):
 
 
 class TeamModels:
-    """The team's per-family model defaults, read and saved through the cohort's `PreferenceService`."""
+    """The team's per-family model defaults, read and saved through the Slack workspace's `PreferenceService`."""
 
-    def __init__(self, services: Mapping[str, SlackServices] | None):
+    def __init__(self, services: SlackServices | None):
         self.services = services
 
     def _preferences(self, row: ChannelRow):
-        found = (self.services or {}).get(row.cohort)
-        if found is None:
-            raise LookupError(f"no advisor services for cohort {row.cohort}")
-        return found.preferences
+        if self.services is None:
+            raise LookupError("no advisor services: Slack is off")
+        return self.services.preferences
 
     def saved(self, row: ChannelRow) -> dict[str, str | None]:
         with acting_as(team_of(row)):

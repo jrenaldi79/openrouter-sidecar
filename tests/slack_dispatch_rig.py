@@ -57,7 +57,7 @@ class DispatchRig(Rig):
             registry=self.registry, guard=GuestGuard(self.registry, self.slack), provisioner=self.provisioner,
             runner=self.runner, builder=ContextBuilder(self.slack, self.runner.names), threads=self.threads,
             memory=self.memory, jobs=self.jobs, api=self.slack, limits=self.limits,
-            services={"2027": self.services}, settings=SlackSettings(enabled=False),
+            services=self.services, settings=SlackSettings(enabled=False),
             sandbox_enabled=sandbox_enabled)
         self.dispatcher = Dispatcher(self.deps, bot_user_id=BOT)
         self._n = 100

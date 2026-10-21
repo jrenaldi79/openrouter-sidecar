@@ -10,7 +10,7 @@ from slack_gateway_rig import FakeClient
 
 from openrouter_image_mcp.advisor_results import AdvisorResults
 from openrouter_image_mcp.advisor_store import AdvisorStore, Scope
-from openrouter_image_mcp.config import COHORT_WORKSPACES
+from openrouter_image_mcp.config import COHORT_WORKSPACES, SLACK_WORKSPACE
 from openrouter_image_mcp.hosted.app import build_hosted_server
 from openrouter_image_mcp.hosted.limits import Limits
 from openrouter_image_mcp.hosted.settings import load_hosted_settings
@@ -112,6 +112,13 @@ def test_not_built_when_disabled(db_target):
     assert len(server.hosted["health"].lock.on_gain) == 1  # only Health's own gate hook
 
 
+def test_the_built_provisioner_keeps_students_and_teams_apart(db_target):
+    provisioner = build_hosted_server(settings_for(db_target), key_resolver=h.resolver).hosted["provisioner"]
+    assert provisioner.workspaces == set(COHORT_WORKSPACES.values())
+    assert provisioner.team_workspaces == {SLACK_WORKSPACE}
+    assert provisioner.workspaces.isdisjoint(provisioner.team_workspaces)
+
+
 def test_built_when_enabled_and_hooked_to_the_lock(db_target):
     server = build_hosted_server(settings_for(db_target, slack_env()), key_resolver=h.resolver,
                                  slack={"api": FakeSlack()})
@@ -121,15 +128,15 @@ def test_built_when_enabled_and_hooked_to_the_lock(db_target):
     assert lock.on_gain[-1] == app.on_gain and lock.on_lose[-1] == app.on_lose
 
 
-def test_one_service_set_per_cohort(world):
-    assert set(world.app.services) == set(COHORT_WORKSPACES)
-    for cohort, services in world.app.services.items():
-        advisors = services.advisors
-        assert advisors.workspace_id == COHORT_WORKSPACES[cohort]
-        assert isinstance(advisors.credentials, SlackCredentials)
-        assert advisors.sandbox_default is False
-        assert advisors.sandbox_allowed is world.settings.sandbox_enabled
-        assert services.client is advisors.client and services.files is advisors.files
+def test_one_service_set_in_the_slack_workspace(world):
+    services = world.app.services
+    advisors = services.advisors
+    assert advisors.workspace_id == advisors.client.workspace_id == SLACK_WORKSPACE
+    assert isinstance(advisors.credentials, SlackCredentials)
+    assert advisors.credentials.workspace_id == SLACK_WORKSPACE
+    assert advisors.sandbox_default is False
+    assert advisors.sandbox_allowed is world.settings.sandbox_enabled
+    assert services.client is advisors.client and services.files is advisors.files
     assert world.app.dispatcher.deps.services is world.app.services
 
 
@@ -275,5 +282,4 @@ async def test_close_closes_the_clients_it_built(db_target):
     assert isinstance(made.app.api, SdkSlackApi)
     await made.app.close()
     assert made.app.api._http.is_closed
-    for services in made.app.services.values():
-        assert services.client._http.is_closed
+    assert made.app.services.client._http.is_closed

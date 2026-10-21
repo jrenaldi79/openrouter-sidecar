@@ -187,12 +187,12 @@ OPENROUTER_MANAGEMENT_KEY=… uv run python scripts/ops/openrouter_keys.py guard
 
 | Command | Effect |
 |---|---|
-| `list [--cohort 2027]` | Every Sidecar key: created date, spend this month, disabled flag |
-| `show <email>` | One student's key details |
-| `disable <email>` / `enable <email>` | Block or unblock. A blocked student is told their key was disabled by the instructor |
-| `delete <email> --yes` | Remove the key (dry run without `--yes`). The student gets a fresh key on the next call, so use `disable` to block |
-| `usage [--csv]` | Spend per cohort, or a CSV per student |
-| `guardrails` | Each workspace's `Sidecar student budget` guardrail, and any Sidecar key not on it |
+| `list [--cohort 2027]` | Every Sidecar key, students' and Slack teams': created date, spend this month, disabled flag (`--cohort slack` for the Slack workspace only) |
+| `show <email-or-team-label>` | One student's or team's key details |
+| `disable <email-or-team-label>` / `enable <email-or-team-label>` | Block or unblock. A blocked student or team is told the key was disabled by the instructor |
+| `delete <email-or-team-label> --yes` | Remove the key (dry run without `--yes`). The student or team gets a fresh key on the next call, so use `disable` to block |
+| `usage [--csv]` | Spend per cohort, and per class for the Slack workspace (lines like `slack (2027): 3 keys, $12.00 this month`), or a CSV per key: `cohort` is the class (a team key's is the last part of its name), `group` the workspace (a cohort year or `slack`), and `email` holds a team's label |
+| `guardrails` | Each cohort workspace's `Sidecar student budget` guardrail and the Slack workspace's `Sidecar team budget` one, and any Sidecar key not on it |
 
 **Removing a student** for good: remove them from the roster in Auth0 (§7), then `delete <email> --yes`. Without Auth0 access they can't get a new key.
 
@@ -202,7 +202,7 @@ The `@Sidecar` bot answers in each capstone team's Slack channel with models oth
 
 **One-time setup, in this order:**
 
-1. **Team budget guardrail.** In OpenRouter, create a guardrail named exactly **`Sidecar team budget`** ($75 per month) in **each cohort workspace** that will have a team. Guardrails belong to one workspace, and the server finds the guardrail by name in the workspace of the key it creates, as it does for `Sidecar student budget` (§8). If a workspace has no guardrail with that name, the server creates no team key, so the first mention in that team's channel is refused. There is no fallback to the student guardrail.
+1. **Team budget guardrail.** In OpenRouter, create a guardrail named exactly **`Sidecar team budget`** ($75 per month) in the **Slack workspace** in OpenRouter (`8a738968-da7d-4d55-900a-16789ba50003`, `config.SLACK_WORKSPACE`). Every team key lives there, whatever the channel's class, so that one guardrail budgets them all. Guardrails belong to one workspace, and the server finds the guardrail by name in the workspace of the key it creates, as it does for `Sidecar student budget` (§8). If that workspace has no guardrail with that name, the server creates no team key, so the first mention in that team's channel is refused. There is no fallback to the student guardrail.
 
 2. **Create the Slack app.** In the class Slack workspace, go to <https://api.slack.com/apps>, choose **Create New App**, then **From a manifest**, and paste `deploy/slack/manifest.yaml`. The manifest sets the bot scopes, the four events (`app_mention`, `member_joined_channel`, `member_left_channel`, `channel_shared`) and Socket Mode. Then:
    - **Install to Workspace.** The **Bot User OAuth Token** (`xoxb-…`) is on the OAuth & Permissions page.
@@ -258,7 +258,7 @@ The `@Sidecar` bot answers in each capstone team's Slack channel with models oth
        --family-default google=provider/model-a openai=provider/model-b
    ```
 
-   - `--team-id` is the Slack workspace id and `--channel` the channel id. `--label` is the team's name in key names and usage reports, `--cohort` picks the OpenRouter workspace, and `--fusion-panel` takes 1 to 8 model ids.
+   - `--team-id` is the Slack workspace id and `--channel` the channel id. `--label` is the team's name in key names and usage reports, `--cohort` is the class label (it names the key, `Sidecar · <label> · <cohort>`, and shows in lists; every team key is in the Slack workspace whatever it is), and `--fusion-panel` takes 1 to 8 model ids.
    - `add` refuses a channel that is shared outside the organization or has a guest member, and says why.
    - **`--default-model`** is the channel's default alias, the one used when a mention names no model. It must be one of the channel's aliases (the defaults, plus any added with `--alias`). It is not a model id.
    - **`--family-default family=model-id`** (repeatable) sets which model each brand alias means for this team: `google`, `openai`, `x-ai` or `open_weight`. Each id is checked against the OpenRouter catalog, and the result is saved as the team's model preference. This creates the team's OpenRouter key if it doesn't exist yet. A brand alias whose family has no default answers "This alias has no model set yet. Ask your instructor.", so set every family the team's aliases use. If `add` fails after the key was created, the key stays with no channel row; a retry reuses it.
@@ -293,8 +293,8 @@ It needs `DATABASE_URL` (the public URL) and `VAULT_KEYS`, set as in step 4, sho
 `/admin` is a web page on the hosted server where MPD admins register and edit the Slack bot's channels, instead of running `scripts/ops/slack_channels.py`. Design: `docs/superpowers/specs/2026-10-21-slack-admin-design.md`.
 
 **What it does:**
-- **Channels** lists the registered channels with their label, channel name, cohort, on or off, default alias and limits. It also lists channels `@Sidecar` is in but that aren't registered, each with a Register link.
-- **Register and edit** use one form: label, cohort, aliases, the model for each family, the default alias, the Fusion panel, analyst and helper model, fetch allowlist, daily cap, concurrent limit and who may use Sidecar. Saving a new channel writes the row turned off with the reason "Setting up", creates the team's OpenRouter key, saves the team's models and then turns the row on. A row turns on only when its default alias resolves to a model: an alias for a brand (Gemini, ChatGPT, Grok, open weight) needs that family's model, an alias for an exact model id needs none; otherwise the page says "Choose a model for <family>, the family the default alias uses." and the row stays off. If a step after the first fails, the row stays off with "Setup didn't finish", and the edit page offers a Finish setup button that repeats those steps. Label and cohort can't be changed after the row is saved.
+- **Channels** lists the registered channels with their label, channel name, class, on or off, default alias and limits. It also lists channels `@Sidecar` is in but that aren't registered, each with a Register link.
+- **Register and edit** use one form: label, class, aliases, the model for each family, the default alias, the Fusion panel, analyst and helper model, fetch allowlist, daily cap, concurrent limit and who may use Sidecar. Saving a new channel writes the row turned off with the reason "Setting up", creates the team's OpenRouter key, saves the team's models and then turns the row on. A row turns on only when its default alias resolves to a model: an alias for a brand (Gemini, ChatGPT, Grok, open weight) needs that family's model, an alias for an exact model id needs none; otherwise the page says "Choose a model for <family>, the family the default alias uses." and the row stays off. If a step after the first fails, the row stays off with "Setup didn't finish", and the edit page offers a Finish setup button that repeats those steps. Label and class can't be changed after the row is saved.
 - **Turn off and Turn on** are buttons on the edit page. Turning a channel on runs the guest and external-sharing check again. A row still in setup is refused with "Finish setting up this channel first."; use Finish setup for it. The edit page still opens while OpenRouter's model list is down (it says "The model list didn't load. Try again."), and Turn off, Turn on and edits that don't touch a model keep working.
 - **Change log** shows the newest 200 changes: when, who, which channel, what was done, and each changed field as before and after.
 
@@ -318,7 +318,7 @@ It needs `DATABASE_URL` (the public URL) and `VAULT_KEYS`, set as in step 4, sho
   - The address comes from uvicorn's proxy headers, which are trusted only from the addresses in `FORWARDED_ALLOW_IPS`. Without it every admin shares the proxy's address and one bucket.
   - The counter is in memory and starts again from zero on every restart or deploy.
   - Open question for the user: with `FORWARDED_ALLOW_IPS=*`, the leftmost `X-Forwarded-For` entry is chosen by the client if Railway appends to that header instead of replacing it. A client could then spread sign-ins over made-up addresses to get around the limit, or fill one bucket to block a real address. That affects availability only: signing in still needs a valid Auth0 login. Check how Railway sets the header before relying on the limit.
-- Registering a channel also needs `OPENROUTER_MANAGEMENT_KEY`, `VAULT_KEYS` and the `Sidecar team budget` guardrail in the cohort's workspace (§9 step 1). Without the guardrail the page says "The <cohort> workspace has no 'Sidecar team budget' guardrail, so no team key can be made.", and the row stays off with a Finish setup button. The edit page keeps its model selects on in that state, so Finish setup saves the models typed there once the guardrail exists.
+- Registering a channel also needs `OPENROUTER_MANAGEMENT_KEY`, `VAULT_KEYS` and the `Sidecar team budget` guardrail in the Slack workspace (§9 step 1). Without the guardrail the page says "The Slack workspace in OpenRouter has no 'Sidecar team budget' guardrail, so no team key can be made.", and the row stays off with a Finish setup button. The edit page keeps its model selects on in that state, so Finish setup saves the models typed there once the guardrail exists.
 - Setting a variable restarts the service, so follow §4 first.
 
 **Auth0 setup (done in mpd-auth).** The Auth0 tenant is shared and managed in the `mpd-auth` repo, so nothing in this repo changes it. This section is the request for `mpd-auth`. Before any step, tell the Interview Coach and mpd-auth sessions and wait for their constraints. The user applies each tenant step and records it in the `mpd-auth` rollout log.

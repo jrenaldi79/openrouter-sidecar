@@ -171,8 +171,8 @@ One form; nothing is created until Save.
 
 ### Edit (`GET`/`POST /admin/channels/<team>/<channel>`)
 
-- The same form, prefilled. Label and cohort are shown read-only: the label names the team key and the cohort
-  decides the workspace that holds its chats and key.
+- The same form, prefilled. Label and class (the `cohort` column) are shown read-only: the label names the team key, and the class
+  is only a label (every team's chats and key are in the Slack workspace).
 - **Save** compares the submitted values with the values the form was rendered from, which it carries in hidden
   fields. It sends only the changed registry fields to `ChannelRegistry.update`, in one transaction with their
   `changed` audit entry. So two admins editing different fields don't overwrite each other.
@@ -207,7 +207,7 @@ The newest 200 entries. Each shows:
 
 **How it works:**
 - Each operation returns the changed fields.
-- Validation stays in `registry._validate`. Model saves use the cohort's `PreferenceService.update` under
+- Validation stays in `registry._validate`. Model saves use the Slack workspace's `PreferenceService.update` under
   `acting_as` the team principal, the same call `slack_channels.py` makes.
 - The student catalog filter is extracted from `PreferenceService._catalog` into a function both paths use, so
   the public list and the students' list apply the same rules.
@@ -299,7 +299,7 @@ page.
 | --- | --- |
 | Slack unreachable or erroring | "Slack didn't answer. Try again." |
 | Model list unreachable | "The model list didn't load. Try again." The form can't be saved. |
-| No `Sidecar team budget` guardrail in the cohort workspace | "The 2027 workspace has no 'Sidecar team budget' guardrail, so no team key can be made." This happens at setup step 3, so the row stays off with Finish setup. |
+| No `Sidecar team budget` guardrail in the Slack workspace | "The Slack workspace in OpenRouter has no 'Sidecar team budget' guardrail, so no team key can be made." This happens at setup step 3, so the row stays off with Finish setup. |
 | A model the list doesn't offer, an invalid row (`registry._validate`), or a duplicate label or channel | The validation message. A double-submitted register form gets the duplicate message and no second row. |
 | Auth0 refusing the code exchange | The sign-in failed page with a "Try again" link. |
 | Too many pending sign-ins | 429 with the text above. |

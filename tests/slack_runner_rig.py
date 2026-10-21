@@ -1,6 +1,7 @@
 """A hand-built Slack runner rig: FakeSlack, real stores on `db_target`, a scripted OpenRouter.
 
-Task 21 builds the real `SlackServices` per cohort; this rig builds one by hand around a KeyBox key.
+`wiring.slack_services` builds the real `SlackServices` for the Slack workspace; this rig builds one by hand
+around a KeyBox key.
 """
 
 import asyncio
@@ -11,13 +12,13 @@ import secrets
 from dataclasses import replace
 
 import httpx
-from helpers import WS_2027
 from slack_fakes import FakeSlack
 
 from openrouter_image_mcp.advisor import AdvisorService
 from openrouter_image_mcp.advisor_client import AdvisorClient
 from openrouter_image_mcp.advisor_results import AdvisorResults
 from openrouter_image_mcp.advisor_store import AdvisorStore
+from openrouter_image_mcp.config import SLACK_WORKSPACE
 from openrouter_image_mcp.hosted.limits import Limits
 from openrouter_image_mcp.hosted.slack.context import Context
 from openrouter_image_mcp.hosted.slack.jobs import SlackJobs
@@ -84,18 +85,18 @@ class Model:
 
 class Rig:
     def __init__(self, target, keys):
-        keys.set(KEY)
+        keys.set(KEY, workspace_id=SLACK_WORKSPACE)
         self.slack, self.model = FakeSlack(), Model()
         self.store = AdvisorStore(target)
-        self.client = AdvisorClient(WS_2027, 30, transport=httpx.MockTransport(self.model.handle))
-        self.advisors = AdvisorService(WS_2027, self.store, self.client, credentials=keys.credentials(WS_2027))
+        self.client = AdvisorClient(SLACK_WORKSPACE, 30, transport=httpx.MockTransport(self.model.handle))
+        self.advisors = AdvisorService(SLACK_WORKSPACE, self.store, self.client, credentials=keys.credentials(SLACK_WORKSPACE))
         self.results = AdvisorResults(self.store)
         self.services = SlackServices(self.advisors, PreferenceService(self.advisors), self.store,
                                       self.results, self.advisors.files, self.client)
         self.row = new_row("T1", CHANNEL, "team-a", "2027", fusion_panel=("a/one", "b/two"),
                            fusion_analyst="d/analyst", subagent_model="e/sub")
         self.principal = team_principal("T1", CHANNEL, self.row)
-        _, self.scope = keys.credentials(WS_2027).resolve()
+        _, self.scope = keys.credentials(SLACK_WORKSPACE).resolve()
         self.threads, self.memory, self.jobs = ThreadMap(target), ChannelMemory(target), SlackJobs(target)
         self.limits = Limits(self.store)
         self.registry = ChannelRegistry(target)  # a test registers the row itself to get the budget warning

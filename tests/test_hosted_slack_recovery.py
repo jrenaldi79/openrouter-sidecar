@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from slack_fakes import FakeSlack
 
+from openrouter_image_mcp import config
 from openrouter_image_mcp.advisor_results import AdvisorResults
 from openrouter_image_mcp.advisor_store import AdvisorStore, Scope
 from openrouter_image_mcp.hosted.slack.asks import COMPARE_ALIAS
@@ -65,7 +66,7 @@ class Rig:
     async def recover(self, **kwargs):
         # Default clock: real time, so a heartbeat of `NOW - 100` has lapsed and `time.time() + n` is live.
         kwargs.setdefault("clock", time.time)
-        return await recover(self.jobs, lambda workspace: self.results, self.slack, self.registry,
+        return await recover(self.jobs, self.results, self.slack, self.registry,
                              self.threads, process_id=ME, **kwargs)
 
 
@@ -249,3 +250,14 @@ async def test_mark_posted_failure_after_the_post_is_logged_and_leaves_the_row(r
         assert await rig.recover() == {"posted": 0, "closed": 0, "waiting": 0}
     assert len(rig.slack.posts) == 1 and rig.row_of(job)["slack_posted_at"] is None
     assert "ConnectionError" in caplog.text
+
+
+async def test_a_job_of_another_workspace_is_left_alone_quietly(rig, caplog):
+    other = Scope("slack|T1:C1", config.COHORT_WORKSPACES["2027"])
+    chat = rig.store.create(other, "g/model", "t")
+    job = rig.results.create(other, chat, "p", OLD, slack_user_id="U1", slack_channel_id="C1")["id"]
+    with rig.results.connection() as db:
+        db.execute("UPDATE advisor_jobs SET status='running', heartbeat_until=? WHERE id=?", (NOW - 100, job))
+    with caplog.at_level(logging.WARNING):
+        assert await rig.recover() == {"posted": 0, "closed": 0, "waiting": 0}
+    assert rig.row_of(job)["status"] == "running" and caplog.text == ""

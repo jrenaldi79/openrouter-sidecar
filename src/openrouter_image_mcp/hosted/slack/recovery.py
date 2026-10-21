@@ -15,6 +15,7 @@ from datetime import datetime
 
 from ...advisor_results import AdvisorResults
 from ...advisor_store import Scope
+from ...config import SLACK_WORKSPACE
 from ..principal import SLACK_ISSUER
 from .api import SlackApi
 from .asks import COMPARE_ALIAS, COMPARE_LABEL
@@ -74,12 +75,14 @@ def _older_than(created_at: str, now: float) -> bool:
 
 
 class _Recovery:
-    def __init__(self, jobs, results_for, api, registry, threads, process_id, clock):
-        self.jobs, self.results_for, self.api = jobs, results_for, api
+    def __init__(self, jobs, results: AdvisorResults, api, registry, threads, process_id, clock):
+        self.jobs, self.results, self.api = jobs, results, api
         self.registry, self.threads, self.process_id, self.clock = registry, threads, process_id, clock
         self.counts = {"posted": 0, "closed": 0, "waiting": 0}
 
     async def row(self, row: dict) -> None:
+        if row["workspace"] != SLACK_WORKSPACE:
+            return  # not a team's job in the Slack workspace; this server has nothing to finish for it
         try:
             scope, principal, channel_row = _identify(row, self.registry)
             with acting_as(principal):
@@ -97,7 +100,7 @@ class _Recovery:
             self.counts["waiting"] += 1  # a live owner may still run it (takeover window), or a dead one
             return
         # Acts only when the row's own process still holds it: that is the orphan's process id.
-        self.results_for(row["workspace"]).interrupt(scope, row["id"], row["process_id"], error=RESTART_ERROR)
+        self.results.interrupt(scope, row["id"], row["process_id"], error=RESTART_ERROR)
         self.counts["closed"] += 1
         if row["slack_working_ts"]:
             try:
@@ -126,15 +129,15 @@ class _Recovery:
             log.warning("slack recovery could not mark the thread answered: %s", type(error).__name__)
 
 
-async def recover(jobs: SlackJobs, results_for: Callable[[str], AdvisorResults], api: SlackApi,
+async def recover(jobs: SlackJobs, results: AdvisorResults, api: SlackApi,
                   registry: ChannelRegistry, threads: ThreadMap, *, process_id: str,
                   clock: Callable[[], float] = time.time) -> dict:
     """Finish what other processes left behind; returns `{"posted": n, "closed": m, "waiting": w}`.
 
-    `results_for(workspace_id)` gives the advisor results of that cohort. An active row counts as
+    `results` are the Slack workspace's advisor results; a row of any other workspace is left alone, quietly. An active row counts as
     orphaned only once its `heartbeat_until` has lapsed by `clock`; until then it is `waiting`.
     """
-    work = _Recovery(jobs, results_for, api, registry, threads, process_id, clock)
+    work = _Recovery(jobs, results, api, registry, threads, process_id, clock)
     try:
         rows = jobs.orphans(process_id)
     except Exception as error:  # noqa: BLE001 - recovery runs in a lock hook and must never raise

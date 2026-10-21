@@ -63,7 +63,7 @@ class Overview:
 
 class ChannelAdmin:
     def __init__(self, registry: ChannelRegistry, api: SlackApi | None,
-                 services: Mapping[str, SlackServices] | None, provisioner: KeyProvisioner, audit: AdminAudit,
+                 services: SlackServices | None, provisioner: KeyProvisioner, audit: AdminAudit,
                  *, names: NameCache | None = None, utcnow: Callable[[], datetime] | None = None):
         self.registry, self.api, self.services, self.provisioner = registry, api, services, provisioner
         self.audit = audit
@@ -109,11 +109,10 @@ class ChannelAdmin:
 
     async def catalog(self) -> list[dict]:
         """The models a team may use: the public list, filtered like the students' lists."""
-        if not self.services:  # Slack is off: there is no cohort client to ask
+        if self.services is None:  # Slack is off: there is no client to ask
             raise ChannelRefused(copy.SLACK_OFF)
         try:
-            client = next(iter(self.services.values())).client
-            return filter_catalog(await client.public_models(), self._utcnow())
+            return filter_catalog(await self.services.client.public_models(), self._utcnow())
         except OpenRouterError as error:
             log.warning("slack admin: model list failed: %s", redact(str(error)) or type(error).__name__)
             raise ChannelRefused(copy.CATALOG_DOWN) from None
@@ -138,7 +137,7 @@ class ChannelAdmin:
     async def channel(self, team_id: str, channel_id: str) -> tuple[ChannelRow, dict[str, str | None] | None] | None:
         """The registered row and the team's saved per-family models, for the edit page; None when unregistered.
 
-        The models are None when they can't be read (no services for the cohort, or the preferences failed): the
+        The models are None when they can't be read (Slack is off, or the preferences failed): the
         page then leaves the model selects off, since a form can't tell "nothing saved" from "couldn't look".
         A row still in setup that has no key yet is the exception: nothing can be saved before the key exists,
         so it reads as nothing saved and the selects stay on for Finish setup to post."""

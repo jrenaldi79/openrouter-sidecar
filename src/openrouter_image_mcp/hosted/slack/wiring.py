@@ -1,7 +1,7 @@
 """Builds the Slack bot from the hosted settings and runs it under the single-owner lock.
 
-`build_slack` makes one `SlackServices` per cohort (an `AdvisorService` whose credentials are the team in
-context), the shared stores, the runner, the dispatcher and the Socket Mode gateway. `SlackApp` is what the
+`build_slack` makes the one `SlackServices` for the Slack workspace (an `AdvisorService` whose credentials are
+the team in context), the shared stores, the runner, the dispatcher and the Socket Mode gateway. `SlackApp` is what the
 hosted server holds: its `on_gain`/`on_lose` hooks follow `Health.lock` (appended after Health's own gate
 hooks), and `close` runs at shutdown. Only `app.py` imports this module, and only when Slack is enabled.
 """
@@ -22,7 +22,7 @@ from ...advisor_client import AdvisorClient
 from ...advisor_results import HEARTBEAT_S as ROW_HEARTBEAT_S
 from ...advisor_results import AdvisorResults
 from ...advisor_store import AdvisorStore
-from ...config import ADVISOR_MAX_TIMEOUT_S, COHORT_WORKSPACES
+from ...config import ADVISOR_MAX_TIMEOUT_S, SLACK_WORKSPACE
 from ...preferences import PreferenceService
 from ..openrouter_keys import current_key
 from .api import DOWNLOAD_TIMEOUT_S, SdkSlackApi, SlackApi
@@ -59,7 +59,7 @@ async def _cancel(task: asyncio.Task | None) -> None:
 
 
 class SlackApp:
-    """The running bot: `gateway`, `dispatcher` and `services` (by cohort), started and stopped by the lock.
+    """The running bot: `gateway`, `dispatcher` and `services`, started and stopped by the lock.
 
     `on_gain` only starts one held start task, so the lock hook returns at once. That task retries
     `auth.test` with backoff until it learns the bot's user id, then starts restart recovery (one task at a
@@ -67,7 +67,7 @@ class SlackApp:
     rows that still looked live; `on_lose` and `close` cancel that wait. After `close()` nothing starts again.
     """
 
-    def __init__(self, gateway: Gateway, dispatcher: Dispatcher, services: dict[str, SlackServices],
+    def __init__(self, gateway: Gateway, dispatcher: Dispatcher, services: SlackServices,
                  api: SlackApi, recover_once: Callable[[], Awaitable[dict]], closers: list[Closer]):
         self.gateway, self.dispatcher, self.services, self.api = gateway, dispatcher, services, api
         self.recover_once, self.closers = recover_once, closers
@@ -154,22 +154,18 @@ class SlackApp:
                 log.warning("Slack client close failed (%s)", type(error).__name__)
 
 
-def cohort_services(target, keys, *, sandbox_allowed: bool, transport=None) -> dict[str, SlackServices]:
-    """One `SlackServices` per cohort. The ops scripts reuse this to read and seed a team's preferences."""
-    services = {}
-    for cohort, workspace in COHORT_WORKSPACES.items():
-        store = AdvisorStore(target)
-        client = AdvisorClient(workspace, ADVISOR_MAX_TIMEOUT_S, transport=transport)
-        advisors = AdvisorService(workspace, store, client, credentials=SlackCredentials(workspace, keys),
-                                  sandbox_default=False, sandbox_allowed=sandbox_allowed)
-        services[cohort] = SlackServices(advisors, PreferenceService(advisors), store, AdvisorResults(store),
-                                         advisors.files, client)
-    return services
+def slack_services(target, keys, *, sandbox_allowed: bool, transport=None) -> SlackServices:
+    """The one `SlackServices`, for the Slack workspace. The ops scripts reuse it to read and seed a team's
+    preferences."""
+    store = AdvisorStore(target)
+    client = AdvisorClient(SLACK_WORKSPACE, ADVISOR_MAX_TIMEOUT_S, transport=transport)
+    advisors = AdvisorService(SLACK_WORKSPACE, store, client, credentials=SlackCredentials(SLACK_WORKSPACE, keys),
+                              sandbox_default=False, sandbox_allowed=sandbox_allowed)
+    return SlackServices(advisors, PreferenceService(advisors), store, AdvisorResults(store), advisors.files, client)
 
 
 def _recover_once(api, registry, threads, jobs, services, process_id) -> Callable[[], Awaitable[dict]]:
-    by_workspace = {s.advisors.workspace_id: s.results for s in services.values()}
-    return partial(recover, jobs, by_workspace.__getitem__, api, registry, threads, process_id=process_id)
+    return partial(recover, jobs, services.results, api, registry, threads, process_id=process_id)
 
 
 def build_slack(settings, target, keys, provisioner, limits, *, transport=None, api: SlackApi | None = None,
@@ -181,8 +177,8 @@ def build_slack(settings, target, keys, provisioner, limits, *, transport=None, 
     if api is None:
         api = SdkSlackApi(web, http=httpx.AsyncClient(timeout=DOWNLOAD_TIMEOUT_S))
         closers.append(api.aclose)
-    services = cohort_services(target, keys, sandbox_allowed=settings.sandbox_enabled, transport=transport)
-    closers += [s.client.aclose for s in services.values()]
+    services = slack_services(target, keys, sandbox_allowed=settings.sandbox_enabled, transport=transport)
+    closers.append(services.client.aclose)
     registry, threads, memory, jobs = ChannelRegistry(target), ThreadMap(target), ChannelMemory(target), SlackJobs(target)
     names, process_id = NameCache(api), "slack-" + secrets.token_hex(8)
     runner = SlackRunner(api, limits, threads, memory, jobs, Outputs(api), process_id=process_id, names=names,
