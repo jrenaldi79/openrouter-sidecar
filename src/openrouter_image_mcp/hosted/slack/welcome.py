@@ -32,22 +32,22 @@ DATA_NOTICE = "\n".join(_BULLETS)
 _WELCOME = """Hi, I'm Sidecar. I answer with models other than Claude, so you can compare views with @Claude in the same thread. I read this thread and recent messages in this channel, including Claude's replies, and only when you mention me. Other teams can't see anything from here.
 
 A few first messages to try:
-• `@sidecar ask {example} what's the weakest assumption in Claude's answer above?`
-• `@sidecar compare should we price per seat or per site?`
-• `@sidecar chart this by month` with a CSV attached
+• `@Sidecar ask {example} what's the weakest assumption in Claude's answer above?`
+• `@Sidecar compare should we price per seat or per site?`
+• `@Sidecar chart this by month` with a CSV attached
 
-{budget} What I send to model and search providers, and how long files are kept, is in `@sidecar help`, along with every command."""
+{budget} What I send to model and search providers, and how long files are kept, is in `@Sidecar help`, along with every command."""
 
 _COMMANDS = """Commands
-• `@sidecar <question>` asks the channel default. In a thread where I already answered, it continues with the last model that answered.
-• `@sidecar ask <alias> <question>` asks one model. An exact OpenRouter id also works.
-• `@sidecar ask <a> and <b> <question>` asks two models side by side.
-• `@sidecar compare <question>` runs Fusion: a panel of models plus an analyst, with one combined answer.
-• `@sidecar models` lists the aliases and models.
-• `@sidecar set default <alias>` changes the channel default.
-• `@sidecar usage` shows the team's spend this month and who asked what it cost.
-• `@sidecar remember for this channel: <note>` saves a note I read with every request. `@sidecar what do you remember?` lists the notes and `@sidecar forget <n>` removes one.
-• `@sidecar help` shows this reference.
+• `@Sidecar <question>` asks the channel default. In a thread where I already answered, it continues with the last model that answered.
+• `@Sidecar ask <alias> <question>` asks one model. An exact OpenRouter id also works.
+• `@Sidecar ask <a> and <b> <question>` asks two models side by side.
+• `@Sidecar compare <question>` runs Fusion: a panel of models plus an analyst, with one combined answer.
+• `@Sidecar models` lists the aliases and models.
+• `@Sidecar set default <alias>` changes the channel default.
+• `@Sidecar usage` shows the team's spend this month and who asked what it cost.
+• `@Sidecar remember for this channel: <note>` saves a note I read with every request. `@Sidecar what do you remember?` lists the notes and `@Sidecar forget <n>` removes one.
+• `@Sidecar help` shows this reference.
 • Thread commands: `!restart` starts the thread fresh, `!status` lists running answers and `!stop` cancels them."""
 
 
@@ -57,9 +57,9 @@ def _example_alias(row: ChannelRow) -> str:
 
 def welcome_text(row: ChannelRow, budget_usd: float | None) -> str:
     if budget_usd is None:
-        budget = "Your team has a monthly budget (`@sidecar usage`)."
+        budget = "Your team has a monthly budget (`@Sidecar usage`)."
     else:
-        budget = f"Your team's budget is ${budget_usd:g} a month (`@sidecar usage`)."
+        budget = f"Your team's budget is ${budget_usd:g} a month (`@Sidecar usage`)."
     return _WELCOME.format(example=_example_alias(row), budget=budget)
 
 
@@ -78,7 +78,7 @@ def _model_lines(row: ChannelRow) -> str:
 
 def help_text(row: ChannelRow) -> str:
     sections = (
-        "Sidecar answers with models other than Claude. Mention me with `@sidecar` and a question.",
+        "Sidecar answers with models other than Claude. Mention me with `@Sidecar` and a question.",
         _alias_lines(row),
         _model_lines(row),
         _COMMANDS,

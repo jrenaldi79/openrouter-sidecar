@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 USAGE_FETCH_S = 10.0
-EMPTY = "Ask me a question after @sidecar, or send @sidecar help to see everything I can do."
+EMPTY = "Ask me a question after @Sidecar, or send @Sidecar help to see everything I can do."
 RESTARTED = "Started fresh. My next answer here rereads the thread."
 NO_NOTES = "I don't have any notes for this channel yet."
 USAGE_UNAVAILABLE = "I couldn't read this team's spend right now. Try again in a minute."

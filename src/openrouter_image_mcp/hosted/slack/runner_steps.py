@@ -41,7 +41,7 @@ class ChatFullError(OpenRouterError):
     take the new context. `message` is Slack copy."""
 
     def __init__(self, label: str):
-        super().__init__(f"This thread's {label} chat is full. Start over with @sidecar !restart.")
+        super().__init__(f"This thread's {label} chat is full. Start over with @Sidecar !restart.")
 
 
 def step_label(item: dict) -> str | None:

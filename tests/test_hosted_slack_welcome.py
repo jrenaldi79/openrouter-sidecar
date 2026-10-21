@@ -17,11 +17,11 @@ WELCOME = (
     "same thread. I read this thread and recent messages in this channel, including Claude's replies, and "
     "only when you mention me. Other teams can't see anything from here.\n\n"
     "A few first messages to try:\n"
-    "• `@sidecar ask gemini what's the weakest assumption in Claude's answer above?`\n"
-    "• `@sidecar compare should we price per seat or per site?`\n"
-    "• `@sidecar chart this by month` with a CSV attached\n\n"
-    "Your team's budget is $75 a month (`@sidecar usage`). What I send to model and search providers, and "
-    "how long files are kept, is in `@sidecar help`, along with every command."
+    "• `@Sidecar ask gemini what's the weakest assumption in Claude's answer above?`\n"
+    "• `@Sidecar compare should we price per seat or per site?`\n"
+    "• `@Sidecar chart this by month` with a CSV attached\n\n"
+    "Your team's budget is $75 a month (`@Sidecar usage`). What I send to model and search providers, and "
+    "how long files are kept, is in `@Sidecar help`, along with every command."
 )
 
 
@@ -46,14 +46,14 @@ def test_welcome_formats_fractional_budget():
 
 def test_welcome_without_budget():
     text = welcome_text(make_row(), None)
-    assert "Your team has a monthly budget (`@sidecar usage`)." in text
+    assert "Your team has a monthly budget (`@Sidecar usage`)." in text
     assert "$" not in text
 
 
 def test_welcome_example_falls_back_to_default_model():
     row = make_row(alias_map={"gpt": "ChatGPT", "grok": "Grok"}, default_model="grok")
     text = welcome_text(row, 75.0)
-    assert "`@sidecar ask grok what's the weakest" in text
+    assert "`@Sidecar ask grok what's the weakest" in text
     assert "ask gemini" not in text
 
 

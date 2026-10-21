@@ -88,7 +88,7 @@ async def test_thread_commands_and_help_skip_user_window(rig):
     assert [await _reply(rig, text) for text in ("!stop", "!status", "!restart", "help", "")][:3] == [
         "Nothing is running in this thread.", "Nothing is running in this thread.",
         "Started fresh. My next answer here rereads the thread."]
-    assert _texts(rig)[-2].startswith("Sidecar answers") and "@sidecar help" in _texts(rig)[-1]
+    assert _texts(rig)[-2].startswith("Sidecar answers") and "@Sidecar help" in _texts(rig)[-1]
     assert await _reply(rig, "models") == RATE_TEXT  # other commands still count
 
 

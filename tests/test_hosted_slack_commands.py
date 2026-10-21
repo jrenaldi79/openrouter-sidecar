@@ -131,4 +131,4 @@ async def test_unknown_alias_escaped_once(rig):
 
 async def test_empty_mention_points_to_help(rig):
     (reply,) = await _said(rig, "")
-    assert "@sidecar help" in reply
+    assert "@Sidecar help" in reply
