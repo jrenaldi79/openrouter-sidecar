@@ -98,3 +98,13 @@ def test_logs_withhold_image_transfer_tokens(capsys):
     assert "/uploads/[withheld]" in err and "/assets/[withheld]" in err
     assert "/imports/[withheld]" in err
     assert logs.redact(download) == download  # tool output keeps the link
+
+
+def test_redacts_slack_tokens():
+    bot = logs.redact("token xoxb-" + "1" * 12 + "-abc here")
+    app = logs.redact("token xapp-1-" + "2" * 12 + "-abc here")
+    user = logs.redact("token xoxp-" + "3" * 12 + "-abc here")
+    for text in (bot, app, user):
+        assert not any(run in text for run in ("1" * 4, "2" * 4, "3" * 4))
+        assert text.startswith("token ") and text.endswith(" here")
+    assert logs.redact_log("xoxb-" + "1" * 12 + "-abc") == logs.redact("xoxb-" + "1" * 12 + "-abc")

@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from ..advisor_summary import DEFAULT_SUMMARY_MODEL
+from .slack.settings import SlackSettings, load_slack_settings
 
 _REQUIRED = ("AUTH0_ISSUER", "MCP_RESOURCE_URI", "DATABASE_URL", "VAULT_KEYS", "LINK_SIGNING_KEY")
 _LOCAL_HOSTS = {"localhost", "127.0.0.1"}
@@ -33,6 +34,8 @@ class HostedSettings:
     asset_dir: str | None = None
     # Org management key: creates and deletes student keys only. Unset: no new keys.
     management_key: str | None = field(default=None, repr=False)
+    # Slack Sidecar (Socket Mode bot); None only when a settings object is built by hand.
+    slack: SlackSettings | None = None
 
 
 def _secure_or_local(url: str, name: str) -> None:
@@ -111,4 +114,5 @@ def load_hosted_settings(env: Mapping[str, str]) -> HostedSettings:
         dev_openrouter_url=_dev_openrouter(env, resource),
         asset_dir=_asset_dir(env),
         management_key=env.get("OPENROUTER_MANAGEMENT_KEY") or None,
+        slack=load_slack_settings(env),
     )

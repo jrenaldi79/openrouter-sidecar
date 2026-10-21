@@ -89,3 +89,9 @@ def test_scan_files_skips_unreadable_and_allowlisted():
     files = {"a.py": key, "uv.lock": key, "gone.py": None}
     found = scan_files(list(files), files.get)
     assert [f.file for f in found] == ["a.py"]
+
+
+def test_secret_scan_flags_slack_token():
+    assert names("t = '" + "xoxb-" + "9" * 24 + "'") == ["Slack token"]
+    assert names("t = '" + "xapp-" + "1-" + "9" * 24 + "'") == ["Slack token"]
+    assert names("prefix is xoxb- only") == []

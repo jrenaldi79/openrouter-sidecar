@@ -5,6 +5,8 @@ import re
 import sys
 
 _KEY_RE = re.compile(r"sk-or-[A-Za-z0-9_\-]+")
+# Slack bot/user/app tokens (xoxb-, xoxp-, xoxa-) and Socket Mode app-level tokens (xapp-).
+_SLACK_RE = re.compile(r"\b(?:xox[abp]|xapp)-[A-Za-z0-9\-]+")
 # Bearer JWTs (hosted mode): header.payload.signature, each base64url.
 _JWT_RE = re.compile(r"eyJ[A-Za-z0-9_\-]{8,}\.eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]*")
 # Logs only (tool output must keep them): single-use link tokens and OAuth codes.
@@ -16,7 +18,8 @@ _HANDLER_MARK = "_openrouter_image_mcp"
 
 
 def redact(text: str) -> str:
-    return _JWT_RE.sub("[token withheld]", _KEY_RE.sub("sk-or-***", text))
+    text = _SLACK_RE.sub("[slack token withheld]", _KEY_RE.sub("sk-or-***", text))
+    return _JWT_RE.sub("[token withheld]", text)
 
 
 def redact_log(text: str) -> str:

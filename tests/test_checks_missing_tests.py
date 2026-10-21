@@ -47,3 +47,11 @@ def test_hosted_prefix_does_not_borrow_core_tests():
     assert find_missing([f"{PKG}/hosted/limits.py"], ["tests/test_limits.py"]) == [
         (f"{PKG}/hosted/limits.py", "tests/test_hosted_limits*.py")
     ]
+
+
+def test_slack_subpackage_needs_test():
+    assert expected_tests(f"{PKG}/hosted/slack/parser.py") == "tests/test_hosted_slack_parser*.py"
+    assert expected_tests(f"{PKG}/hosted/slack/__init__.py") is None
+    assert find_missing([f"{PKG}/hosted/slack/parser.py"], ["tests/test_hosted_parser.py"]) == [
+        (f"{PKG}/hosted/slack/parser.py", "tests/test_hosted_slack_parser*.py")
+    ]

@@ -57,6 +57,7 @@ PATTERNS = (
     Pattern("Link signing key", re.compile(_assigned("LINK_SIGNING_KEY") + r"([\w+/=-]{24,})")),
     Pattern("Postgres URL with password", re.compile(r"postgres(?:ql)?://[^:/\s@]+:([^@\s]+)@([^/:\s]+)"),
             _real_postgres),
+    Pattern("Slack token", re.compile(r"xox[abp]-[0-9A-Za-z-]{10,}|xapp-\d-[0-9A-Za-z-]{10,}")),
     Pattern("Signed token", re.compile(r"(?:lnk|upl|img)_[0-9a-f]{32}\.\d+\.[\w.-]+")),
 )
 
