@@ -19,7 +19,7 @@
       <p>{{ text }}</p>
       {% if session %}
       {% import "macros.html" as m %}
-      <p>You are signed in as <strong>{{ session.email }}</strong>.</p>
+      <p>{{ copy.SIGNED_IN_AS }} <strong>{{ session.email }}</strong>.</p>
       {{ m.logout(session.csrf_token) }}
       {% endif %}
       {% if logout_url is defined and logout_url %}

@@ -100,3 +100,10 @@ def test_admin_profile_claim_follows_hosted_setting():
 def test_hosted_settings_reject_short_admin_secret():
     with pytest.raises(ValueError):
         load_hosted_settings(BASE | {"SIDECAR_ADMIN_CLIENT_SECRET": "s" * 31})
+
+
+def test_jwks_uri_follows_the_hosted_setting():
+    assert load_hosted_settings(BASE).admin.jwks_uri == ISSUER + ".well-known/jwks.json"
+    custom = load_hosted_settings(BASE | {"AUTH0_JWKS_URI": "https://keys.example/jwks.json"})
+    assert custom.admin.jwks_uri == custom.jwks_uri == "https://keys.example/jwks.json"
+    assert load().jwks_uri is None  # built by hand: Auth0Login falls back to the issuer's own

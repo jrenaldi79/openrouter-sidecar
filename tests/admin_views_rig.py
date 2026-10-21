@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 from starlette.responses import HTMLResponse
 
-from openrouter_image_mcp.hosted.admin import copy
 from openrouter_image_mcp.hosted.admin.views import Views
 from openrouter_image_mcp.hosted.slack.registry import DEFAULT_ALIASES, new_row
 
@@ -77,7 +76,7 @@ def overview(registered=(), unregistered=(), slack_note=None):
 
 
 def channels_html(**over):
-    ctx = {"overview": overview(), "no_channels_text": copy.NO_CHANNELS}
+    ctx = {"overview": overview()}
     ctx.update(over)
     return body(Views().page("channels", session=Sess(), **ctx))
 

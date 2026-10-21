@@ -13,7 +13,7 @@
 <p>Status: {{ m.status(row) }}</p>
 {% endif %}
 {% if setup_unfinished %}
-<p class="warning" role="status">{{ copy.SETUP_UNFINISHED }}. The channel is saved but off. Finish setup tries again to make the team's key and save its models.</p>
+<p class="warning" role="status">{{ copy.SETUP_NOTICE }}</p>
 {% endif %}
 <form method="post" action="{{ base if editing else base ~ '?channel=' ~ channel.id|urlencode }}">
   {{ m.csrf(csrf_token) }}
@@ -22,11 +22,11 @@
   <input type="hidden" name="orig_{{ field }}" value="{{ orig[field]|tojson|forceescape }}">
   {% endfor %}
   <p><span class="muted">Label</span> <code>{{ row.team_label }}</code> · <span class="muted">Cohort</span> <code>{{ row.cohort }}</code></p>
-  <p class="muted">The label names the team's key and the cohort decides which workspace holds it, so neither changes after the first save.</p>
+  <p class="muted">{{ copy.LABEL_FIXED }}</p>
   {% else %}
   <label>Label
     <input name="label" value="{{ values.label }}" required maxlength="40" pattern="[a-z0-9\-]{1,40}" autocomplete="off">
-    <small>Lowercase letters, digits and dashes. It names the team's key and can't change after you save.</small>
+    <small>{{ copy.LABEL_HELP }}</small>
   </label>
   <label>Cohort
     <select name="cohort">
@@ -38,20 +38,20 @@
   {% endif %}
 
   <h2>Models</h2>
-  <p class="muted">The model each family uses in this channel's chats. None leaves a family as it is.</p>
+  <p class="muted">{{ copy.MODELS_HELP }}</p>
   {% if not models_readable %}
   <p class="warning" role="status">{{ copy.MODELS_UNREADABLE }}</p>
   {% endif %}
   <div class="grid">
     {% for family in families %}
     <label>{{ family }}
-      {{ m.model_select("model_" ~ family, models, values.family_models.get(family, ""), "Model for " ~ family, family=family, blank=not values.family_models.get(family), disabled=not models_readable) }}
+      {{ m.model_select("model_" ~ family, models, values.family_models.get(family, ""), "Model for " ~ family, family=family, blank=not orig.family_models.get(family), disabled=not models_readable) }}
     </label>
     {% endfor %}
   </div>
 
   <h2>Aliases</h2>
-  <p class="muted">A short name people type, and the brand or exact model id it stands for.</p>
+  <p class="muted">{{ copy.ALIASES_HELP }}</p>
   <table>
     <thead><tr><th>Alias</th><th>Brand or model id</th></tr></thead>
     <tbody>
@@ -78,7 +78,7 @@
   </label>
 
   <h2>Fusion</h2>
-  <p class="muted">Fusion asks a panel of 1 to 8 models, then an analyst combines their answers. The helper model does the small jobs.</p>
+  <p class="muted">{{ copy.FUSION_HELP }}</p>
   <div class="grid">
     {% for i in range(8) %}
     <label>Panel model {{ i + 1 }}
@@ -88,10 +88,10 @@
   </div>
   <div class="grid">
     <label>Analyst
-      {{ m.model_select("fusion_analyst", models, values.fusion_analyst, "Fusion analyst model") }}
+      {{ m.model_select("fusion_analyst", models, values.fusion_analyst, "Fusion analyst model", choose=not editing) }}
     </label>
     <label>Helper
-      {{ m.model_select("subagent_model", models, values.subagent_model, "Helper model") }}
+      {{ m.model_select("subagent_model", models, values.subagent_model, "Helper model", choose=not editing) }}
     </label>
   </div>
 
@@ -107,19 +107,20 @@
   <label>Web pages Sidecar may fetch
     <textarea name="fetch_allowlist" rows="4" spellcheck="false">
 {{ values.fetch_allowlist|join("\n") }}</textarea>
-    <small>One domain per line. Links people post in the thread are always allowed.</small>
+    <small>{{ copy.FETCH_HELP }}</small>
   </label>
 
   <h2>Who can use Sidecar</h2>
-  <p class="muted">Leave everyone unchecked to let everyone in the channel use it.</p>
+  <p class="muted">{{ copy.MEMBERS_HELP }}</p>
   {% if members is none %}
   <label>Slack user ids
     <textarea name="invoker_allowlist_text" rows="4" spellcheck="false">
 {{ values.invoker_allowlist|join("\n") }}</textarea>
-    <small>One id per line. The member names didn't load, or the channel has more than 50 members.</small>
+    <small>{{ copy.IDS_HELP }}</small>
   </label>
   {% else %}
   <fieldset>
+    <legend class="sr">Who can use Sidecar</legend>
     {% set listed = members|map(attribute=0)|list %}
     {% for id, name in members %}
     <label><input type="checkbox" name="invoker_allowlist" value="{{ id }}"{% if id in values.invoker_allowlist %} checked{% endif %}> {{ name }}</label>
@@ -140,14 +141,14 @@
 
 {% if editing and row.active %}
 <h2>Turn off</h2>
-<form method="post" action="{{ base }}/off" class="inline" hx-boost="true" hx-confirm="Turn off #{{ channel.name }}? Sidecar stops answering there until you turn it on.">
+<form method="post" action="{{ base }}/off" class="inline" hx-boost="true" hx-confirm="{{ copy.CONFIRM_OFF.format(name=channel.name) }}">
   {{ m.csrf(csrf_token) }}
   <input name="reason" required maxlength="200" placeholder="Why" aria-label="Reason for turning it off">
   <button type="submit" class="btn">Turn off</button>
 </form>
 {% elif editing and not setup_unfinished %}
 <h2>Turn on</h2>
-<form method="post" action="{{ base }}/on" class="inline" hx-boost="true" hx-confirm="Turn on #{{ channel.name }}? Sidecar starts answering there.">
+<form method="post" action="{{ base }}/on" class="inline" hx-boost="true" hx-confirm="{{ copy.CONFIRM_ON.format(name=channel.name) }}">
   {{ m.csrf(csrf_token) }}
   <button type="submit" class="btn btn-primary">Turn on</button>
 </form>

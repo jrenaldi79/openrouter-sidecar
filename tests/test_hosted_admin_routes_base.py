@@ -28,7 +28,7 @@ async def test_redirects_to_login_without_session(rig):
 
 
 async def test_logout_without_a_session_still_signs_out_at_auth0(rig):
-    response = await rig.client.post("/admin/logout", data={})
+    response = await rig.client.post("/admin/logout", data={}, headers={"sec-fetch-site": "same-origin"})
     assert (response.status_code, response.headers["location"]) == (302, LOGOUT)
     assert "max-age=0" in response.headers["set-cookie"].lower()
     rig.sign_in()
@@ -115,7 +115,7 @@ async def test_only_urlencoded_utf8_forms_are_read(rig):
 
 
 @pytest.mark.parametrize("path", ["/admin/channels/bad/ids", "/admin/channels/T0123ABCD/c0123abcd",
-                                  "/admin/channels/T0123ABCD/C0123ABCD0123", "/admin/channels/new?channel=c1",
+                                  "/admin/channels/T0123ABCD/C01234567890123456789A", "/admin/channels/new?channel=c1",
                                   "/admin/channels/new?channel=C1", "/admin/channels/T0123ABC%0A/C0123ABCD"])
 async def test_ids_that_are_not_slack_ids_are_not_found(rig, path):
     rig.sign_in()

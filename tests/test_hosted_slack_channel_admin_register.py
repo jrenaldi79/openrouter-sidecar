@@ -170,3 +170,12 @@ async def test_two_registers_at_once_make_one_row_one_key(rig):
     assert len(rig.registry.all()) == 1 and rig.registry.get("T1", "C1").active
     assert rig.provisioner.creations == 1 and len(rig.provisioner.calls) == 1
     assert rig.actions() == [audit_log.REGISTERED, audit_log.MODELS_CHANGED, audit_log.TURNED_ON]
+
+
+@pytest.mark.parametrize(("field", "sentence"), [("fusion_analyst", copy.CHOOSE_ANALYST),
+                                                 ("subagent_model", copy.CHOOSE_HELPER)])
+async def test_register_needs_an_analyst_and_a_helper_model(rig, field, sentence):
+    with pytest.raises(ChannelRefused) as refused:
+        await rig.register(**{field: ""})
+    assert str(refused.value) == sentence
+    assert rig.registry.all() == [] and rig.provisioner.calls == []

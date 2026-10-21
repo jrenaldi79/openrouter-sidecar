@@ -26,6 +26,7 @@ from starlette.responses import (
 
 from ...logs import redact
 from ..slack.channel_admin import ChannelAdmin
+from ..slack.settings import SlackSettings
 from . import copy
 from .audit import AdminAudit
 from .oidc import Auth0Login
@@ -44,7 +45,9 @@ MAX_FORM_BYTES = 100_000
 MAX_FORM_FIELDS = 200
 FORM_TYPE = "application/x-www-form-urlencoded"
 # Slack's team and channel ids; anything else in a URL is not one of ours.
-SLACK_ID = re.compile(r"[A-Z0-9]{8,12}\Z", re.ASCII)
+SLACK_ID = re.compile(r"[A-Z0-9]{8,21}\Z", re.ASCII)
+# Daily cap and concurrent limit the register form starts from when the Slack settings don't say.
+REGISTER_DEFAULTS = (SlackSettings.daily_cap_usd, SlackSettings.max_concurrent)
 
 Handler = Callable[["AdminContext", Request, "Session | None", "object | None"], Awaitable[Response]]
 
@@ -58,9 +61,9 @@ class AdminContext:
     channels: ChannelAdmin
     views: Views
     limits: object  # `Limits.window` only
-    # Daily cap and concurrent limit the register form starts from (SIDECAR_SLACK_DAILY_CAP_USD and
+    # The register form's starting cap and concurrent limit (SIDECAR_SLACK_DAILY_CAP_USD and
     # SIDECAR_SLACK_MAX_CONCURRENT).
-    register_defaults: tuple[float, int] = (4.0, 3)
+    register_defaults: tuple[float, int] = REGISTER_DEFAULTS
     headers: dict[str, str] = field(init=False)
 
     def __post_init__(self):

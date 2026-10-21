@@ -14,6 +14,7 @@ from ..slack.registry import ChannelRegistry
 from .audit import AdminAudit
 from .oidc import Auth0Login
 from .routes import admin_routes
+from .routes_base import REGISTER_DEFAULTS
 from .sessions import AdminSessions, PendingLogins
 from .views import Views
 
@@ -40,7 +41,7 @@ def _login(settings, target, options: dict) -> Auth0Login | None:
 def _register_defaults(settings) -> tuple[float, int]:
     """The register form's starting cap and concurrency; read from the Slack settings even when Slack is off."""
     slack = settings.slack
-    return (slack.daily_cap_usd, slack.max_concurrent) if slack is not None else (4.0, 3)
+    return (slack.daily_cap_usd, slack.max_concurrent) if slack is not None else REGISTER_DEFAULTS
 
 
 def register_admin(server, settings, target, slack_app, provisioner, limits, *,
@@ -56,5 +57,6 @@ def register_admin(server, settings, target, slack_app, provisioner, limits, *,
     routes = admin_routes(settings.admin, login=login, sessions=sessions, audit=audit, channels=channels,
                           views=views, limits=limits, register_defaults=_register_defaults(settings))
     for route in routes:
-        server.custom_route(route.path, sorted(route.methods - {"HEAD"}))(route.endpoint)
+        # `methods` None is a route for every method (Route(methods=None)); the server just hands it on.
+        server.custom_route(route.path, route.methods and sorted(route.methods - {"HEAD"}))(route.endpoint)
     return {"login": login, "sessions": sessions, "audit": audit, "channels": channels, "views": views}

@@ -23,6 +23,12 @@ class AdminSettings:
     public_origin: str
     # The access token claim holding the admin's email; the same one the MCP endpoint reads.
     profile_claim: str
+    # Where Auth0's signing keys are fetched (AUTH0_JWKS_URI, as for the MCP endpoint); None means the issuer's own.
+    jwks_uri: str | None = None
+
+    @property
+    def signing_keys_url(self) -> str:
+        return self.jwks_uri or self.issuer + ".well-known/jwks.json"
 
     @property
     def callback_url(self) -> str:
@@ -51,7 +57,7 @@ class AdminSettings:
 
 
 def load_admin_settings(env: Mapping[str, str], *, issuer: str, resource: str,
-                        public_origin: str, profile_claim: str) -> AdminSettings:
+                        public_origin: str, profile_claim: str, jwks_uri: str | None = None) -> AdminSettings:
     secret = env.get(CLIENT_SECRET_VAR, "").strip() or None
     # A missing secret only turns sign-in off; a wrong one is a typo worth stopping startup for.
     if secret is not None and len(secret) < MIN_SECRET_CHARS:
@@ -64,4 +70,5 @@ def load_admin_settings(env: Mapping[str, str], *, issuer: str, resource: str,
         resource=resource,
         public_origin=public_origin,
         profile_claim=profile_claim,
+        jwks_uri=jwks_uri,
     )

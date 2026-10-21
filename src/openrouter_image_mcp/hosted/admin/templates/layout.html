@@ -7,10 +7,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="/admin/public/brand/favicon.ico" sizes="any">
   <meta name="csrf-token" content="{{ csrf_token }}">
-  {# htmx 2 does not swap 4xx bodies by default; a 422 or 409 answer is a re-rendered page and is swapped.
+  {# htmx 2 swaps 2xx and 3xx only; every 4xx and 5xx is an error, which admin.js shows in #htmx-error (a refused
+     Turn off or Turn on answers plain text, and swapping it would replace the whole page).
      includeIndicatorStyles:false keeps htmx from injecting an inline <style>, which the CSP forbids;
      allowEval:false keeps hx-on and js: features off (the CSP has no 'unsafe-eval'). #}
-  <meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"422","swap":true},{"code":"409","swap":true},{"code":"[45]..","swap":false,"error":true}]}'>
+  <meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"[45]..","swap":false,"error":true}]}'>
   <title>{% block title %}{% endblock %} · MPD Admin</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2.1.1/css/pico.min.css" integrity="sha384-L1dWfspMTHU/ApYnFiMz2QID/PlP1xCW9visvBdbEkOLkSSWsP6ZJWhPw6apiXxU" crossorigin="anonymous">
   <link rel="stylesheet" href="/admin/public/fonts.css">

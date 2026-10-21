@@ -31,7 +31,7 @@ PICO = "https://cdn.jsdelivr.net/npm/@picocss/pico@2.1.1/"
 
 
 def test_layout_shell_and_nav():
-    response = Views().page("channels", session=Sess(), overview=overview(), no_channels_text=copy.NO_CHANNELS)
+    response = Views().page("channels", session=Sess(), overview=overview())
     html = body(response)
     assert isinstance(response, HTMLResponse) and response.status_code == 200
     assert response.media_type == "text/html"

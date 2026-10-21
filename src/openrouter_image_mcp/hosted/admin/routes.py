@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
-from starlette.routing import Route
+from starlette.routing import Route, request_response
 
 from . import copy, routes_actions, routes_auth, routes_channels
 from .audit import AdminAudit
 from .oidc import Auth0Login
-from .routes_base import AdminContext, endpoint
+from .routes_base import REGISTER_DEFAULTS, AdminContext, endpoint
 from .sessions import AdminSessions
 from .settings import AdminSettings
 from .views import PUBLIC_DIR, STATIC_FILES, Views
@@ -24,8 +24,20 @@ __all__ = ["admin_routes"]
 CONTENT_TYPES = {".css": "text/css", ".js": "text/javascript", ".woff2": "font/woff2", ".png": "image/png",
                  ".ico": "image/x-icon"}
 STATIC_CACHE = "public, max-age=3600"
-GET, POST, BOTH = ["GET"], ["POST"], ["GET", "POST"]
-ANY = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+GET, POST = ["GET"], ["POST"]
+ANY = None  # `methods=None` on a route whose endpoint is an ASGI app (`_AnyMethod`): every method, even PROPFIND
+
+
+class _AnyMethod:
+    """An endpoint for every HTTP method. A plain function endpoint with `methods=None` means GET only, and a
+    method outside a route's list gets Starlette's bare 405 with none of our headers; an ASGI endpoint with
+    `methods=None` matches whatever the method is, so the guard answers (and adds the headers)."""
+
+    def __init__(self, handler):
+        self.app = request_response(handler)
+
+    async def __call__(self, scope, receive, send) -> None:
+        await self.app(scope, receive, send)
 
 
 async def static(ctx: AdminContext, request: Request, session, form) -> Response:
@@ -42,7 +54,8 @@ async def static(ctx: AdminContext, request: Request, session, form) -> Response
 
 
 async def not_found(ctx: AdminContext, request: Request, session, form) -> Response:
-    """Anything under /admin no route took (unknown path, wrong method, trailing slash), with our headers."""
+    """Anything under /admin no route took (unknown path, wrong or unlisted method, trailing slash), with our
+    headers."""
     return ctx.dead_end(request, copy.NOT_FOUND, 404)
 
 
@@ -52,11 +65,11 @@ async def not_configured(ctx: AdminContext, request: Request, session, form) -> 
 
 def admin_routes(settings: AdminSettings, *, login: Auth0Login | None, sessions: AdminSessions,
                  audit: AdminAudit, channels, views: Views, limits,
-                 register_defaults: tuple[float, int] = (4.0, 3)) -> list[Route]:
+                 register_defaults: tuple[float, int] = REGISTER_DEFAULTS) -> list[Route]:
     ctx = AdminContext(settings, login, sessions, audit, channels, views, limits, register_defaults)
     routes = [Route("/admin/public/{path:path}", endpoint(ctx, static, public=True), methods=GET)]
     if login is None:
-        return routes + [Route(path, endpoint(ctx, not_configured, public=True), methods=BOTH)
+        return routes + [Route(path, _AnyMethod(endpoint(ctx, not_configured, public=True)), methods=ANY)
                          for path in ("/admin", "/admin/{rest:path}")]
     team = "/admin/channels/{team}/{channel}"
     return routes + [
@@ -72,5 +85,6 @@ def admin_routes(settings: AdminSettings, *, login: Auth0Login | None, sessions:
         Route(f"{team}/finish", endpoint(ctx, routes_actions.finish, post=True), methods=POST),
         Route(f"{team}/off", endpoint(ctx, routes_actions.turn_off, post=True), methods=POST),
         Route(f"{team}/on", endpoint(ctx, routes_actions.turn_on, post=True), methods=POST),
-        Route("/admin/{rest:path}", endpoint(ctx, not_found, public=True), methods=ANY),
+        Route("/admin", _AnyMethod(endpoint(ctx, not_found, public=True)), methods=ANY),  # no route above lists it
+        Route("/admin/{rest:path}", _AnyMethod(endpoint(ctx, not_found, public=True)), methods=ANY),
     ]

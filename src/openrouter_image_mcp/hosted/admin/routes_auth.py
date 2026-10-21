@@ -58,9 +58,20 @@ async def callback(ctx: AdminContext, request: Request, session, form) -> Respon
     return response
 
 
+def _from_our_page(ctx: AdminContext, request: Request) -> bool:
+    """True for a request our own page made: the browser says same-origin, or the Origin is ours."""
+    origin = request.headers.get("origin", "")
+    return (request.headers.get("sec-fetch-site") == "same-origin"
+            or origin != "" and origin == ctx.settings.public_origin.rstrip("/"))
+
+
 async def logout(ctx: AdminContext, request: Request, session, form) -> Response:
     """End the session here (if there is one), then at Auth0 so the next sign-in asks again. The guard has
-    already checked the CSRF token when a session exists."""
+    already checked the CSRF token when a session exists. With no session (SameSite=Lax also drops the cookie
+    on a cross-site POST) there is no token to check, so another site could end someone's Auth0 session: the
+    request must then come from our own page, or it is sent back to /admin and nothing is signed out."""
+    if session is None and not _from_our_page(ctx, request):
+        return redirect("/admin")
     raw_id = request.cookies.get(SESSION_COOKIE)
     if raw_id:
         ctx.sessions.delete(raw_id)

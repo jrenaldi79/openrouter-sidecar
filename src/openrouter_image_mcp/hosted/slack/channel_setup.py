@@ -119,6 +119,14 @@ def default_family(row: ChannelRow) -> str | None:
     return ALIASES.get(target.casefold()) if target else None
 
 
+def require_chosen(row: ChannelRow, models: Mapping[str, str | None]) -> None:
+    """Refuse a new channel unless Fusion's analyst and the helper are chosen and the default alias resolves."""
+    for value, sentence in ((row.fusion_analyst, copy.CHOOSE_ANALYST), (row.subagent_model, copy.CHOOSE_HELPER)):
+        if not value:
+            raise ChannelRefused(sentence)
+    require_default_model(row, models)
+
+
 def require_default_model(row: ChannelRow, models: Mapping[str, str | None]) -> None:
     """Refuse unless the default alias resolves to a model, given the team's models as they will be saved."""
     family = default_family(row)

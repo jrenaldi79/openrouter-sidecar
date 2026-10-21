@@ -19,7 +19,7 @@ LOG_LIMIT = 200
 
 async def index(ctx: AdminContext, request: Request, session, form) -> Response:
     overview = await ctx.channels.overview()
-    return ctx.views.page("channels", session=session, overview=overview, no_channels_text=copy.NO_CHANNELS)
+    return ctx.views.page("channels", session=session, overview=overview)
 
 
 async def log_page(ctx: AdminContext, request: Request, session, form) -> Response:
@@ -58,30 +58,33 @@ def edit_url(team: str, channel_id: str) -> str:
     return f"/admin/channels/{quote(team, safe='')}/{quote(channel_id, safe='')}"
 
 
-async def _choices(ctx: AdminContext, channel_id: str, *, keep_input: bool) -> tuple[list[dict], list | None, str]:
-    """The models, members and #name a form offers. Showing a refused submission again must not lose it because
-    the model list is down now, so with `keep_input` a failed list is empty (typed models stay selectable)."""
+async def _choices(ctx: AdminContext, channel_id: str, *, keep_input: bool):
+    """`(models, members, #name, list_down)` a form offers. Showing a refused submission again, or the edit page
+    of a saved channel, must not fail because the model list is down now, so with `keep_input` a failed list is
+    empty (the current and typed models stay selectable) and `list_down` is True."""
+    down = False
     try:
         models = await ctx.channels.catalog()
-    except ChannelRefused:
-        if not keep_input:
+    except ChannelRefused as refusal:
+        if not keep_input or str(refusal) == copy.SLACK_OFF:  # with Slack off there is no model list to wait for
             raise
-        models = []
-    return models, await ctx.channels.members(channel_id), await slack_name(ctx.channels, channel_id)
+        models, down = [], True
+    return models, await ctx.channels.members(channel_id), await slack_name(ctx.channels, channel_id), down
 
 
 async def register_page(ctx: AdminContext, session, channel_id: str, *, shown: dict | None = None,
                         error: str | None = None, status: int = 200) -> Response:
     """The register form: blank, or showing a refused submission."""
-    models, members, name = await _choices(ctx, channel_id, keep_input=shown is not None)
+    models, members, name, down = await _choices(ctx, channel_id, keep_input=shown is not None)
     values = shown or forms.blank_values(next(iter(config.COHORT_WORKSPACES)), *ctx.register_defaults)
     families = sorted({m["family"] for m in models} | set(values["family_models"]))
     values = {**values, "family_models": {f: values["family_models"].get(f, "") for f in families}}
+    unsaved = {**values, "family_models": dict.fromkeys(families, "")}  # a new team has no saved models
     return ctx.views.page(
         "channel_form", session=session, status=status, mode="register", row=None,
-        channel={"id": channel_id, "name": name}, values=values, orig=values, models=models,
+        channel={"id": channel_id, "name": name}, values=values, orig=unsaved, models=models,
         families=families, aliases=list(values["alias_map"]), members=members, models_readable=True,
-        error=error, setup_unfinished=False)
+        error=error or (copy.CATALOG_DOWN if down else None), setup_unfinished=False)
 
 
 async def edit_page(ctx: AdminContext, request: Request, session, team: str, channel_id: str, *,
@@ -93,7 +96,7 @@ async def edit_page(ctx: AdminContext, request: Request, session, team: str, cha
     if found is None:
         return ctx.dead_end(request, copy.NOT_REGISTERED, 404, session)
     row, saved = found
-    models, members, name = await _choices(ctx, channel_id, keep_input=shown is not None)
+    models, members, name, down = await _choices(ctx, channel_id, keep_input=True)  # Turn off must stay reachable
     families = sorted({m["family"] for m in models} | set(saved or {}) | set((shown or {}).get("family_models", {})))
     rendered = forms.row_values(row, saved or {}, families)
     values = rendered if shown is None else shown
@@ -101,7 +104,7 @@ async def edit_page(ctx: AdminContext, request: Request, session, team: str, cha
         "channel_form", session=session, status=status, mode="edit", row=row,
         channel={"id": channel_id, "name": name}, values=values, orig=forms.snapshot(rendered, orig),
         models=models, families=families, aliases=list(values["alias_map"]), members=members,
-        models_readable=saved is not None, error=error,
+        models_readable=saved is not None, error=error or (copy.CATALOG_DOWN if down else None),
         setup_unfinished=not row.active and row.inactive_reason in SETUP_REASONS)
 
 

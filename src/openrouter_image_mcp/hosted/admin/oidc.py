@@ -50,9 +50,8 @@ class Auth0Login:
     def __init__(self, settings: AdminSettings, logins: PendingLogins, *, key_resolver=None,
                  transport: httpx.AsyncBaseTransport | None = None):
         self.settings, self.logins, self.transport = settings, logins, transport
-        jwks_uri = settings.issuer + ".well-known/jwks.json"
         if key_resolver is None:
-            client = jwt.PyJWKClient(jwks_uri, cache_keys=True, lifespan=600)
+            client = jwt.PyJWKClient(settings.signing_keys_url, cache_keys=True, lifespan=600)
 
             def key_resolver(token):
                 return client.get_signing_key_from_jwt(token).key

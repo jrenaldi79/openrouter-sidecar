@@ -246,3 +246,24 @@ def test_logout_url(login):
 
 def test_admin_permissions():
     assert ADMIN_PERMISSIONS == ("sidecar:use", "sidecar:admin")
+
+
+def test_login_reads_signing_keys_from_the_configured_jwks_uri(db_target, monkeypatch):
+    seen = []
+
+    class Client:
+        def __init__(self, uri, **kwargs):
+            seen.append(uri)
+
+    monkeypatch.setattr("openrouter_image_mcp.hosted.admin.oidc.jwt.PyJWKClient", Client)
+    Auth0Login(replace(SETTINGS, jwks_uri="https://keys.example/jwks.json"), PendingLogins(db_target))
+    Auth0Login(SETTINGS, PendingLogins(db_target))  # nothing configured: the issuer's own
+    assert seen == ["https://keys.example/jwks.json", jh.ISSUER + ".well-known/jwks.json"]
+
+
+async def test_a_missing_profile_email_is_logged_without_identity(login, caplog):
+    caplog.set_level(logging.INFO)
+    with respx.mock() as mock:
+        assert await _refused(login, mock, access=_access(**{jh.PROFILE: {"cohort": "2027"}})) == "not_admin"
+    assert "no profile email" in caplog.text
+    assert "alice" not in caplog.text and "northwestern" not in caplog.text

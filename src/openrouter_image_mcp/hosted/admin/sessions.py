@@ -64,6 +64,9 @@ class _Store:
 
 
 class PendingLogins(_Store):
+    """Sign-ins waiting for their callback. The `MAX_PENDING` cap is soft: the count and the insert are not one
+    atomic step, so concurrent `create` calls can overshoot it by a few, which is acceptable for a flood guard."""
+
     schema = LOGINS_SCHEMA
 
     def create(self) -> Pending:

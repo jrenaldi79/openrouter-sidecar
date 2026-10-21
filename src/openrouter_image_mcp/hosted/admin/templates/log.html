@@ -2,7 +2,7 @@
 {% block title %}Change log{% endblock %}
 {% block body %}
 <h1>Change log</h1>
-<p class="muted">The newest 200 changes, in Chicago time.</p>
+<p class="muted">{{ copy.LOG_INTRO }}</p>
 <table>
   <thead><tr><th>Time</th><th>Admin</th><th>Channel</th><th>Action</th><th>Changes</th></tr></thead>
   <tbody>
@@ -19,7 +19,7 @@
     </td>
   </tr>
   {% else %}
-  <tr><td colspan="5" class="muted">No changes yet.</td></tr>
+  <tr><td colspan="5" class="muted">{{ copy.NO_CHANGES }}</td></tr>
   {% endfor %}
   </tbody>
 </table>

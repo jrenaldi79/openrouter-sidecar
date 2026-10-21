@@ -103,9 +103,10 @@ def load_hosted_settings(env: Mapping[str, str]) -> HostedSettings:
         raise ValueError("LINK_SIGNING_KEY must be at least 32 characters.")
     public_origin = _origin(resource)
     profile_claim = env.get("PROFILE_CLAIM", "https://mpd.northwestern.edu/profile")
+    jwks_uri = env.get("AUTH0_JWKS_URI") or issuer + ".well-known/jwks.json"
     return HostedSettings(
         issuer=issuer,
-        jwks_uri=env.get("AUTH0_JWKS_URI") or issuer + ".well-known/jwks.json",
+        jwks_uri=jwks_uri,
         resource=resource,
         public_origin=public_origin,
         database_url=env["DATABASE_URL"],
@@ -121,5 +122,5 @@ def load_hosted_settings(env: Mapping[str, str]) -> HostedSettings:
         management_key=env.get("OPENROUTER_MANAGEMENT_KEY") or None,
         slack=load_slack_settings(env),
         admin=load_admin_settings(env, issuer=issuer, resource=resource, public_origin=public_origin,
-                                  profile_claim=profile_claim),
+                                  profile_claim=profile_claim, jwks_uri=jwks_uri),
     )

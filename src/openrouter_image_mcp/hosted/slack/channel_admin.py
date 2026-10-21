@@ -31,7 +31,7 @@ from .channel_setup import (
     audit_callback,
     failure_reason,
     model_ids,
-    require_default_model,
+    require_chosen,
     same,
     team_of,
 )
@@ -180,7 +180,7 @@ class ChannelAdmin:
         except ValueError as error:
             raise ChannelRefused(str(error)) from None
         wanted = {family: model for family, model in family_defaults.items() if model}
-        require_default_model(row, wanted)  # a new team has no saved models yet
+        require_chosen(row, wanted)  # a new team has no saved models yet
         await self._check_models(model_ids(fields), wanted)
         problem = await self.check(channel_id)
         if problem:

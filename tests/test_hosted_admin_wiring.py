@@ -7,6 +7,7 @@ import httpx
 import pytest
 from markupsafe import escape
 
+from openrouter_image_mcp import storage
 from openrouter_image_mcp.hosted.admin import copy
 from openrouter_image_mcp.hosted.slack.registry import new_row
 from tests import jwt_helpers as h
@@ -26,6 +27,8 @@ async def test_disabled_is_404(db_target):
         async with _http(running) as http:
             for path in ("/admin", "/admin/login", "/admin/public/admin.css", "/admin/log"):
                 assert (await http.get(path)).status_code == 404, path
+        with storage.connect(db_target) as db:  # nothing was created for a page that is off
+            assert not [t for t in ("admin_audit", "admin_sessions", "admin_logins") if db.has_table(t)]
 
 
 async def test_not_configured_page_and_warning(db_target, caplog):
@@ -105,3 +108,27 @@ async def test_mcp_unaffected(db_target, env):
             assert ready.status_code == 200
         async with running.client(running.token()) as client:
             assert (await client.list_tools()).tools
+
+
+async def test_unlisted_methods_get_the_security_headers_through_the_server(db_target):
+    async with running_server(db_target, env=CONFIGURED) as running, _http(running) as http:
+        for method in ("TRACE", "PROPFIND"):
+            for path in ("/admin", "/admin/login", "/admin/nope"):
+                response = await http.request(method, path)
+                assert response.status_code == 404, (method, path)
+                assert "default-src 'none'" in response.headers["content-security-policy"], (method, path)
+
+
+def test_the_register_defaults_fallback_is_defined_once():
+    import inspect
+    from types import SimpleNamespace
+
+    from openrouter_image_mcp.hosted.admin.routes import admin_routes
+    from openrouter_image_mcp.hosted.admin.routes_base import REGISTER_DEFAULTS
+    from openrouter_image_mcp.hosted.admin.wiring import _register_defaults
+
+    assert REGISTER_DEFAULTS == (4.0, 3)
+    assert _register_defaults(SimpleNamespace(slack=None)) is REGISTER_DEFAULTS
+    assert inspect.signature(admin_routes).parameters["register_defaults"].default is REGISTER_DEFAULTS
+    slack = SimpleNamespace(daily_cap_usd=9.5, max_concurrent=7)
+    assert _register_defaults(SimpleNamespace(slack=slack)) == (9.5, 7)
