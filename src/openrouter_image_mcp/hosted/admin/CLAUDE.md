@@ -25,8 +25,19 @@ read_when: "Changing or adding files in src/openrouter_image_mcp/hosted/admin/."
   `AdminIdentity` and `LoginRefused` (reason `state`, `exchange`, `id_token` or `not_admin`). `finish` needs the login
   cookie to equal `state`, checks the RS256 ID token, then the access token through `Auth0Verifier(profile_claim=None)`
   for both permissions and a profile email. A failed exchange logs the HTTP status only.
-- Being built (`docs/superpowers/plans/2026-10-21-slack-admin.md`): `forms.py`, `routes.py` and `wiring.py`. The Slack
-  side is `hosted/slack/channel_admin.py`.
+- `forms.py`: parses the register and edit forms and compares the submitted values with the values the form was
+  rendered from (carried in hidden fields), so only changed fields are saved.
+- `routes.py`: the Starlette routes (login, callback, logout, channels, register, edit, finish setup, turn off and on,
+  change log, static files). One guard checks the session for every page and the CSRF token (`_csrf` field or
+  `x-csrf-token` header) for every POST. The login route is limited per client address. Without an `Auth0Login`
+  (client values unset) every page except the static files shows `NOT_CONFIGURED`. Every response carries
+  `security_headers`. A `ChannelRefused` shows the form again with the entered values and its message.
+- `wiring.py`: `register_admin`, called from `build_hosted_server` when the page is on. It builds the sessions, audit,
+  `Auth0Login` and `ChannelAdmin` (over the Slack app, or over a fresh registry with no Slack api when Slack is off)
+  and registers the routes with `server.custom_route`. It logs one warning naming the missing client variables.
+  `server.hosted["admin"]` holds the pieces, or None when the page is off.
+- The Slack side is `hosted/slack/channel_admin.py` (the page's service: overview, register, finish setup, change,
+  turn off and on) with `channel_setup.py`. Routes call it and stay thin.
 
 **Invariants:**
 
@@ -34,5 +45,9 @@ read_when: "Changing or adding files in src/openrouter_image_mcp/hosted/admin/."
   `mpd-auth`, never from this repo.
 - The client secret is never logged or rendered. Sessions and pending logins are stored hashed.
 - Registry writes and their audit entries share one transaction.
+- A missing `Sidecar team budget` guardrail is `errors.NoGuardrailError`; the page shows the `NO_GUARDRAIL` sentence and
+  leaves the row off with Finish setup.
+- Every sentence the page shows comes from `copy.py`. Details go to the log through `logs.redact`, never to the page.
+- Operations (variables, the Auth0 request, turning the page off): `docs/HOSTED_OPERATIONS.md` §10.
 
 **Tests:** `tests/test_hosted_admin_<module>*.py` (enforced by `scripts/checks/missing_tests.py`).

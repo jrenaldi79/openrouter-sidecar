@@ -5,6 +5,7 @@ How to run the hosted (Streamable HTTP) OpenRouter Sidecar on Railway.
 - Decisions: `docs/superpowers/specs/2026-10-18-hosted-decision-record.md`.
 - Student keys: `docs/superpowers/specs/2026-10-19-provisioned-student-keys-design.md`.
 - Slack bot: `docs/superpowers/specs/2026-10-21-slack-sidecar-design.md` (setup in §9).
+- Admin page: `docs/superpowers/specs/2026-10-21-slack-admin-design.md` (setup in §10).
 - Local synthetic e2e: `docs/E2E_LOCAL.md`.
 
 **Every step that touches Railway, Auth0 or OpenRouter is outward-facing.** Do each
@@ -28,6 +29,8 @@ one deliberately. Never paste secrets into chat, issues or logs.
 | `SIDECAR_SANDBOX_ENABLED` | no | `true` in production since 2026-10-21, after the live isolation test (`docs/superpowers/plans/2026-10-20-sandbox-isolation-live-test.md`). Chats stay inline unless started with `sandbox: true`. Unset it, and repeat the test, if students or teams are ever given raw keys |
 | `SIDECAR_SUMMARY_MODEL` | no | Model for share summaries of long advisor answers. Default `google/gemini-3.5-flash-lite` |
 | `SIDECAR_SLACK_ENABLED`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` | no | Turn on the Slack bot and give it its two tokens. Unset keeps it off. See §9 |
+| `SIDECAR_ADMIN_ENABLED` | no | The `/admin` page is on unless this is `false`, `0` or `no`. See §10 |
+| `SIDECAR_ADMIN_CLIENT_ID`, `SIDECAR_ADMIN_CLIENT_SECRET` | for sign-in | The MPD Sidecar Admin Auth0 client. The secret must be at least 32 characters. Unset, the page says sign-in isn't configured. See §10 |
 | `ASSET_DIR` | for images | Absolute path on the mounted Railway volume, e.g. `/data/assets`. Unset keeps the image tools off |
 | `RETENTION_DAYS` | no | Default 90 (`purge`) |
 | `PORT` / `HOST` | no | Railway sets `PORT`. `HOST` defaults to `0.0.0.0` |
@@ -284,3 +287,55 @@ It needs `DATABASE_URL` (the public URL) and `VAULT_KEYS`, set as in step 4, sho
 - **One channel:** `slack_channels.py deactivate <label> --reason "..."`. Mentions there are then ignored. Removing the bot from the channel does the same on its own.
 - **The whole bot:** unset `SIDECAR_SLACK_ENABLED` and deploy as in §4. The restart interrupts jobs in progress, so check `active-jobs` first. Chats, notes and the registry stay in the database until the retention purge.
 - **Tokens that may have leaked:** revoke them in the Slack app settings at once (the bot stops working), then reinstall the app or generate a new app-level token and set the new values in Railway. Nothing in logs should contain a token; one that does is a bug to report.
+
+## 10. Admin page
+
+`/admin` is a web page on the hosted server where MPD admins register and edit the Slack bot's channels, instead of running `scripts/ops/slack_channels.py`. Design: `docs/superpowers/specs/2026-10-21-slack-admin-design.md`.
+
+**What it does:**
+- **Channels** lists the registered channels with their label, channel name, cohort, on or off, default alias and limits. It also lists channels `@Sidecar` is in but that aren't registered, each with a Register link.
+- **Register and edit** use one form: label, cohort, aliases, the model for each family, the default alias, the Fusion panel, analyst and helper model, fetch allowlist, daily cap, concurrent limit and who may use Sidecar. Saving a new channel writes the row turned off with the reason "Setting up", creates the team's OpenRouter key, saves the team's models and then turns the row on. If a step after the first fails, the row stays off with "Setup didn't finish", and the edit page offers a Finish setup button that repeats those steps. Label and cohort can't be changed after the row is saved.
+- **Turn off and Turn on** are buttons on the edit page. Turning a channel on runs the guest and external-sharing check again.
+- **Change log** shows the newest 200 changes: when, who, which channel, what was done, and each changed field as before and after.
+
+`slack_channels.py` still works and stays the fallback. Changes made with the script do not appear in the change log.
+
+**Who can sign in.** An admin signs in with the class Auth0 login (passwordless email). The access token must carry both `sidecar:use` and `sidecar:admin`, and it must have the profile claim (`PROFILE_CLAIM`) with an email. A `workspace_id` is not required. Anyone else sees "This page is for Sidecar admins." A session ends after 2 hours idle or 12 hours after sign-in, so removing someone's admin role takes effect at their next sign-in, within 12 hours.
+
+**Variables** (also in §1):
+
+| Variable | Default | Value |
+|---|---|---|
+| `SIDECAR_ADMIN_ENABLED` | on | `false`, `0` or `no` removes every `/admin` route, and they answer 404 |
+| `SIDECAR_ADMIN_CLIENT_ID` | none | The client id of **MPD Sidecar Admin** (below) |
+| `SIDECAR_ADMIN_CLIENT_SECRET` | none | That client's secret, at least 32 characters. The server never logs or shows it. A shorter value stops startup |
+
+- The page is on by default. With the client id or secret missing, the server starts normally and logs one warning naming the missing variables. Every `/admin` page then says "Admin sign-in isn't configured on this server yet."
+- The callback is `<origin of MCP_RESOURCE_URI>/admin/callback` and the logout return is `<origin>/admin`. A public origin that isn't HTTPS stops startup, except `http://localhost` and `http://127.0.0.1`.
+- With `SIDECAR_SLACK_ENABLED` unset, the page says "Slack isn't turned on for this server." and lists the registered channels read-only. With it set, the page needs only `SLACK_BOT_TOKEN`, not the running gateway or the owner lock, so any replica can serve it.
+- Registering a channel also needs `OPENROUTER_MANAGEMENT_KEY`, `VAULT_KEYS` and the `Sidecar team budget` guardrail in the cohort's workspace (§9 step 1). Without the guardrail the page says the workspace has no such guardrail, and the row stays off with a Finish setup button.
+- Setting a variable restarts the service, so follow §4 first.
+
+**Auth0 setup (done in mpd-auth).** The Auth0 tenant is shared and managed in the `mpd-auth` repo, so nothing in this repo changes it. This section is the request for `mpd-auth`. Before any step, tell the Interview Coach and mpd-auth sessions and wait for their constraints. The user applies each tenant step and records it in the `mpd-auth` rollout log.
+
+1. **Client.** Create a regular web application named **MPD Sidecar Admin** (confidential, authorization code).
+2. **Signing algorithm.** Set RS256 explicitly. A client created through the API or CLI can be left without `jwt_configuration.alg` and sign HS256, which the page refuses:
+
+   ```bash
+   auth0 api patch "clients/<client id>" --data '{"jwt_configuration":{"alg":"RS256"}}'
+   ```
+
+3. **Connection.** Enable only the passwordless email connection for this client. With `Username-Password-Authentication` also enabled, identifier-first login asks for a password.
+4. **URLs.**
+   - Allowed callback URLs: `https://<service-domain>/admin/callback` and `http://localhost:8000/admin/callback`.
+   - Allowed logout URLs: `https://<service-domain>/admin` and `http://localhost:8000/admin`.
+5. **Client grants.** Authorize the client for both Sidecar APIs: **MPD OpenRouter Sidecar** and **MPD OpenRouter Sidecar (local)** (§2). The APIs keep `require_client_grant`. The **MPD - Profile claim** Action already sets the profile claim for any client.
+6. **Nothing else changes.** Leave the shared **MPD MCP Clients** client, the Interview Coach's **MPD MCP Admin** client and the Actions as they are.
+
+Then set `SIDECAR_ADMIN_CLIENT_ID` and `SIDECAR_ADMIN_CLIENT_SECRET` in Railway as in §9 step 3, and sign in as an `mpd-admin`.
+
+**Running it locally.** Start the server on `http://localhost:8000` with `MCP_RESOURCE_URI=http://localhost:8000/mcp` (see `docs/E2E_LOCAL.md`). Set the two client variables to the MPD Sidecar Admin client's values and open `http://localhost:8000/admin`. Sign-in returns only if the localhost callback and logout URLs from step 4 are registered. Cookies are not marked Secure on a localhost origin.
+
+**Turning it off.** Set `SIDECAR_ADMIN_ENABLED=false` and deploy as in §4. The `/admin` routes then answer 404. Registered channels, the change log and the admin tables stay in the database. To stop one person, remove `sidecar:admin` from their role in `mpd-auth`; their session ends within 12 hours.
+
+**Data.** The page creates three tables when needed: `admin_logins` (pending sign-ins, single use, 10 minutes), `admin_sessions` and `admin_audit` (the change log). They hold registry values only, never keys or tokens. Expired rows are removed when a sign-in starts or a session is created, so no sweeper is needed.

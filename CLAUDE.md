@@ -69,6 +69,8 @@ Path-scoped rules live in `.claude/rules/` (TDD, code quality, testing, Python, 
 - **Schema changes are additive in code** (`IF NOT EXISTS`); there is no migrations folder. Storage tests run on
   SQLite and, with `TEST_DATABASE_URL`, Postgres via the `db_target` fixture.
 - **Auth0 and class identity are managed outside this repo** (`../mpd-auth`); don't change them from here.
+- **`/admin` signs in with the MPD Sidecar Admin Auth0 client and needs `sidecar:admin`** (plus `sidecar:use`). Its
+  client, grants and callbacks are requested in `docs/HOSTED_OPERATIONS.md` §10 and applied through `mpd-auth`.
 - **Hosted single owner:** one replica holds the advisory lock (`hosted/health.py`) for sweeps and background work.
 - **Oversized files are grandfathered, not blessed:** before adding to `service.py`, `imaging.py`, `client.py` or
   `catalog.py`, extract a sibling module.
