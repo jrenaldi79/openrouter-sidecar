@@ -1,9 +1,16 @@
 """Socket Mode gateway: acks Slack envelopes, dedupes events across replicas and routes them.
 
 Slack redelivers an event until it is acked and can deliver one to several connections, so `EventLog`
-(a shared table) lets exactly one replica handle each `event_id`. `Gateway.on_request` acks first, always,
-then validates, dedupes, filters bot posts and edits, and starts the handler as a task so it returns fast.
-Handler failures are logged by type and never escape. The owner lock (Task 21) starts and stops it.
+(a shared table) lets exactly one replica handle each `event_id`; a bounded in-memory set of recent ids is
+checked first and keeps a repeat out even while the database is down. `Gateway.on_request` acks first,
+always, then validates, dedupes, filters bot posts and edits, and starts the handler as a task so it
+returns fast. Handler failures are logged by type and never escape.
+
+`start()` returns at once: the real client's `connect()` retries forever on a bad token or an outage, so it
+runs as a task the gateway holds, and the owner-lock gain hook can await `start()` safely. `stop()` raises a
+flag first (late envelopes are still acked but dropped), closes the client (which turns off auto-reconnect),
+cancels the connect task, then gives running handlers a grace period before cancelling them.
+The owner lock (Task 21) starts and stops it.
 """
 
 from __future__ import annotations
@@ -11,7 +18,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Awaitable, Callable
+from collections import OrderedDict
+from collections.abc import Callable, Coroutine
 
 from slack_sdk.socket_mode.aiohttp import SocketModeClient
 from slack_sdk.socket_mode.request import SocketModeRequest
@@ -26,8 +34,9 @@ _SCHEMA = "CREATE TABLE IF NOT EXISTS slack_events (event_id TEXT PRIMARY KEY, r
 RETENTION_S = 86400.0
 PURGE_EVERY_S = 3600.0
 GRACE_S = 5.0
+RECENT_IDS = 1000
 BOT_REMOVED = "bot removed"
-_NOT_EDITS = {"message_changed", "message_deleted", "bot_message"}
+_DROPPED_SUBTYPES = {"message_changed", "message_deleted", "bot_message"}
 
 
 class EventLog:
@@ -60,7 +69,7 @@ def _text(value) -> bool:
 
 def _skipped(event: dict) -> bool:
     """Bot posts and edits never reach a handler."""
-    return bool(event.get("bot_id") or event.get("edited") or event.get("subtype") in _NOT_EDITS)
+    return bool(event.get("bot_id") or event.get("edited") or event.get("subtype") in _DROPPED_SUBTYPES)
 
 
 class Gateway:
@@ -72,30 +81,47 @@ class Gateway:
         self._factory, self._purge_every = client_factory, purge_interval_s
         self.grace_s = GRACE_S
         self._client = None
+        self._connector: asyncio.Task | None = None
         self._purger: asyncio.Task | None = None
+        self._stopping = False
         self._tasks: set[asyncio.Task] = set()
+        self._recent: OrderedDict[str, None] = OrderedDict()
 
-    async def start(self) -> None:
-        if self._client is not None:
-            return
+    def _new_client(self):
         client = self._factory(app_token=self._app_token, web_client=self._web_client)
         client.socket_mode_request_listeners.append(self.on_request)
-        self._client = client
+        return client
+
+    async def start(self) -> None:
+        """Returns promptly; the socket connects in the background and keeps retrying on its own."""
+        if self._client is not None:
+            log.info("Slack gateway already started; ignoring a second start")
+            return
+        self._stopping = False
+        self._client = self._new_client()
+        self._connector = asyncio.create_task(self._connect(self._client))
         self._purger = asyncio.create_task(self._purge_loop())
-        await client.connect()
+
+    async def _connect(self, client) -> None:
+        try:
+            await client.connect()
+        except Exception as error:  # noqa: BLE001 - the connect task must end quietly, never unhandled
+            log.warning("Slack socket connect failed: %s", redact_log(type(error).__name__))
 
     async def stop(self) -> None:
-        """Idempotent: stop purging and new events, give handlers `grace_s` to finish, cancel the rest."""
+        """Idempotent: drop new events, close the socket, wait `grace_s` for handlers, cancel the rest."""
+        self._stopping = True
         client, self._client = self._client, None
+        connector, self._connector = self._connector, None
         purger, self._purger = self._purger, None
-        if purger is not None:
-            purger.cancel()
-            await asyncio.gather(purger, return_exceptions=True)
         if client is not None:
-            await self._quietly("disconnect", client.disconnect())
-        await self._drain()
-        if client is not None:
+            # close() disables auto-reconnect and disconnects; disconnect() alone would let it reconnect.
             await self._quietly("close", client.close())
+        for background in (connector, purger):
+            if background is not None:
+                background.cancel()
+                await asyncio.gather(background, return_exceptions=True)
+        await self._drain()
 
     async def _drain(self) -> None:
         pending = list(self._tasks)
@@ -106,7 +132,7 @@ class Gateway:
             task.cancel()
         await asyncio.gather(*still, return_exceptions=True)
 
-    async def _quietly(self, step: str, call: Awaitable) -> None:
+    async def _quietly(self, step: str, call) -> None:
         try:
             await call
         except Exception as error:  # noqa: BLE001 - a failed socket step must not stop the others
@@ -123,15 +149,15 @@ class Gateway:
 
     async def on_request(self, client, req: SocketModeRequest) -> None:
         await self._ack(client, req)
-        if req.type != "events_api":
+        if req.type != "events_api" or self._stopping:
             return
         payload = req.payload if isinstance(req.payload, dict) else {}
         event_id, team_id, event = payload.get("event_id"), payload.get("team_id"), payload.get("event")
         if not (_text(event_id) and _text(team_id) and isinstance(event, dict)):
             log.warning("Dropped a malformed Slack envelope")
             return
-        if not await self._first_time(event_id) or _skipped(event):
-            return
+        if not await self._first_time(event_id) or _skipped(event) or self._stopping:
+            return  # the flag is read again: stop() may have begun while the database answered
         handler = self._handler(team_id, event)
         if handler is not None:
             self._spawn(handler)
@@ -142,7 +168,18 @@ class Gateway:
         except Exception as error:  # noqa: BLE001 - a failed ack must not stop handling
             log.warning("Slack ack failed: %s", redact_log(type(error).__name__))
 
+    def _seen_recently(self, event_id: str) -> bool:
+        """Remember the id (no await between the check and the add, so racing repeats lose)."""
+        if event_id in self._recent:
+            return True
+        self._recent[event_id] = None
+        if len(self._recent) > RECENT_IDS:
+            self._recent.popitem(last=False)
+        return False
+
     async def _first_time(self, event_id: str) -> bool:
+        if self._seen_recently(event_id):
+            return False
         try:
             return await asyncio.to_thread(self.events.first_time, event_id)
         except Exception as error:  # noqa: BLE001 - dedupe failure fails open
@@ -150,7 +187,7 @@ class Gateway:
             log.warning("Slack event dedupe failed, handling anyway: %s", redact_log(type(error).__name__))
             return True
 
-    def _handler(self, team_id: str, event: dict) -> Awaitable | None:
+    def _handler(self, team_id: str, event: dict) -> Coroutine | None:
         kind, channel, user = event.get("type"), event.get("channel"), event.get("user")
         if kind == "app_mention":
             return self.dispatcher.on_mention(team_id, event)
@@ -166,8 +203,8 @@ class Gateway:
     async def _deactivate(self, team_id: str, channel: str) -> None:
         self.registry.deactivate(team_id, channel, BOT_REMOVED)
 
-    def _spawn(self, handler: Awaitable) -> None:
-        task = asyncio.ensure_future(handler)
+    def _spawn(self, handler: Coroutine) -> None:
+        task = asyncio.create_task(handler)
         self._tasks.add(task)
         task.add_done_callback(self._finished)
 

@@ -1,95 +1,35 @@
 import asyncio
+import logging
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from slack_sdk.socket_mode.request import SocketModeRequest
+from slack_gateway_rig import BOT, TOKEN, FakeClient, Recorder, Rig, envelope, mention
 
 from openrouter_image_mcp.hosted.slack.gateway import EventLog, Gateway
 
-TOKEN = "xapp-" + "1" * 10  # fake, built at runtime
-BOT = "UBOT"
-
-
-class FakeClient:
-    def __init__(self, app_token, web_client):
-        self.app_token, self.web_client = app_token, web_client
-        self.socket_mode_request_listeners = []
-        self.responses, self.calls = [], []
-
-    async def send_socket_mode_response(self, response):
-        self.calls.append("ack")
-        self.responses.append(response)
-
-    async def connect(self):
-        self.calls.append("connect")
-
-    async def disconnect(self):
-        self.calls.append("disconnect")
-
-    async def close(self):
-        self.calls.append("close")
-
-
-class Recorder:
-    """Stands in for dispatcher, guard and registry; `gate` holds a handler open, `boom` makes it raise."""
-
-    def __init__(self):
-        self.seen, self.gate, self.boom = [], None, False
-
-    async def _record(self, name, *args):
-        self.seen.append((name, *args))
-        if self.gate is not None:
-            await self.gate.wait()
-        if self.boom:
-            raise RuntimeError("handler failed")
-
-    async def on_mention(self, team_id, event):
-        await self._record("mention", team_id, event["text"])
-
-    async def on_member_joined(self, team_id, channel_id, user_id):
-        await self._record("joined", team_id, channel_id, user_id)
-
-    async def on_channel_shared(self, team_id, channel_id):
-        await self._record("shared", team_id, channel_id)
-
-    def deactivate(self, team_id, channel_id, reason):
-        self.seen.append(("deactivate", team_id, channel_id, reason))
-        return True
-
-
-class Rig:
-    def __init__(self, db_target, **kwargs):
-        self.rec = Recorder()
-        self.clients = []
-
-        def factory(app_token, web_client):
-            self.clients.append(FakeClient(app_token, web_client))
-            return self.clients[-1]
-
-        self.gateway = Gateway(TOKEN, object(), self.rec, self.rec, self.rec, EventLog(db_target),
-                               bot_user_id=BOT, client_factory=factory, **kwargs)
-
-    async def push(self, payload, *, type="events_api", envelope="env1"):
-        await self.gateway.on_request(self.clients[0], SocketModeRequest(type, envelope, payload))
-
-    async def send(self, event, *, event_id="Ev1", team_id="T1", **kwargs):
-        await self.push({"event_id": event_id, "team_id": team_id, "event": event}, **kwargs)
-        await self.settle()
-
-    async def settle(self):
-        while self.gateway._tasks:
-            await asyncio.gather(*list(self.gateway._tasks), return_exceptions=True)
-
-
-def mention(text="hi", **extra):
-    return {"type": "app_mention", "channel": "C1", "user": "U1", "ts": "1.0", "text": text, **extra}
+SECRET = "sentinel-" + "z" * 8  # must never reach a log line
 
 
 @pytest.fixture
 async def rig(db_target):
-    made = Rig(db_target)
-    await made.gateway.start()
+    made = Rig.on(db_target)
+    await made.start()
     yield made
     await made.gateway.stop()
+
+
+class BrokenEvents:
+    """An event log whose database is down."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def first_time(self, event_id):
+        self.calls += 1
+        raise ConnectionError(SECRET)
+
+    def purge(self, now, older_than_s=86400.0):
+        return 0
 
 
 async def test_start_registers_listener_and_connects(rig):
@@ -100,7 +40,7 @@ async def test_start_registers_listener_and_connects(rig):
 
 
 async def test_ack_before_handling(rig):
-    rig.rec.boom = True
+    rig.rec.boom = RuntimeError("handler failed")
     await rig.send(mention())
     assert rig.clients[0].responses[0].envelope_id == "env1"
     assert rig.rec.seen == [("mention", "T1", "hi")]
@@ -152,14 +92,54 @@ async def test_duplicate_event_id_handled_once(rig):
 
 
 async def test_dedupe_across_two_gateways(db_target):
-    first, second = Rig(db_target), Rig(db_target)
-    await first.gateway.start()
-    await second.gateway.start()
+    first, second = Rig.on(db_target), Rig.on(db_target)
+    await first.start()
+    await second.start()
     await first.send(mention())
     await second.send(mention())
     assert len(first.rec.seen) + len(second.rec.seen) == 1
     await first.gateway.stop()
     await second.gateway.stop()
+
+
+async def test_first_time_race_has_one_winner(db_target):
+    log = EventLog(db_target)
+    log.first_time("warm-up")  # create the table before the threads race
+    with ThreadPoolExecutor(8) as pool:
+        results = list(pool.map(lambda _: log.first_time("Ev-race"), range(16)))
+    assert results.count(True) == 1
+
+
+async def test_db_failure_fails_open(caplog):
+    rig = Rig(BrokenEvents())
+    await rig.start()
+    with caplog.at_level(logging.WARNING):
+        await rig.send(mention())
+    assert rig.rec.seen == [("mention", "T1", "hi")]
+    assert "ConnectionError" in caplog.text and SECRET not in caplog.text
+    await rig.gateway.stop()
+
+
+async def test_db_failure_still_drops_a_repeat_seen_in_memory():
+    events = BrokenEvents()
+    rig = Rig(events)
+    await rig.start()
+    await rig.send(mention())
+    await rig.send(mention(), envelope="env2")
+    assert len(rig.rec.seen) == 1
+    assert events.calls == 1  # the repeat never reached the database
+    await rig.gateway.stop()
+
+
+async def test_recent_ids_are_bounded():
+    rig = Rig(BrokenEvents())
+    await rig.start()
+    for number in range(1005):
+        await rig.send(mention(), event_id=f"Ev{number}")
+    assert len(rig.gateway._recent) == 1000
+    await rig.send(mention(), event_id="Ev0")  # long evicted, so it is handled again
+    assert len(rig.rec.seen) == 1006
+    await rig.gateway.stop()
 
 
 @pytest.mark.parametrize("extra", [
@@ -190,15 +170,29 @@ async def test_unknown_event_type_ignored(rig):
     assert rig.rec.seen == []
 
 
-async def test_malformed_routed_event_never_raises(rig):
-    await rig.send({"type": "member_joined_channel", "channel": "C1"})
-    await rig.send({"type": "app_mention"}, event_id="E2")
-    assert rig.clients[0].responses
+async def test_event_missing_its_ids_is_acked_and_never_handled(rig):
+    await rig.send({"type": "member_joined_channel", "channel": "C1"}, event_id="E1")
+    await rig.send({"type": "channel_shared"}, event_id="E2")
+    await rig.send({"type": "channel_left"}, event_id="E3")
+    assert rig.rec.seen == []
+    assert len(rig.clients[0].responses) == 3
+    assert not rig.gateway._tasks
+
+
+async def test_handler_failure_logs_only_the_type(rig, caplog):
+    rig.rec.boom = KeyError(SECRET)
+    with caplog.at_level(logging.WARNING):
+        await rig.send(mention())
+    assert "KeyError" in caplog.text
+    assert SECRET not in caplog.text
+    rig.rec.boom = None
+    await rig.send(mention("again"), event_id="Ev2")  # the gateway keeps working
+    assert rig.rec.seen[-1] == ("mention", "T1", "again")
 
 
 async def test_on_request_returns_before_handler_finishes(rig):
     rig.rec.gate = asyncio.Event()
-    await rig.push({"event_id": "Ev1", "team_id": "T1", "event": mention()})
+    await rig.push(envelope(mention()))
     assert len(rig.gateway._tasks) == 1
     rig.rec.gate.set()
     await rig.settle()
@@ -238,45 +232,3 @@ async def test_purge_loop_runs_on_interval():
     await gateway.start()
     await asyncio.wait_for(events.ran.wait(), 5)
     await gateway.stop()
-
-
-async def test_stop_closes_socket(db_target):
-    rig = Rig(db_target)
-    await rig.gateway.start()
-    await rig.gateway.stop()
-    assert rig.clients[0].calls == ["connect", "disconnect", "close"]
-
-
-async def test_stop_is_idempotent(db_target):
-    rig = Rig(db_target)
-    await rig.gateway.start()
-    await rig.gateway.stop()
-    await rig.gateway.stop()
-    assert rig.clients[0].calls.count("close") == 1
-
-
-async def test_stop_before_start_is_safe(db_target):
-    await Rig(db_target).gateway.stop()
-
-
-async def test_stop_waits_for_inflight_handlers(db_target):
-    rig = Rig(db_target)
-    await rig.gateway.start()
-    rig.rec.gate = asyncio.Event()
-    await rig.push({"event_id": "Ev1", "team_id": "T1", "event": mention()})
-    stopping = asyncio.create_task(rig.gateway.stop())
-    await asyncio.sleep(0.05)
-    assert not stopping.done()
-    rig.rec.gate.set()
-    await asyncio.wait_for(stopping, 2)
-    assert not rig.gateway._tasks
-
-
-async def test_stop_cancels_handlers_after_grace(db_target):
-    rig = Rig(db_target)
-    rig.gateway.grace_s = 0.05
-    await rig.gateway.start()
-    rig.rec.gate = asyncio.Event()  # never released
-    await rig.push({"event_id": "Ev1", "team_id": "T1", "event": mention()})
-    await asyncio.wait_for(rig.gateway.stop(), 2)
-    assert not rig.gateway._tasks
