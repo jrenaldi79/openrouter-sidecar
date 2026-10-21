@@ -139,9 +139,10 @@ class Turn:
         except (Exception, asyncio.CancelledError) as error:  # the loop attaches the spend so far
             self.spent = getattr(error, "cost_usd", None)
             raise
+        else:  # before cleanup: a cancellation during cleanup must not lose the spend
+            self.spent = result.cost_usd
         finally:
             cleanup_ok = await self._cleanup_after(chat.id, token)
-        self.spent = result.cost_usd
         if self.entry.stopped:  # stopped while the last request ran: keep the spend, discard the answer
             raise LoopStopped(result.items, result.cost_usd)
         answer = self._final(chat, result)

@@ -143,8 +143,8 @@ async def post_answer(api: SlackApi, channel: str, thread_ts: str, label: str, t
 
     Up to MAX_PARTS parts go up as messages; more go up as one `answer.md` (redacted and masked, not
     escaped: Slack doesn't parse a file for mentions) followed by the footer. Each Slack call is retried
-    once, so a part never posts twice; a second `SlackCallError` propagates and the caller leaves the
-    job unposted for restart recovery.
+    once (a timed-out post that reached Slack can then show twice); a second `SlackCallError` propagates
+    and the caller leaves the job unposted for restart recovery.
     """
     username, tail = f"Sidecar · {label}", escape(footer)
     parts = split_answer(clean(text, secrets))

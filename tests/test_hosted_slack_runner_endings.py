@@ -6,6 +6,7 @@ import pytest
 from slack_runner_rig import CHANNEL, THREAD, Rig, answer_item, body, call
 
 from openrouter_image_mcp.advisor_store import OPERATION_LEASE_S
+from openrouter_image_mcp.hosted.slack import runner_turn
 from openrouter_image_mcp.hosted.slack.runner import JOB_DEADLINE_S
 from openrouter_image_mcp.hosted.slack.runner_turn import DEADLINE_ERROR, DEADLINE_TEXT
 
@@ -94,3 +95,21 @@ async def test_a_response_without_a_cost_keeps_the_known_spend(slack_rig):
 
 def test_deadline_is_below_the_chat_lease():
     assert JOB_DEADLINE_S == 30 * 60 < OPERATION_LEASE_S
+
+
+async def test_deadline_during_cleanup_after_the_loop_keeps_the_spend(slack_rig, monkeypatch):
+    rig = slack_rig
+    timer = rig.runner.call_later = Timer()
+    rig.model.respond = lambda request: body(answer_item("Done."), cost=0.40)
+    cleanup_after = runner_turn.Turn._cleanup_after
+
+    async def cleanup(self, chat_id, token):
+        timer.fire()  # the deadline lands after the loop returned, during upload cleanup
+        await asyncio.sleep(0)
+        return await cleanup_after(self, chat_id, token)
+
+    monkeypatch.setattr(runner_turn.Turn, "_cleanup_after", cleanup)
+    await rig.run(rig.job(rig.chat()))
+    (row,) = rig.job_rows()
+    assert (row["status"], row["error"]) == ("failed", DEADLINE_ERROR)
+    assert row["cost_usd"] == pytest.approx(0.40)
