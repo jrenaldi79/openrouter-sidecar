@@ -236,10 +236,26 @@ jobs set 12 for inline sessions (which now carry server tools) and keep 24 for s
 
 ## Welcome
 
-Posted in the thread before the first answer in a channel, once (`welcomed_at`), and again on
-`@sidecar help`. Composed from the registry: aliases, default, Fusion, what the bot reads, the
-commands, the data notice, and the team budget. Unregistered channels get one line instead:
-"Sidecar isn't set up for this channel. Ask your instructor to add it."
+Posted in the thread before the first answer in a channel, once (`welcomed_at`). Short and in
+the first person, like Claude Tag's join message: what it is, what it reads, a few first
+messages to try, and where to find the rest. Composed from the registry (default model,
+aliases, budget):
+
+> Hi, I'm Sidecar. I answer with models other than Claude, so you can compare views with
+> @Claude in the same thread. I read this thread and recent messages in this channel,
+> including Claude's replies. Other teams can't see anything from here.
+>
+> A few first messages to try:
+> • `@sidecar ask gemini what's the weakest assumption in Claude's answer above?`
+> • `@sidecar compare should we price per seat or per site?`
+> • `@sidecar chart this by month` with a CSV attached
+>
+> Your team's budget is $75 a month (`@sidecar usage`). What I send to model and search
+> providers, and how long files are kept, is in `@sidecar help`, along with every command.
+
+`@sidecar help` is the full reference: aliases and what they map to, `ask`, `compare`, thread
+follow-ups, memory, thread commands, usage, and the data notice. Unregistered channels get
+one line instead: "Sidecar isn't set up for this channel. Ask your instructor to add it."
 
 ## Isolation and security
 
