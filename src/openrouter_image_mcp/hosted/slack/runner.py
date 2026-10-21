@@ -12,7 +12,7 @@ import contextlib
 import logging
 import time
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from ...advisor import AdvisorService
@@ -24,13 +24,14 @@ from ...logs import redact
 from ...preferences import PreferenceService
 from ...session_files import SessionFiles
 from ..limits import Limits, RateLimitedError
+from ..openrouter_keys import current_key
 from ..principal import Principal
 from .api import SlackApi, SlackCallError
 from .context import Context, NameCache
 from .jobs import SlackJobs
 from .memory import ChannelMemory
 from .principal import acting_as
-from .registry import ChannelRow
+from .registry import ChannelRegistry, ChannelRow
 from .replies import WorkingMessage, escape
 from .runner_queue import ACQUIRED, STOPPED, Entry, Shared, wait_turn
 from .runner_steps import failure_text
@@ -81,9 +82,12 @@ class SlackRunner:
 
     def __init__(self, api: SlackApi, limits: Limits, threads: ThreadMap, memory: ChannelMemory,
                  jobs: SlackJobs, outputs=None, *, process_id: str,
-                 clock: Callable[[], float] = time.monotonic, names: NameCache | None = None):
+                 clock: Callable[[], float] = time.monotonic, names: NameCache | None = None,
+                 registry: ChannelRegistry | None = None,
+                 key_info: Callable[[str], Awaitable[dict]] = current_key):
         self.api, self.limits, self.threads, self.memory, self.jobs = api, limits, threads, memory, jobs
         self.outputs, self.process_id, self.clock = outputs, process_id, clock
+        self.registry, self.key_info = registry, key_info  # the budget warning needs both
         self.names = names or NameCache(api)
         self._chats = Shared(asyncio.Lock)  # chat id -> FIFO lock: one job per chat at a time, in order
         self._slots = Shared(asyncio.Semaphore)  # owner -> the team's concurrent jobs

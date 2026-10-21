@@ -23,7 +23,7 @@ from openrouter_image_mcp.hosted.slack.context import Context
 from openrouter_image_mcp.hosted.slack.jobs import SlackJobs
 from openrouter_image_mcp.hosted.slack.memory import ChannelMemory
 from openrouter_image_mcp.hosted.slack.principal import team_principal
-from openrouter_image_mcp.hosted.slack.registry import new_row
+from openrouter_image_mcp.hosted.slack.registry import ChannelRegistry, new_row
 from openrouter_image_mcp.hosted.slack.runner import (
     SlackJob,
     SlackRunner,
@@ -95,10 +95,20 @@ class Rig:
         _, self.scope = keys.credentials(WS_2027).resolve()
         self.threads, self.memory, self.jobs = ThreadMap(target), ChannelMemory(target), SlackJobs(target)
         self.limits = Limits(self.store)
+        self.registry = ChannelRegistry(target)  # a test registers the row itself to get the budget warning
+        self.key_info = {}  # what the stubbed GET /key returns (an Exception instance is raised)
+        self.key_info_keys: list[str] = []
         ticks = itertools.count()
         # Every clock read is 11 seconds later, so each progress step may edit.
         self.runner = SlackRunner(self.slack, self.limits, self.threads, self.memory, self.jobs,
-                                  process_id="proc-test", clock=lambda: next(ticks) * 11.0)
+                                  process_id="proc-test", clock=lambda: next(ticks) * 11.0,
+                                  registry=self.registry, key_info=self._key_info)
+
+    async def _key_info(self, key):
+        self.key_info_keys.append(key)
+        if isinstance(self.key_info, Exception):
+            raise self.key_info
+        return self.key_info
 
     def set_row(self, **changes):
         self.row = replace(self.row, **changes)

@@ -170,7 +170,7 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/hosted/skills/architectural-render-polish.prompt-template.md](../src/openrouter_image_mcp/hosted/skills/architectural-render-polish.prompt-template.md)
 - [src/openrouter&#95;image&#95;mcp/hosted/skills/openrouter-image.md](../src/openrouter_image_mcp/hosted/skills/openrouter-image.md)
 
-### [src/openrouter&#95;image&#95;mcp/hosted/slack](../src/openrouter_image_mcp/hosted/slack/CLAUDE.md): Slack Sidecar: the @sidecar bot inside the hosted server (Socket Mode): settings, Slack I/O, registry, team identity, parsing, context, channel tools, payload, the job runner and sandbox outputs.
+### [src/openrouter&#95;image&#95;mcp/hosted/slack](../src/openrouter_image_mcp/hosted/slack/CLAUDE.md): Slack Sidecar: the @sidecar bot inside the hosted server (Socket Mode): settings, Slack I/O, registry, team identity, parsing, context, channel tools, payload, the job runner, sandbox outputs and the usage report.
 
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/&#95;&#95;init&#95;&#95;.py](../src/openrouter_image_mcp/hosted/slack/__init__.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/api.py](../src/openrouter_image_mcp/hosted/slack/api.py)
@@ -192,6 +192,7 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/settings.py](../src/openrouter_image_mcp/hosted/slack/settings.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/slack&#95;tools.py](../src/openrouter_image_mcp/hosted/slack/slack_tools.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/threads.py](../src/openrouter_image_mcp/hosted/slack/threads.py)
+- [src/openrouter&#95;image&#95;mcp/hosted/slack/usage.py](../src/openrouter_image_mcp/hosted/slack/usage.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/welcome.py](../src/openrouter_image_mcp/hosted/slack/welcome.py)
 
 ### [src/openrouter&#95;image&#95;mcp/ui](../src/openrouter_image_mcp/ui/CLAUDE.md): Generated MCP App bundles: one self-contained HTML file per app, built from ui/src by ui/build.mjs, (preview, advisor, settings, uploader), plus the Northwestern logo. Never edit by hand.

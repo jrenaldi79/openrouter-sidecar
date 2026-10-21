@@ -32,6 +32,7 @@ from .runner_steps import (
     trim_files,
 )
 from .slack_tools import FUNCTION_NAMES, TOOL_ERROR, ChannelTools
+from .usage import answer_warning
 
 if TYPE_CHECKING:
     from ...advisor_store import Chat, Scope
@@ -231,9 +232,10 @@ class Turn:
 
     async def _deliver(self, answer: str, cost: float | None) -> None:
         job, runner = self.job, self.runner
+        warning = await answer_warning(runner.key_info, self.key, job.row, runner.registry)
         try:
             await post_answer(runner.api, job.channel_id, job.thread_ts, job.label, answer,
-                              footer(f"{job.label} · {self.model}", cost), secrets=(self.key,))
+                              footer(f"{job.label} · {self.model}", cost, warning), secrets=(self.key,))
         except SlackCallError as error:  # retried once already: leave it for restart recovery
             log.warning("slack answer post failed twice: %s", error.code)
             await self.working.finish(f"Sidecar · {job.label} couldn't post its answer to Slack.")
