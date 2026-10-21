@@ -9,6 +9,7 @@ from slack_fakes import FakeSlack
 
 from openrouter_image_mcp.advisor_results import AdvisorResults
 from openrouter_image_mcp.advisor_store import AdvisorStore, Scope
+from openrouter_image_mcp.hosted.slack.asks import COMPARE_ALIAS
 from openrouter_image_mcp.hosted.slack.jobs import SlackJobs
 from openrouter_image_mcp.hosted.slack.recovery import (
     INTERRUPTED_EDIT,
@@ -41,13 +42,13 @@ class Rig:
         return Scope(f"slack|{team}:{row.channel_id}", row.workspace_id)
 
     def add(self, *, team="T1", status="completed", heartbeat=NOW - 100, age_s=60, posted=None, cost=0.02,
-            answer="The answer.", working_ts=None, thread=THREAD_A, process=OLD, channel=None, student=False):
+            answer="The answer.", working_ts=None, thread=THREAD_A, process=OLD, channel=None, student=False, alias="gemini"):
         scope = self.scope(team)
         if student:
             scope = Scope("https://idp.test/|student-1", scope.workspace)
         chat = self.store.create(scope, "g/model", "t")
         if thread and not student:
-            self.threads.put(scope, self.rows[team].channel_id, thread, "gemini", "inline", chat.id)
+            self.threads.put(scope, self.rows[team].channel_id, thread, alias, "inline", chat.id)
         channel = channel or self.rows[team].channel_id
         job = self.results.create(scope, chat, "p", process, slack_user_id="U1", slack_channel_id=channel)
         created = (datetime.now(UTC) - timedelta(seconds=age_s)).isoformat()
@@ -78,8 +79,8 @@ async def test_saved_result_posted(rig):
     assert await rig.recover() == {"posted": 1, "closed": 0}
     [post] = rig.slack.posts
     assert (post["channel"], post["thread_ts"]) == ("C1", THREAD_A)
-    assert post["username"] == "Sidecar · g/model"
-    assert post["text"].startswith("The answer.") and post["text"].endswith("g/model · $0.0200")
+    assert post["username"] == "Sidecar · Gemini"  # the channel's brand for the alias, as a live answer
+    assert post["text"].startswith("The answer.") and post["text"].endswith("Gemini · g/model · $0.0200")
     assert rig.row_of(job)["slack_posted_at"] is not None
 
 
@@ -115,9 +116,9 @@ async def test_fresh_heartbeat_means_a_live_owner(rig):
 
 
 async def test_lapsed_heartbeat_judged_by_the_injected_clock(rig):
-    job = rig.add(status="running", heartbeat=NOW + 5)
-    assert await rig.recover(clock=lambda: NOW) == {"posted": 0, "closed": 0}
-    assert await rig.recover(clock=lambda: NOW + 6) == {"posted": 0, "closed": 1}
+    job = rig.add(status="running", heartbeat=NOW + 5)  # lapsed when heartbeat_until <= now, as advisor_results
+    assert await rig.recover(clock=lambda: NOW + 4.9) == {"posted": 0, "closed": 0}
+    assert await rig.recover(clock=lambda: NOW + 5) == {"posted": 0, "closed": 1}
     assert rig.row_of(job)["status"] == "interrupted"
 
 
@@ -218,3 +219,33 @@ async def test_never_raises_when_the_sweep_itself_fails(rig, caplog):
         result = await recover(Broken(), lambda w: rig.results, rig.slack, rig.registry, rig.threads,
                                process_id=ME)
     assert result == {"posted": 0, "closed": 0} and "ConnectionError" in caplog.text
+
+
+async def test_label_falls_back_to_the_model_id(rig):
+    rig.add(alias="unmapped")
+    rig.registry.update("T2", "C2", alias_map={"slashed": "vendor/brand", "blank": ""})
+    rig.add(team="T2", alias="slashed", thread=THREAD_B)
+    rig.add(team="T2", alias="blank", thread="1700000000.000007")
+    await rig.recover()
+    assert {p["username"] for p in rig.slack.posts} == {"Sidecar · g/model"}
+    assert all(p["text"].endswith("g/model · g/model · $0.0200") for p in rig.slack.posts)
+
+
+async def test_compare_answer_is_labelled_fusion(rig):
+    rig.add(alias=COMPARE_ALIAS)
+    await rig.recover()
+    [post] = rig.slack.posts
+    assert post["username"] == "Sidecar · Fusion" and post["text"].endswith("Fusion · g/model · $0.0200")
+
+
+async def test_mark_posted_failure_after_the_post_is_logged_and_leaves_the_row(rig, caplog, monkeypatch):
+    job = rig.add()
+
+    def boom(scope, job_id):
+        raise ConnectionError("db down")
+
+    monkeypatch.setattr(rig.jobs, "mark_posted", boom)
+    with caplog.at_level(logging.WARNING):
+        assert await rig.recover() == {"posted": 0, "closed": 0}
+    assert len(rig.slack.posts) == 1 and rig.row_of(job)["slack_posted_at"] is None
+    assert "ConnectionError" in caplog.text
