@@ -138,6 +138,7 @@ async def test_built_and_started_on_gain(world):
     await world.app.on_gain()  # returns at once: the start runs in its own task
     await world.app.start_task
     assert world.app.gateway.bot_user_id == world.app.dispatcher.bot_user_id == world.slack.bot_user
+    assert world.app.dispatcher.deps.builder.bot_user_id == world.slack.bot_user  # its links never fetchable
     await asyncio.sleep(0)
     assert [c.calls for c in world.clients] == [["connect"]]
     assert world.clients[0].app_token == world.settings.slack.app_token

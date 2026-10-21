@@ -121,7 +121,7 @@ class Gathered:
     pins: list[SlackMessage]
     channel: list[SlackMessage]
     trigger: SlackMessage
-    urls: list[str]  # http(s) links in the whole thread and trigger
+    urls: list[str]  # http(s) links people posted in the whole thread and trigger
 
 
 @dataclass
@@ -162,9 +162,19 @@ def trim_thread(lines: list[str], cap: int = THREAD_CHARS) -> list[str]:
     return [root, *note, *kept]
 
 
-def _urls(messages: list[SlackMessage]) -> list[str]:
+def by_a_person(message: SlackMessage, bot_user_id: str = "") -> bool:
+    """Written by a person: no app (`bot_id`, a `bot_message`, a label such as Sidecar's or Claude Tag's),
+    not Sidecar's own user, and an author at all."""
+    return not (message.bot_id or message.subtype == "bot_message" or message.label or not message.user
+                or message.user == bot_user_id)
+
+
+def _urls(messages: list[SlackMessage], bot_user_id: str) -> list[str]:
+    """Links people posted: model or bot output (a prompt-injected answer, say) must not widen web_fetch."""
     found: dict[str, None] = {}
     for message in messages:
+        if not by_a_person(message, bot_user_id):
+            continue
         for match in _URL.findall(decode_entities(message.text)):
             url = match.rstrip(_URL_TRAILING)
             if url:
@@ -184,13 +194,14 @@ def _section(title: str, lines: list[str]) -> str:
 class ContextBuilder:
     def __init__(self, api: SlackApi, names: NameCache, *, channel_chars: int = 8000):
         self._api, self._names, self._channel_chars = api, names, channel_chars
+        self.bot_user_id = ""  # Sidecar's own user, set from auth.test on each lock gain
 
     async def gather(self, channel: str, thread_ts: str, trigger: SlackMessage, *,
                      first_turn: bool = True) -> Gathered:
         thread = await self._thread(channel, thread_ts, trigger)
         pins = await self._pins(channel) if first_turn else []
         recent = await self._recent(channel, thread_ts) if first_turn else []
-        return Gathered(thread, pins, recent, trigger, _urls(thread))
+        return Gathered(thread, pins, recent, trigger, _urls(thread, self.bot_user_id))
 
     async def render(self, g: Gathered, since_ts: str | None) -> Context:
         first = since_ts is None

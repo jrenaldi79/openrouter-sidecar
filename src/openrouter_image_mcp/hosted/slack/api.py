@@ -44,6 +44,7 @@ class SlackMessage:
     subtype: str | None
     thread_ts: str | None
     files: tuple[SlackFile, ...] = ()
+    bot_id: str | None = None  # set on any app's post (Sidecar's own and Claude Tag's included)
 
     @classmethod
     def from_raw(cls, raw: dict) -> SlackMessage:
@@ -53,7 +54,7 @@ class SlackMessage:
             for f in raw.get("files") or ())
         label = raw.get("username") or (raw.get("bot_profile") or {}).get("name")
         return cls(raw.get("ts", ""), raw.get("user"), raw.get("text") or "", label,
-                   raw.get("subtype"), raw.get("thread_ts"), files)
+                   raw.get("subtype"), raw.get("thread_ts"), files, raw.get("bot_id") or None)
 
 
 @dataclass(frozen=True)

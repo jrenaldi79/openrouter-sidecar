@@ -101,7 +101,7 @@ class SlackApp:
         if bot is None or self._closed:
             return
         try:
-            self.gateway.bot_user_id = self.dispatcher.bot_user_id = bot
+            self.gateway.bot_user_id = self.dispatcher.bot_user_id = self.dispatcher.deps.builder.bot_user_id = bot
             if self.recovery_task is None or self.recovery_task.done():
                 self.recovery_task = asyncio.create_task(self._recover())
             await self.gateway.start()
