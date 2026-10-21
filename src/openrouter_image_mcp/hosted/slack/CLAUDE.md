@@ -9,6 +9,8 @@ read_when: "Changing or adding files in src/openrouter_image_mcp/hosted/slack/."
 **Owns:**
 
 - Configuration: `settings.py` (`SlackSettings`, `load_slack_settings`; off unless `SIDECAR_SLACK_ENABLED` is set, then both tokens are required and their prefixes checked). `HostedSettings.slack` carries the result.
+- Slack I/O seam: `api.py` (`SlackApi` protocol, `SdkSlackApi` over slack_sdk's async client, `SlackMessage`/`SlackFile`/`Page`, `SlackCallError` with `retry_after_s`). Nothing else in the bot talks to Slack; tests use `FakeSlack` from `tests/slack_fakes.py`, which must keep the protocol's signatures.
+- Channel registry: `registry.py` (`ChannelRegistry` over the `slack_channels` table, `ChannelRow`, `new_row`, `DEFAULT_ALIASES`). One row per (Slack team, channel); `deactivate`, `mark_welcomed` and `mark_warned` are guarded updates that return True only for the caller that changed the row.
 
 **Invariants:**
 
