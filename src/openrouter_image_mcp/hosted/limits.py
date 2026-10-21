@@ -13,9 +13,11 @@ from ..errors import OpenRouterError
 
 
 class RateLimitedError(OpenRouterError):
-    def __init__(self, message: str, retry_after_s: int, kind: str = "rate"):
-        # kind: "rate" (a request window), "concurrency" or "daily"; callers phrase their own replies.
-        self.retry_after_s, self.kind = retry_after_s, kind
+    def __init__(self, message: str, retry_after_s: int, kind: str = "rate", *, limit: int | None = None,
+                 span_s: float | None = None):
+        # kind: "rate" (a named request window), "minute" (the principal's own per-minute window),
+        # "concurrency" or "daily"; a window also carries its size and span. Callers phrase their own replies.
+        self.retry_after_s, self.kind, self.limit, self.span_s = retry_after_s, kind, limit, span_s
         super().__init__(f"rate_limited: {message} Retry after about {retry_after_s} seconds.")
 
 
@@ -31,11 +33,11 @@ class Limits:
     def __init__(self, store, *, max_concurrent=2, per_minute=20, daily_usd=5.0, clock=time.time):
         self.results, self.clock = AdvisorResults(store), clock
         self.max_concurrent, self.per_minute, self.daily_usd = max_concurrent, per_minute, daily_usd
-        self._recent: dict[str, deque] = defaultdict(deque)
+        self._recent: dict[tuple[str, float], deque] = defaultdict(deque)  # (key, span) -> call times
         self._image_calls: Counter = Counter()
         self._lock = threading.Lock()
 
-    def window(self, key: str, what: str, *, limit: int, span_s: float) -> None:
+    def window(self, key: str, what: str, *, limit: int, span_s: float, kind: str = "rate") -> None:
         """Sliding window of `limit` calls per `span_s` for `key`; windows of different spans are independent."""
         now = self.clock()
         with self._lock:
@@ -44,11 +46,11 @@ class Limits:
                 recent.popleft()
             if len(recent) >= limit:
                 raise RateLimitedError(f"Too many {what} {_span_phrase(span_s)}.",
-                                       max(1, int(recent[0] + span_s - now)))
+                                       max(1, int(recent[0] + span_s - now)), kind, limit=limit, span_s=span_s)
             recent.append(now)
 
     def _window(self, owner: str, what: str = "advisor requests") -> None:
-        self.window(owner, what, limit=self.per_minute, span_s=60)
+        self.window(owner, what, limit=self.per_minute, span_s=60, kind="minute")
 
     def _durable(self, owner: str, workspace: str, max_concurrent: int, daily_usd: float) -> None:
         today = datetime.now(UTC).date().isoformat()

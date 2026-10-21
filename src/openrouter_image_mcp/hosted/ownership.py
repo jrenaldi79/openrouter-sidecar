@@ -6,7 +6,9 @@ dedicated connection; every `every_s` it checks the connection (owner) or retrie
 (waiting replica). On SQLite there is only one process, so it always owns.
 
 `on_gain` hooks run on every gain, including a regain after a loss; `on_lose` hooks run once
-per loss and at `stop()`. Hooks are awaited in order; one that raises is logged by exception
+per loss and at `stop()`. `failed` says whether the last check or lock try failed (a database
+problem, not another holder), and `on_refused` hooks run when a lock try is refused right after
+such a failure, so a hook can tell "reconnecting" from "another instance owns it". Hooks are awaited in order; one that raises is logged by exception
 type and never stops the others or the loop.
 
 Split-brain window: an owner that loses its connection (network cut, Postgres restart)
@@ -40,11 +42,13 @@ def _quiet_close(conn: psycopg.Connection) -> None:
 
 class OwnerLock:
     def __init__(self, target, *, every_s: float = 15.0, on_gain: list[Hook] | None = None,
-                 on_lose: list[Hook] | None = None):
+                 on_lose: list[Hook] | None = None, on_refused: list[Hook] | None = None):
         self.target, self.every_s = target, every_s
         self.on_gain: list[Hook] = [] if on_gain is None else on_gain
         self.on_lose: list[Hook] = [] if on_lose is None else on_lose
+        self.on_refused: list[Hook] = [] if on_refused is None else on_refused
         self.held = False
+        self.failed = False  # the last attempt failed (database), as opposed to being refused the lock
         self._conn: psycopg.Connection | None = None
         self._task: asyncio.Task | None = None
         self._pending: asyncio.Future | None = None  # the thread call using self._conn
@@ -84,10 +88,14 @@ class OwnerLock:
                 await self._bounded(self._conn.execute, "SELECT 1")
             elif await self._bounded(self._try_lock, self._conn):
                 await self._gain()
+            elif self.failed:  # back on the database, and another instance holds the lock
+                await self._run(self.on_refused, "refused")
+            self.failed = False
             return True
         except Exception as exc:  # noqa: BLE001 - psycopg, OS, value and unexpected errors alike
             # Type only: the message can carry the DSN.
             log.warning("owner lock check failed (%s); reconnecting", type(exc).__name__)
+            self.failed = True  # before the lose hooks, so they can tell a failed check from a takeover
             await self._lose()
             await self._close()
             return False

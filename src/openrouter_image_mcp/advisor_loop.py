@@ -15,7 +15,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 
 from .advisor_client import AdvisorClient
-from .errors import OpenRouterError, ProviderError
+from .errors import ProviderError
 
 log = logging.getLogger(__name__)
 
@@ -30,8 +30,8 @@ ItemsCallback = Callable[[list[dict]], Awaitable[None]]
 class LoopStopped(Exception):
     """`should_stop()` was set before a request, or a function raised it.
 
-    `items` and `cost_usd` cover the requests made before the stop (cost is None when
-    any of them lacked a numeric cost).
+    `items` and `cost_usd` cover the requests made before the stop (the sum of the costs
+    reported, a lower bound when some response lacked one; None when none reported a cost).
     """
 
     def __init__(self, items: list[dict] | None = None, cost_usd: float | None = None):
@@ -40,16 +40,12 @@ class LoopStopped(Exception):
         self.cost_usd = cost_usd
 
 
-# Ways out of the loop that carry the spend so far (`items`, `cost_usd`).
-_CARRIES_SPEND = (LoopStopped, OpenRouterError, asyncio.CancelledError)
-
-
 @dataclass
 class LoopResult:
     body: dict  # the last response
     items: list[dict]  # every output item from every response, in order
     rounds: int  # responses requested, the forced final one included
-    cost_usd: float | None  # None when any response did not report a numeric cost
+    cost_usd: float | None  # known costs summed (a lower bound); None when no response reported one
 
 
 def _output_items(body: dict) -> list[dict]:
@@ -63,6 +59,12 @@ def _cost(body: dict) -> float | None:
     usage = body.get("usage")
     cost = usage.get("cost") if isinstance(usage, dict) else None
     return cost if isinstance(cost, (int, float)) and not isinstance(cost, bool) else None
+
+
+def _total(costs: list[float | None]) -> float | None:
+    """A response without a cost must not hide the others' spend from the daily cap: sum what is known."""
+    known = [cost for cost in costs if cost is not None]
+    return sum(known) if known or not costs else None
 
 
 def _starting_input(value) -> list[dict]:
@@ -126,9 +128,6 @@ async def run_tool_loop(
     items: list[dict] = []
     costs: list[float | None] = []
 
-    def total() -> float | None:
-        return None if None in costs else sum(costs)
-
     async def request(extra: dict | None = None) -> tuple[dict, list[dict]]:
         if should_stop():
             raise LoopStopped
@@ -146,19 +145,16 @@ async def run_tool_loop(
             body, output = await request()
             replay, calls = _plan_round(output)
             if not calls:
-                return LoopResult(body, items, len(costs), total())
+                return LoopResult(body, items, len(costs), _total(costs))
             history.extend(replay)
             history.extend([await _run_one(functions, call) for call in calls])
         note = {"type": "message", "role": "user", "content": FINAL_NOTE}
         body, _ = await request({"tool_choice": "none", "input": [note]})
-        return LoopResult(body, items, len(costs), total())
+        return LoopResult(body, items, len(costs), _total(costs))
 
     try:
         return await drive()
-    except _CARRIES_SPEND as error:
-        error.items, error.cost_usd = list(items), total()
-        raise
-    except Exception as error:  # an unexpected failure (a callback, say) still carries the spend
+    except (Exception, asyncio.CancelledError) as error:  # every way out carries the spend so far
         with contextlib.suppress(AttributeError):  # an exception type without a __dict__
-            error.items, error.cost_usd = list(items), total()
+            error.items, error.cost_usd = list(items), _total(costs)
         raise

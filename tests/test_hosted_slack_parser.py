@@ -41,6 +41,17 @@ def test_ask_two_models():
     assert p("ask gemini and gpt is this right?") == Ask(("gemini", "gpt"), "is this right?")
 
 
+@pytest.mark.parametrize("text", ["ask gemini, is this right?", "ask gemini: is this right?",
+                                  "ask Gemini; is this right?"])
+def test_ask_strips_punctuation_after_an_alias(text):
+    assert p(text) == Ask(("gemini",), "is this right?")
+
+
+def test_ask_strips_punctuation_after_a_joined_alias():
+    assert p("ask gemini and gpt, is this right?") == Ask(("gemini", "gpt"), "is this right?")
+    assert p("ask a/x, why?") == Ask(("a/x",), "why?")
+
+
 def test_compare():
     assert p("compare which logo is better?") == Compare("which logo is better?")
 

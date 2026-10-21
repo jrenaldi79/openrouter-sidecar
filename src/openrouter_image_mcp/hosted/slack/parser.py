@@ -13,6 +13,7 @@ _COMMAND_WORDS = frozenset({"ask", "compare", "models", "set", "usage", "remembe
 _RECALL = "what do you remember"
 _REMEMBER_PREFIX = "remember for this channel:"
 _LINK_SCHEMES = ("http://", "https://", "mailto:")
+_ALIAS_TRAILING = ",:;"  # punctuation people type after a model's name
 # Sandbox triggers are matched on whole words or stems, never substrings: "paragraph" is not "graph".
 _ACTION_STEMS = ("chart", "plot", "graph", "analy", "calculat", "comput", "visuali")
 _ACTION_VERBS = frozenset({"run", "execute"})
@@ -133,19 +134,20 @@ def _take_word(text: str) -> tuple[str, str]:
 
 
 def _alias(word: str) -> str:
+    word = word.rstrip(_ALIAS_TRAILING)  # "ask gemini, what…" names gemini
     return word if "/" in word else word.lower()
 
 
 def _parse_ask(rest: str, aliases: Collection[str]) -> Ask:
     known = {a.lower() for a in aliases}
     first, rest = _take_word(rest)
-    if not first:
-        return Ask((), "")
+    if not _alias(first):
+        return Ask((), rest)
     chosen = [_alias(first)]
     while True:
         joiner, after = _take_word(rest)
         name, remainder = _take_word(after)
-        if joiner.lower() != "and" or not name or not (name.lower() in known or "/" in name):
+        if joiner.lower() != "and" or not _alias(name) or not (_alias(name).lower() in known or "/" in name):
             break
         if _alias(name) not in chosen:
             chosen.append(_alias(name))

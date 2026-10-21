@@ -7,6 +7,7 @@ the one-time welcome and the monthly budget warning.
 from __future__ import annotations
 
 import json
+import math
 import re
 import sqlite3
 import time
@@ -79,6 +80,14 @@ def _validate(row: ChannelRow) -> None:
         raise ValueError("fusion_panel needs 1 to 8 models.")
     if not (row.slack_team_id and row.channel_id):
         raise ValueError("slack_team_id and channel_id are required.")
+    # Money guards: argparse's float takes "inf" and "nan", and a cap below 1 would refuse every answer.
+    if not (isinstance(row.daily_cap_usd, int | float) and math.isfinite(row.daily_cap_usd)
+            and row.daily_cap_usd > 0):
+        raise ValueError("daily_cap_usd must be a positive number of dollars.")
+    if not isinstance(row.max_concurrent, int) or row.max_concurrent < 1:
+        raise ValueError("max_concurrent must be at least 1.")
+    if row.default_model not in row.alias_map:
+        raise ValueError(f"default_model {row.default_model!r} is not one of the channel's aliases.")
 
 
 def _values(row: ChannelRow) -> tuple:

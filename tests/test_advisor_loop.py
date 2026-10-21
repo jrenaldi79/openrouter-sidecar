@@ -168,15 +168,17 @@ async def test_cost_summed_including_forced_final():
 
 
 @pytest.mark.parametrize("bad", [None, True, "0.1"])
-async def test_cost_none_when_any_round_lacks_numeric_cost(bad):
-    first = body(call())
+async def test_cost_is_the_known_sum_when_a_round_lacks_numeric_cost(bad):
+    first, last = body(call()), body(answer(), cost=0.5)
     if bad is None:
         del first["usage"]
     else:
         first["usage"]["cost"] = bad
-    script = Script(first, body(answer(), cost=0.5))
-    result = await run_tool_loop(script.client, KEY, payload(), {"lookup": echo})
-    assert result.cost_usd is None
+    result = await run_tool_loop(Script(first, last).client, KEY, payload(), {"lookup": echo})
+    assert result.cost_usd == pytest.approx(0.5)  # a lower bound, so the daily cap still counts it
+    first.pop("usage", None), last.pop("usage")
+    result = await run_tool_loop(Script(first, last).client, KEY, payload(), {"lookup": echo})
+    assert result.cost_usd is None  # no round reported a cost at all
 
 
 async def test_on_items_called_per_round_before_functions_run():

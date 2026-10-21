@@ -88,9 +88,17 @@ def limit_text(error: RateLimitedError, *, daily_cap_usd: float = 4.0, max_concu
                 "Ask your instructor if you need more.")
     if error.kind == "concurrency":
         return f"Your team already has {max_concurrent} answers running. Try again in a minute."
-    minutes = max(1, math.ceil(error.retry_after_s / 60))
-    unit = "minute" if minutes == 1 else "minutes"
-    return f"You've sent {user_limit} requests in 10 minutes. Try again in about {minutes} {unit}."
+    wait = _minutes(error.retry_after_s)
+    if error.kind == "minute":  # the team's own window in `Limits.admit`, not one person's
+        span = _minutes(error.span_s or 60)
+        last = "the last minute" if span == "1 minute" else f"the last {span}"
+        return f"Your team has sent {error.limit or 20} requests in {last}. Try again in about {wait}."
+    return f"You've sent {user_limit} requests in 10 minutes. Try again in about {wait}."
+
+
+def _minutes(seconds: float) -> str:
+    minutes = max(1, math.ceil(seconds / 60))
+    return f"{minutes} minute" if minutes == 1 else f"{minutes} minutes"
 
 
 def budget_text() -> str:

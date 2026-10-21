@@ -186,6 +186,36 @@ async def test_pg_unexpected_errors_keep_the_loop_running(pg_target):
 
 
 @pytest.mark.pg
+async def test_pg_failed_check_is_flagged_and_a_refusal_after_it_runs_on_refused(pg_target):
+    seen = []
+    owner = _lock(pg_target, Calls())
+    lock = OwnerLock(pg_target, every_s=EVERY, on_lose=[], on_refused=[lambda: _note(seen, "refused")])
+    lock.on_lose.append(lambda: _note(seen, f"lose failed={lock.failed}"))
+    lock.held = True  # as if it had owned the lock; its next check fails
+    real = lock._bounded
+
+    async def failing_once(fn, *args):
+        if not seen:
+            raise RuntimeError("check failed")
+        return await real(fn, *args)
+
+    lock._bounded = failing_once
+    await owner.start()
+    try:
+        await lock._tick()  # the check fails, then the retry finds the lock held elsewhere
+        assert seen == ["lose failed=True", "refused"] and not lock.failed and not lock.held
+        await lock._tick()
+        assert seen == ["lose failed=True", "refused"]  # a plain refusal while waiting is not news
+    finally:
+        await lock.stop()
+        await owner.stop()
+
+
+async def _note(seen, what):
+    seen.append(what)
+
+
+@pytest.mark.pg
 async def test_pg_stop_during_a_slow_check_does_not_leak(pg_target, monkeypatch):
     lock = _lock(pg_target, Calls())
     await lock.start()

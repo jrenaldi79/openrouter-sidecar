@@ -50,9 +50,20 @@ def test_per_minute_window(store):
     with pytest.raises(RateLimitedError) as caught:
         limits.admit(A)
     assert 0 < caught.value.retry_after_s <= 60
+    # Its own kind, with its size and span, so a caller can name the principal's window, not a user's.
+    assert (caught.value.kind, caught.value.limit, caught.value.span_s) == ("minute", 2, 60)
+    assert "Too many advisor requests this minute." in caught.value.message  # students' text unchanged
     limits.admit(B)
     clock[0] += 61
     limits.admit(A)
+
+
+def test_named_window_reports_its_size_and_span(store):
+    limits = Limits(store)
+    limits.window("k", "Sidecar requests", limit=1, span_s=600)
+    with pytest.raises(RateLimitedError) as caught:
+        limits.window("k", "Sidecar requests", limit=1, span_s=600)
+    assert (caught.value.kind, caught.value.limit, caught.value.span_s) == ("rate", 1, 600)
 
 
 def test_daily_spend_cap_uses_recorded_costs(store):
@@ -97,12 +108,12 @@ def test_admit_overrides(store):
     limits.admit(B)  # the default $5 cap still has room
 
 
-def test_error_kind_defaults_to_rate(store):
+def test_error_kinds(store):
     limits = Limits(store, max_concurrent=10, per_minute=1, daily_usd=10)
     limits.admit(A)
     with pytest.raises(RateLimitedError) as caught:
         limits.admit(A)
-    assert caught.value.kind == "rate"
+    assert caught.value.kind == "minute"  # the principal's own window has its own kind
     assert RateLimitedError("x", 5).kind == "rate"
 
 

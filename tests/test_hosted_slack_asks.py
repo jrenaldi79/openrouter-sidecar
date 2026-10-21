@@ -7,7 +7,11 @@ from slack_dispatch_rig import DispatchRig
 from slack_runner_rig import CHANNEL, THREAD
 
 from openrouter_image_mcp.hosted.slack.api import SlackMessage
-from openrouter_image_mcp.hosted.slack.asks import COMPARE_ALIAS, SANDBOX_OFF
+from openrouter_image_mcp.hosted.slack.asks import (
+    COMPARE_ALIAS,
+    MAX_MODELS_TEXT,
+    SANDBOX_OFF,
+)
 from openrouter_image_mcp.hosted.slack.commands import NO_MODEL_SET
 from openrouter_image_mcp.hosted.slack.context import CONTEXT_PATH
 from openrouter_image_mcp.hosted.slack.payload import FUSION_CHOICE, fusion_tool
@@ -163,3 +167,24 @@ async def test_concurrent_first_mentions_share_one_chat(rig, monkeypatch):
     assert one["chat_id"] == two["chat_id"]
     assert len(rig.store.list(rig.scope)) == 1 and len(rig.chat_rows()) == 1
     assert len(rig.deps.chat_locks) == 0  # dropped once idle
+
+
+async def test_a_purged_chat_starts_fresh(rig):
+    """The retention purge deletes idle chats but not their thread links; the next mention starts over."""
+    await rig.mention("ask gemini hello")
+    (old,) = rig.chat_rows()
+    with rig.results.connection() as db:
+        db.execute("DELETE FROM advisor_jobs WHERE chat_id=?", (old.chat_id,))
+        db.execute("DELETE FROM advisor_chats WHERE id=?", (old.chat_id,))
+        db.commit()
+    await rig.mention("and again?")
+    (new,) = rig.chat_rows()
+    assert new.chat_id != old.chat_id and rig.models_asked() == ["g/model", "g/model"]
+    assert len(_answers(rig)) == 2
+
+
+async def test_at_most_four_models_per_ask(rig):
+    await rig.mention("ask a/1 and b/2 and c/3 and d/4 and e/5 hello")
+    assert [p["text"] for p in rig.slack.posts] == [MAX_MODELS_TEXT]
+    assert MAX_MODELS_TEXT == "I can ask up to 4 models at once."
+    assert rig.models_asked() == [] and rig.job_rows() == [] and rig.chat_rows() == []

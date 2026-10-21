@@ -36,7 +36,7 @@ def test_add_get_roundtrip(db_target):
     reg = ChannelRegistry(db_target)
     original = row(alias_map={"x": "ChatGPT"}, fetch_allowlist=("example.com", "a.org"),
                    invoker_allowlist=("U1", "U2"), daily_cap_usd=2.5, max_concurrent=2,
-                   default_model="gemini")
+                   default_model="x")
     reg.add(original)
     assert reg.get("T1", "C1") == original
     assert reg.by_label("abbott") == original
@@ -59,6 +59,22 @@ def test_add_rejects_bad_rows(db_target):
     with pytest.raises(ValueError):
         row(cohort="1999")
     assert len(reg.all()) == 1
+
+
+@pytest.mark.parametrize("bad", [
+    {"daily_cap_usd": float("inf")}, {"daily_cap_usd": float("nan")}, {"daily_cap_usd": 0.0},
+    {"daily_cap_usd": -1.0}, {"max_concurrent": 0}, {"max_concurrent": -2},
+    {"default_model": "claude"},  # not one of the channel's aliases
+    {"alias_map": {"x": "ChatGPT"}},  # the default "gemini" is no longer an alias
+])
+def test_money_and_default_guards(db_target, bad):
+    reg = ChannelRegistry(db_target)
+    with pytest.raises(ValueError):
+        reg.add(row(**bad))
+    reg.add(row())
+    with pytest.raises(ValueError):
+        reg.update("T1", "C1", **bad)
+    assert reg.get("T1", "C1") == row()
 
 
 def test_update_fields(db_target):

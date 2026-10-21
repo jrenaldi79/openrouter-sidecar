@@ -52,6 +52,21 @@ async def test_health_gate_follows_the_lock_hooks(tmp_path):
     await health.stop()
 
 
+async def test_a_failed_database_check_closes_the_gate_with_a_neutral_reason(tmp_path):
+    from openrouter_image_mcp.hosted.health import NOT_OWNER, RECONNECTING
+
+    health = Health(tmp_path / "db.sqlite3", Gate())
+    await health.start()
+    health.lock.failed = True  # the owner's check failed: nothing says another instance holds the lock
+    await health.lock.on_lose[0]()
+    assert health.gate.reason == RECONNECTING == "The Sidecar is reconnecting to its database; retry shortly."
+    await health.lock.on_refused[0]()  # reconnected, but another instance took the lock meanwhile
+    assert health.gate.reason == NOT_OWNER
+    await health.lock.on_gain[0]()
+    assert health.gate.reason is None
+    await health.stop()
+
+
 async def test_regain_during_shutdown_keeps_the_shutdown_reason(tmp_path):
     from openrouter_image_mcp.hosted.workspaces import SHUTTING_DOWN
 

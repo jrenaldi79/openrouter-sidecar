@@ -99,6 +99,8 @@ def test_failure_text_maps_each_error():
     assert text(daily) == limit_text(daily, daily_cap_usd=2.5, max_concurrent=2)
     busy = RateLimitedError("x", 30, "concurrency")
     assert text(busy) == limit_text(busy, daily_cap_usd=2.5, max_concurrent=2)
+    minute = RateLimitedError("x", 30, "minute", limit=20, span_s=60)
+    assert text(minute).startswith("Your team has sent 20 requests in the last minute.")
     assert text(InsufficientCreditsError("x")) == budget_text() == text(ForbiddenError("x"))
     for message in (DISABLED, NOT_READY, "anything else"):
         assert text(AuthRequiredError(message)) == key_text(AuthRequiredError(message))

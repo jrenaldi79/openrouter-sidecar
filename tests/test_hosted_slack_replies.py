@@ -97,6 +97,10 @@ def test_limit_texts():
         "Your team already has 3 answers running. Try again in a minute.")
     assert limit_text(RateLimitedError("x", 250, kind="rate")) == (
         "You've sent 10 requests in 10 minutes. Try again in about 5 minutes.")
+    assert limit_text(RateLimitedError("x", 40, kind="minute", limit=20, span_s=60)) == (
+        "Your team has sent 20 requests in the last minute. Try again in about 1 minute.")
+    assert limit_text(RateLimitedError("x", 200, kind="minute", limit=50, span_s=300)) == (
+        "Your team has sent 50 requests in the last 5 minutes. Try again in about 4 minutes.")
 
 
 def test_limit_texts_use_defaults_and_format_arguments():

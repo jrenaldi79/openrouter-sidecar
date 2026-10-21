@@ -48,10 +48,16 @@ INTERRUPTED = "Interrupted. Ask again."
 INTERRUPTED_ERROR = "Slack job was interrupted; no automatic retry was made."
 LOCAL_FAILURE = "Slack job failed locally; no automatic retry was made."
 MODERATION_ERROR = "Blocked by provider moderation."
+DEADLINE_ERROR = "Slack job ran past its 30-minute limit; no automatic retry was made."
+DEADLINE_TEXT = "Sidecar · {label} ran for 30 minutes and stopped. Try a smaller question."
 
 
 class LeaseLost(Exception):
     """The heartbeat lost the job's lease or key and cancelled the work."""
+
+
+class DeadlinePassed(Exception):
+    """The job ran past `runner.JOB_DEADLINE_S` and its work was cancelled."""
 
 
 class Turn:
@@ -136,6 +142,8 @@ class Turn:
         finally:
             cleanup_ok = await self._cleanup_after(chat.id, token)
         self.spent = result.cost_usd
+        if self.entry.stopped:  # stopped while the last request ran: keep the spend, discard the answer
+            raise LoopStopped(result.items, result.cost_usd)
         answer = self._final(chat, result)
         self.guard()
         s.store.append_turn(scope, chat.id, brief, answer, token)  # the plain brief, not the notes
@@ -208,6 +216,9 @@ class Turn:
         elif isinstance(problem, LeaseLost):
             self.interrupt(INTERRUPTED_ERROR)
             await self.working.finish(INTERRUPTED)
+        elif isinstance(problem, DeadlinePassed):
+            self.fail(DEADLINE_ERROR)  # the loop's spend so far is in self.spent
+            await self.working.finish(DEADLINE_TEXT.format(label=self.job.label))
         else:
             await self._failed(problem)
 

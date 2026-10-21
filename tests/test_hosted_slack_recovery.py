@@ -223,7 +223,7 @@ async def test_never_raises_when_the_sweep_itself_fails(rig, caplog):
 
 async def test_label_falls_back_to_the_model_id(rig):
     rig.add(alias="unmapped")
-    rig.registry.update("T2", "C2", alias_map={"slashed": "vendor/brand", "blank": ""})
+    rig.registry.update("T2", "C2", alias_map={"slashed": "vendor/brand", "blank": ""}, default_model="slashed")
     rig.add(team="T2", alias="slashed", thread=THREAD_B)
     rig.add(team="T2", alias="blank", thread="1700000000.000007")
     await rig.recover()

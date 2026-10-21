@@ -12,6 +12,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ...advisor_store import AdvisorAccessError
 from ...errors import OpenRouterError
 from .api import SlackCallError
 from .commands import NoModelSet, Turn, UnknownAlias, resolve_alias, unknown_alias_text
@@ -34,6 +35,8 @@ SANDBOX_OFF = "Sandbox is off on this server, so I answered without running code
 START_FAILED = "Something went wrong starting this answer. Ask again."
 READ_FAILED = "I couldn't read this thread from Slack. Try again in a moment."
 DEFAULT_BRIEF = "Reply to the latest message in this thread."
+MAX_MODELS = 4  # one mention can't fill the thread with queued jobs and busy lines
+MAX_MODELS_TEXT = f"I can ask up to {MAX_MODELS} models at once."
 
 Say = Callable[[str], Awaitable[None]]
 
@@ -97,6 +100,15 @@ async def _context(turn: Turn, deps: Deps) -> Context:
     return await deps.builder.render(gathered, since_ts=None)
 
 
+def _exists(turn: Turn, chat_id: str) -> bool:
+    """False when the retention purge deleted the thread's chat: the link is then replaced by a fresh chat."""
+    try:
+        turn.services.store.get(turn.scope, chat_id)
+    except AdvisorAccessError:
+        return False
+    return True
+
+
 async def _chat_id(pick: Pick, turn: Turn, deps: Deps) -> str:
     """The thread's chat for this alias and mode, or a new one linked to the thread. Find-or-start runs under
     a per-key lock, so two mentions racing in one thread share one chat instead of the second `put` replacing
@@ -106,7 +118,7 @@ async def _chat_id(pick: Pick, turn: Turn, deps: Deps) -> str:
     try:
         async with lock:
             found = deps.threads.get(turn.scope, turn.channel_id, turn.thread_ts, pick.alias, pick.mode)
-            if found is not None:
+            if found is not None and _exists(turn, found.chat_id):
                 return found.chat_id
             chat = await turn.services.advisors.start(pick.model, f"Slack · {turn.row.team_label}",
                                                       sandbox=pick.mode == "sandbox")
@@ -131,6 +143,9 @@ async def _started(pick: Pick, turn: Turn, deps: Deps, say: Say) -> str | None:
 
 async def prepare_jobs(intent: Ask | Compare, turn: Turn, deps: Deps, say: Say) -> list[SlackJob]:
     """One `SlackJob` per model that could start; every problem is answered in the thread through `say`."""
+    if isinstance(intent, Ask) and len(intent.aliases) > MAX_MODELS:
+        await say(escape(MAX_MODELS_TEXT))
+        return []
     try:
         picks, compare = await _picks(intent, turn, deps, say)
     except UnknownAlias as error:

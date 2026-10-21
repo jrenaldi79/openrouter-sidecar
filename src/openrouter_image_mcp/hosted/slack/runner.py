@@ -35,7 +35,7 @@ from .registry import ChannelRegistry, ChannelRow
 from .replies import WorkingMessage, escape
 from .runner_queue import ACQUIRED, STOPPED, Entry, Shared, wait_turn
 from .runner_steps import failure_text
-from .runner_turn import INTERRUPTED, INTERRUPTED_ERROR, LeaseLost, Turn
+from .runner_turn import INTERRUPTED, INTERRUPTED_ERROR, DeadlinePassed, LeaseLost, Turn
 from .runner_turn import STOPPED as STOPPED_TEXT
 from .threads import Mode, ThreadMap
 
@@ -44,6 +44,9 @@ log = logging.getLogger(__name__)
 QUEUE_WAIT_S = 120.0
 HEARTBEAT_S = 10.0
 IDLE_POLL_S = 1.0
+# Overall limit on one job's work, below the 40-minute chat lease (`advisor_store.OPERATION_LEASE_S`) that
+# a long job would otherwise outlive, losing its paid answer at the final lease check.
+JOB_DEADLINE_S = 30 * 60.0
 CHAT_BUSY = "Sidecar is still answering the previous question in this thread. Ask again in a moment."
 START_FAILED = "The working message could not be posted to Slack."
 
@@ -89,6 +92,7 @@ class SlackRunner:
         self.outputs, self.process_id, self.clock = outputs, process_id, clock
         self.registry, self.key_info = registry, key_info  # the budget warning needs both
         self.names = names or NameCache(api)
+        self.call_later: Callable | None = None  # the job deadline's timer; None is the loop's (tests inject)
         self._chats = Shared(asyncio.Lock)  # chat id -> FIFO lock: one job per chat at a time, in order
         self._slots = Shared(asyncio.Semaphore)  # owner -> the team's concurrent jobs
         self._entries: dict[str, list[Entry]] = defaultdict(list)  # owner -> queued and running jobs
@@ -215,18 +219,26 @@ class SlackRunner:
         await turn.finish(answer, problem)
 
     async def _watched(self, turn: Turn, work: asyncio.Task):
-        """The work's outcome as (answer, None) or (None, problem); the heartbeat is stopped before it
-        returns, so no tick can race the job's ending."""
+        """The work's outcome as (answer, None) or (None, problem); the heartbeat and the deadline are
+        stopped before it returns, so no tick can race the job's ending."""
+        late: list[bool] = []
+
+        def expire() -> None:  # a request can't be stopped mid-flight, and the chat lease runs out at 40
+            late.append(True)
+            work.cancel()
+
+        deadline = (self.call_later or asyncio.get_running_loop().call_later)(JOB_DEADLINE_S, expire)
         heartbeat = asyncio.create_task(self._heartbeat(turn, work))
         try:
             return await work, None
         except asyncio.CancelledError:
             if asyncio.current_task().cancelling():
                 raise
-            return None, LeaseLost()
+            return None, DeadlinePassed() if late else LeaseLost()
         except Exception as error:  # noqa: BLE001 - the outcome decides the job's ending
             return None, error
         finally:
+            deadline.cancel()
             heartbeat.cancel()
             await asyncio.gather(heartbeat, return_exceptions=True)
 

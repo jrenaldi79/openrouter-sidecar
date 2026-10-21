@@ -21,9 +21,10 @@ from .workspaces import STARTING, Gate
 
 log = logging.getLogger(__name__)
 NOT_OWNER = "Another Sidecar instance is active; this one is not serving."
+RECONNECTING = "The Sidecar is reconnecting to its database; retry shortly."  # the lock's check failed
 MAINTENANCE = "The Sidecar is under maintenance; retry in a few minutes."
 # Reasons Health itself sets; anything else (such as the shutdown notice) is left alone.
-_OWNED = (None, STARTING, MAINTENANCE, NOT_OWNER)
+_OWNED = (None, STARTING, MAINTENANCE, NOT_OWNER, RECONNECTING)
 
 
 class Health:
@@ -32,7 +33,7 @@ class Health:
         self.target, self.gate, self.maintenance = target, gate, maintenance
         self.asset_dir = asset_dir
         # The gate hooks come first; later owners of background work append to lock.on_gain/on_lose.
-        self.lock = OwnerLock(target, on_gain=[self._gained], on_lose=[self._lost])
+        self.lock = OwnerLock(target, on_gain=[self._gained], on_lose=[self._lost], on_refused=[self._refused])
 
     async def _gained(self) -> None:
         if self.gate.reason in _OWNED:
@@ -40,13 +41,21 @@ class Health:
 
     async def _lost(self) -> None:
         if self.gate.reason in _OWNED:
+            self.gate.reason = self._standby()
+
+    async def _refused(self) -> None:
+        if self.gate.reason in _OWNED:
             self.gate.reason = NOT_OWNER
+
+    def _standby(self) -> str:
+        """Why this instance is not serving: a failed database check is not another owner."""
+        return RECONNECTING if self.lock.failed else NOT_OWNER
 
     async def start(self) -> None:
         await self.lock.start()
         if not self.lock.held:
             if self.gate.reason in _OWNED:
-                self.gate.reason = NOT_OWNER
+                self.gate.reason = self._standby()
             log.error("not the owner (lock held elsewhere or database unreachable)")
 
     async def stop(self) -> None:
