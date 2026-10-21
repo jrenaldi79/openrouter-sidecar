@@ -2,7 +2,7 @@
 
 Month figures come from OpenRouter's `GET /key` for the team key; today's spend and the per-person
 breakdown come from the team's job rows. Nothing from the key info beyond two numbers reaches the text.
-The caller escapes the text before posting (names come from Slack).
+`usage_report` escapes the display names (they come from Slack), so `usage_text` is safe to post as is.
 """
 
 from __future__ import annotations
@@ -14,14 +14,16 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from .context import NameCache, _one_line
+from .context import NameCache, one_line
 from .jobs import SlackJobs
 from .registry import ChannelRegistry, ChannelRow
+from .replies import escape
 
 log = logging.getLogger(__name__)
 
 WARN_AT = 0.8
 MAX_USERS = 10
+WARN_FETCH_S = 4.0  # a slow GET /key must not hold up the answer
 
 
 @dataclass(frozen=True)
@@ -31,7 +33,8 @@ class UsageReport:
     remaining: float | None
     today_spend: float
     daily_cap: float
-    by_user: list[tuple[str, float]]  # display name and this month's spend, largest first
+    by_user: list[tuple[str, float]]  # escaped display name and this month's spend, largest first
+    others: int = 0  # people beyond the top `MAX_USERS`, not listed
 
 
 def _number(value) -> float | None:
@@ -70,14 +73,16 @@ def budget_report(key_info: dict, daily_cap: float = 0.0) -> UsageReport:
 async def usage_report(key_info: dict, jobs: SlackJobs, scope, row: ChannelRow, names: NameCache,
                        now: datetime) -> UsageReport:
     """Month figures from the key, today's spend (the day boundary `Limits.admit` uses) and this month's
-    spend per person from the team's job rows."""
+    spend per person from the team's job rows. Only the top `MAX_USERS` are named, and their names are
+    one line and entity-escaped (`replies.escape`), so the text can't form a mention or a link."""
     now = _utc(now)
     spent, limit, remaining = budget_figures(key_info)
     today = jobs.spend_since(scope, now.date().isoformat())
     people = jobs.spend_by_user(scope, f"{month_key(now)}-01")
-    named = await asyncio.gather(*(names.name(user) for user, _ in people))
-    by_user = [(_one_line(name) or user, amount) for name, (user, amount) in zip(named, people, strict=True)]
-    return UsageReport(spent, limit, remaining, today, row.daily_cap_usd, by_user)
+    top = people[:MAX_USERS]
+    named = await asyncio.gather(*(names.name(user) for user, _ in top))
+    by_user = [(escape(one_line(name) or user), amount) for name, (user, amount) in zip(named, top, strict=True)]
+    return UsageReport(spent, limit, remaining, today, row.daily_cap_usd, by_user, len(people) - len(top))
 
 
 def _money(value: float) -> str:
@@ -97,8 +102,8 @@ def usage_text(r: UsageReport) -> str:
         return "\n".join([*lines, "No requests yet this month (UTC)."])
     lines.append("Spend by person this month (UTC):")
     lines += [f"{name}: {_money(amount)}" for name, amount in r.by_user[:MAX_USERS]]
-    if len(r.by_user) > MAX_USERS:
-        lines.append(f"...and {len(r.by_user) - MAX_USERS} others")
+    if r.others:
+        lines.append(f"...and {r.others} others")
     return "\n".join(lines)
 
 
@@ -114,12 +119,15 @@ def budget_warning(r: UsageReport, row: ChannelRow, month: str, registry: Channe
 
 async def answer_warning(key_info: Callable[[str], Awaitable[dict]], key: str, row: ChannelRow,
                          registry: ChannelRegistry | None, now: datetime | None = None) -> str | None:
-    """The warning line for one answer's footer. Any failure is logged by type: the answer still posts."""
-    if registry is None:
+    """The warning line for one answer's footer. Nothing is fetched when the row already shows this month's
+    warning; the fetch is bounded by `WARN_FETCH_S` (a timeout means no warning). Any failure is logged by
+    type: the answer still posts."""
+    month = month_key(now or datetime.now(UTC))
+    if registry is None or row.warned_month == month:
         return None
     try:
-        report = budget_report(await key_info(key))
-        return budget_warning(report, row, month_key(now or datetime.now(UTC)), registry)
+        report = budget_report(await asyncio.wait_for(key_info(key), WARN_FETCH_S))
+        return budget_warning(report, row, month, registry)
     except Exception as error:  # noqa: BLE001 - a warning must never cost the student their answer
         log.warning("slack budget warning failed: %s", type(error).__name__)
         return None

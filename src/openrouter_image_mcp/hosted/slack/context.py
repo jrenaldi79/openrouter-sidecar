@@ -61,16 +61,16 @@ def _stamp(ts: str) -> str:
     return f"{MONTHS[when.month - 1]} {when.day} {when:%H:%M}"  # day is not zero padded; %-d is not portable
 
 
-def _one_line(value: str) -> str:
+def one_line(value: str) -> str:
     """No control characters or line breaks, so a name cannot start a forged line."""
     return " ".join(_UNPRINTABLE.sub(" ", value).split())
 
 
 def _author(msg: SlackMessage, name: str) -> str:
-    label = _one_line(msg.label or "")
+    label = one_line(msg.label or "")
     if label:
         return "Claude" if label.lower() == "claude" else label
-    return _one_line(name) or "bot"
+    return one_line(name) or "bot"
 
 
 def _body(text: str) -> str:

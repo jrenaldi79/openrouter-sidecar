@@ -1,12 +1,15 @@
 """Slack job runner: the one-time budget warning on the answer footer."""
 
+import asyncio
 import logging
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import httpx
 import pytest
 from slack_runner_rig import KEY, Rig
 
+from openrouter_image_mcp.hosted.slack import usage
 from openrouter_image_mcp.hosted.slack.usage import month_key
 
 NEAR = {"usage_monthly": 70.0, "effective_budget": {"limit_usd": 75.0}}
@@ -75,3 +78,35 @@ async def test_unregistered_channel_has_no_warning(db_target, keys):
     rig.key_info = NEAR
     await rig.run(rig.job(rig.chat()))
     assert answers(rig) == ["The answer.\n\nGemini · g/model · $0.0100"]
+
+
+async def test_slow_key_fetch_is_bounded_and_the_answer_posts(slack_rig, monkeypatch):
+    rig = slack_rig
+    monkeypatch.setattr(usage, "WARN_FETCH_S", 0.01)
+    assert usage.WARN_FETCH_S != 4.0  # patched; the real bound is 4 seconds
+    cancelled = []
+
+    async def slow(key):
+        try:
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            cancelled.append(True)
+            raise
+
+    rig.key_info = slow
+    await asyncio.wait_for(rig.run(rig.job(rig.chat())), timeout=10)
+    assert answers(rig) == ["The answer.\n\nGemini · g/model · $0.0100"]
+    assert cancelled and rig.registry.get("T1", "C1").warned_month is None
+
+
+def test_fetch_bound_is_four_seconds():
+    assert usage.WARN_FETCH_S == 4.0
+
+
+async def test_already_warned_this_month_skips_the_fetch(slack_rig):
+    rig = slack_rig
+    rig.key_info = NEAR
+    warned = replace(rig.row, warned_month=month_key(datetime.now(UTC)))
+    await rig.run(rig.job(rig.chat(), row=warned))
+    assert answers(rig) == ["The answer.\n\nGemini · g/model · $0.0100"]
+    assert rig.key_info_keys == []

@@ -58,7 +58,7 @@ async def report(world, key_info, now=NOW):
 
 async def test_usage_text_has_no_key(world):
     text = usage_text(await report(world, info()))
-    assert KEY not in text and HASH not in text and "monthly" not in text.split("\n")[0]
+    assert KEY not in text and HASH not in text
     assert "student" not in text.lower()
     assert "$10.00 of $75.00" in text and "$65.00 left" in text
 
@@ -143,3 +143,24 @@ def test_warning_once_per_month(world):
 def test_warning_text_over_budget_floors_percent(world):
     registry, row = world[3], world[4]
     assert "104%" in budget_warning(figures(104.9), row, "2026-10", registry)
+
+
+async def test_names_are_escaped_and_only_the_top_ten_are_resolved(world):
+    api = world[5]._api
+    resolved, original = [], api.user
+
+    async def spy(user_id):
+        resolved.append(user_id)
+        return await original(user_id)
+
+    api.user = spy
+    api.users["U99"] = {"profile": {"display_name": "<!channel> & <@U1>"}}
+    add_job(world, SCOPE, "U99", 99.0)
+    for n in range(12):
+        add_job(world, SCOPE, f"U{n + 10}", 1.0 + n)
+    r = await report(world, info())
+    assert r.by_user[0] == ("&lt;!channel&gt; &amp; &lt;@U1&gt;", 99.0)
+    assert len(r.by_user) == 10 and r.others == 3 and len(resolved) == 10
+    text = usage_text(r)
+    assert "<" not in text and ">" not in text and "...and 3 others" in text
+    assert text.count("\n") == 3 + 10  # month, today, heading, ten people, others

@@ -96,7 +96,7 @@ class Rig:
         self.threads, self.memory, self.jobs = ThreadMap(target), ChannelMemory(target), SlackJobs(target)
         self.limits = Limits(self.store)
         self.registry = ChannelRegistry(target)  # a test registers the row itself to get the budget warning
-        self.key_info = {}  # what the stubbed GET /key returns (an Exception instance is raised)
+        self.key_info = {}  # what the stubbed GET /key returns (an Exception is raised, an async function is awaited)
         self.key_info_keys: list[str] = []
         ticks = itertools.count()
         # Every clock read is 11 seconds later, so each progress step may edit.
@@ -108,6 +108,8 @@ class Rig:
         self.key_info_keys.append(key)
         if isinstance(self.key_info, Exception):
             raise self.key_info
+        if callable(self.key_info):  # an async function, to gate or delay the fetch
+            return await self.key_info(key)
         return self.key_info
 
     def set_row(self, **changes):
