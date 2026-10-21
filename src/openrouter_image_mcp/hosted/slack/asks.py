@@ -95,14 +95,22 @@ async def _context(turn: Turn, deps: Deps) -> Context:
 
 
 async def _chat_id(pick: Pick, turn: Turn, deps: Deps) -> str:
-    """The thread's chat for this alias and mode, or a new one linked to the thread."""
-    found = deps.threads.get(turn.scope, turn.channel_id, turn.thread_ts, pick.alias, pick.mode)
-    if found is not None:
-        return found.chat_id
-    chat = await turn.services.advisors.start(pick.model, f"Slack · {turn.row.team_label}",
-                                              sandbox=pick.mode == "sandbox")
-    deps.threads.put(turn.scope, turn.channel_id, turn.thread_ts, pick.alias, pick.mode, chat["chat_id"])
-    return chat["chat_id"]
+    """The thread's chat for this alias and mode, or a new one linked to the thread. Find-or-start runs under
+    a per-key lock, so two mentions racing in one thread share one chat instead of the second `put` replacing
+    the first (this replica runs every Slack job)."""
+    key = (turn.scope.owner, turn.scope.workspace, turn.channel_id, turn.thread_ts, pick.alias, pick.mode)
+    lock = deps.chat_locks.take(key)
+    try:
+        async with lock:
+            found = deps.threads.get(turn.scope, turn.channel_id, turn.thread_ts, pick.alias, pick.mode)
+            if found is not None:
+                return found.chat_id
+            chat = await turn.services.advisors.start(pick.model, f"Slack · {turn.row.team_label}",
+                                                      sandbox=pick.mode == "sandbox")
+            deps.threads.put(turn.scope, turn.channel_id, turn.thread_ts, pick.alias, pick.mode, chat["chat_id"])
+            return chat["chat_id"]
+    finally:
+        deps.chat_locks.drop(key)
 
 
 async def _started(pick: Pick, turn: Turn, deps: Deps, say: Say) -> str | None:

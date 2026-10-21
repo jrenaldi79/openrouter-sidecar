@@ -77,6 +77,18 @@ class DispatchRig(Rig):
             await self.dispatcher.drain()
         return event
 
+    def count(self, name):
+        """Record the calls to one FakeSlack method from now on; returns the list of argument tuples."""
+        calls = []
+        original = getattr(self.slack, name)
+
+        async def counted(*args, **kwargs):
+            calls.append(args)
+            return await original(*args, **kwargs)
+
+        setattr(self.slack, name, counted)
+        return calls
+
     def chat_rows(self):
         return self.threads.chats_in(self.scope, CHANNEL)
 

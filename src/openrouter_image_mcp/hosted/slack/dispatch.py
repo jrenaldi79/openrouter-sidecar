@@ -12,7 +12,7 @@ import asyncio
 import contextvars
 import logging
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 
 from ...errors import KEY_REJECTED, OpenRouterError
@@ -25,11 +25,21 @@ from .context import ContextBuilder
 from .guests import GuestGuard
 from .jobs import SlackJobs
 from .memory import ChannelMemory
-from .parser import Ask, Compare, Intent, command_text, parse
+from .parser import (
+    Ask,
+    Compare,
+    Empty,
+    Help,
+    Intent,
+    ThreadCommand,
+    command_text,
+    parse,
+)
 from .principal import acting_as, team_principal
 from .registry import ChannelRegistry, ChannelRow
 from .replies import escape, key_text, limit_text
 from .runner import SlackJob, SlackRunner, SlackServices
+from .runner_queue import Shared
 from .settings import SlackSettings
 from .threads import ThreadMap
 from .welcome import NOT_SET_UP, welcome_text
@@ -42,6 +52,8 @@ ONLY_SOME = "Only some members of this channel can use Sidecar."
 KEY_PROBLEM = "Sidecar can't reach this team's key right now. Ask your instructor."
 FAILED = "Something went wrong with that request. Try again."
 _KEY_MESSAGES = frozenset({NOT_READY, DISABLED, UNAVAILABLE, KEY_REJECTED})  # key_text has team copy for these
+_IGNORED_SUBTYPES = frozenset({"message_changed", "message_deleted"})
+_UNLIMITED = (ThreadCommand, Help, Empty)  # free and needed most when busy: outside the per-user window
 
 
 @dataclass
@@ -59,10 +71,17 @@ class Deps:
     services: Mapping[str, SlackServices]  # by cohort
     settings: SlackSettings
     sandbox_enabled: bool
+    # (owner, workspace, channel, thread_ts, alias, mode) -> lock around find-or-start of the thread's chat
+    chat_locks: Shared = field(default_factory=lambda: Shared(asyncio.Lock))
 
 
 def _text_id(value) -> str | None:
     return value if isinstance(value, str) and value else None
+
+
+def _ignored(event: dict) -> bool:
+    """Edits, deletes and other bots' posts never start work (only new mentions by people count)."""
+    return bool(event.get("edited") or event.get("subtype") in _IGNORED_SUBTYPES or event.get("bot_id"))
 
 
 def _key_reply(error: Exception) -> str:
@@ -77,6 +96,16 @@ class Dispatcher:
         self._tasks: set[asyncio.Task] = set()
 
     async def on_mention(self, team_id: str, event: dict) -> None:
+        """Never raises: a malformed event or a storage error is logged by type, so the gateway keeps going."""
+        try:
+            await self._on_mention(team_id, event)
+        except Exception as error:  # noqa: BLE001 - one bad event must not stop the gateway loop
+            log.warning("slack mention failed: %s", type(error).__name__)
+
+    async def _on_mention(self, team_id: str, event: dict) -> None:
+        if not isinstance(event, dict) or _ignored(event):
+            log.info("slack mention ignored: an edit, a delete or a bot post")
+            return
         ids = [_text_id(team_id), *(_text_id(event.get(name)) for name in ("channel", "user", "ts"))]
         if None in ids or ids[2] == self.bot_user_id:
             log.info("slack mention ignored: missing ids or our own message")
@@ -124,7 +153,7 @@ class Dispatcher:
 
     async def _handle(self, intent: Intent, row: ChannelRow, event: dict, user: str, reply_ts: str,
                       say: Say) -> None:
-        if (limited := self._over_limit(row, user)) is not None:
+        if not isinstance(intent, _UNLIMITED) and (limited := self._over_limit(row, user)) is not None:
             await say(limited)
             return
         if (text := static_text(intent, row)) is not None:

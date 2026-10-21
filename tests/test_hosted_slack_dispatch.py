@@ -1,6 +1,7 @@
 """Slack request flow: event checks, gate, welcome, per-user limit, team key, identity and background jobs."""
 
 import logging
+import sqlite3
 
 import pytest
 from slack_dispatch_rig import BOT, DispatchRig
@@ -64,13 +65,36 @@ async def test_welcome_once_then_answer(db_target, keys):
     assert sum(p["text"].startswith("Hi, I'm Sidecar.") for p in rig.slack.posts) == 1
 
 
+RATE_TEXT = "You've sent 10 requests in 10 minutes. Try again in about 10 minutes."
+
+
+async def _ten_asks(rig):
+    for n in range(10):
+        await rig.mention(f"ask gemini question {n}")
+
+
 async def test_user_rate_limit(rig):
-    for _ in range(10):
-        await rig.mention("help")
-    await rig.mention("help")
-    assert _texts(rig)[-1] == "You've sent 10 requests in 10 minutes. Try again in about 10 minutes."
-    await rig.mention("help", user="U2")  # the window is per Slack user
-    assert _texts(rig)[-1].startswith("Sidecar answers")
+    await _ten_asks(rig)
+    replies, requests, ensured = rig.count("replies"), len(rig.model.requests), len(rig.provisioner.calls)
+    await rig.mention("ask gemini one more")
+    assert _texts(rig)[-1] == RATE_TEXT
+    assert replies == [] and len(rig.model.requests) == requests and len(rig.provisioner.calls) == ensured
+    await rig.mention("ask gemini hi", user="U2")  # the window is per Slack user
+    assert _texts(rig)[-1].startswith("The answer.")
+
+
+async def test_thread_commands_and_help_skip_user_window(rig):
+    await _ten_asks(rig)
+    assert [await _reply(rig, text) for text in ("!stop", "!status", "!restart", "help", "")][:3] == [
+        "Nothing is running in this thread.", "Nothing is running in this thread.",
+        "Started fresh. My next answer here rereads the thread."]
+    assert _texts(rig)[-2].startswith("Sidecar answers") and "@sidecar help" in _texts(rig)[-1]
+    assert await _reply(rig, "models") == RATE_TEXT  # other commands still count
+
+
+async def _reply(rig, text):
+    await rig.mention(text)
+    return _texts(rig)[-1]
 
 
 async def test_unknown_alias_lists_valid(rig):
@@ -108,7 +132,7 @@ async def test_principal_from_event_not_text(rig):
 ])
 async def test_event_without_ids_ignored(rig, change):
     """Ruling 4: channel, user, ts and team must be non-empty strings; the bot never answers itself."""
-    event = rig.event(f"<@{BOT}> help")
+    event, change = rig.event(f"<@{BOT}> help"), dict(change)  # the parametrize dict is shared across backends
     team = change.pop("team", "T1")
     event.update(change)
     await rig.dispatcher.on_mention(team, event)
@@ -165,3 +189,32 @@ async def test_background_failure_logged_by_type(rig, monkeypatch, caplog):
     assert seen == [team_principal("T1", CHANNEL, rig.registry.get("T1", CHANNEL))]
     assert "ValueError" in caplog.text and "secret detail" not in caplog.text
     assert not rig.dispatcher._tasks
+
+
+@pytest.mark.parametrize("extra", [
+    {"edited": {"user": "U1", "ts": "1700000000.000009"}}, {"subtype": "message_changed"},
+    {"subtype": "message_deleted"}, {"bot_id": "B9"},
+])
+async def test_edits_deletes_and_other_bots_ignored(rig, extra):
+    event = rig.event(f"<@{BOT}> ask gemini hi")
+    event.update(extra)
+    await rig.dispatcher.on_mention("T1", event)
+    await rig.dispatcher.drain()
+    assert rig.slack.posts == [] and rig.provisioner.calls == [] and rig.model.requests == []
+
+
+async def test_malformed_event_never_raises(rig, caplog):
+    event = rig.event(f"<@{BOT}> ask gemini hi", files=["x"])
+    with caplog.at_level(logging.WARNING, logger=dispatch.__name__):
+        await rig.dispatcher.on_mention("T1", event)
+    assert "AttributeError" in caplog.text and rig.model.requests == []
+
+
+async def test_storage_error_never_raises(rig, monkeypatch, caplog):
+    def broken(*args):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(rig.registry, "get", broken)
+    with caplog.at_level(logging.WARNING, logger=dispatch.__name__):
+        await rig.mention("ask gemini hi")
+    assert "OperationalError" in caplog.text and "database is locked" not in caplog.text

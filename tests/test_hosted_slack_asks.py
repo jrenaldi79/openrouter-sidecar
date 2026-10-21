@@ -1,5 +1,7 @@
 """The question path of a mention: models, modes, chats, the shared context and Fusion."""
 
+import asyncio
+
 import pytest
 from slack_dispatch_rig import DispatchRig
 from slack_runner_rig import CHANNEL, THREAD
@@ -17,18 +19,6 @@ def rig(db_target, keys):
 
 def _answers(rig):
     return [p for p in rig.slack.posts if p["text"].startswith("The answer.")]
-
-
-def _counted(rig, name):
-    calls = []
-    original = getattr(rig.slack, name)
-
-    async def counted(*args, **kwargs):
-        calls.append(args)
-        return await original(*args, **kwargs)
-
-    setattr(rig.slack, name, counted)
-    return calls
 
 
 def _context_file(rig, chat_id):
@@ -65,7 +55,7 @@ async def test_two_models_two_answers(rig):
 
 async def test_context_gathered_once_for_two_models(rig):
     rig.slack.threads[(CHANNEL, THREAD)] = [SlackMessage(THREAD, "U1", "Root idea", None, None, THREAD)]
-    replies, pins = _counted(rig, "replies"), _counted(rig, "pins")
+    replies, pins = rig.count("replies"), rig.count("pins")
     await rig.mention("ask gemini and gpt thoughts?")
     assert len(replies) == 1 and len(pins) == 1
     first, second = (row["chat_id"] for row in rig.job_rows())
@@ -77,7 +67,7 @@ async def test_every_turn_rereads_the_whole_thread(rig):
     """Ruling 1: first_turn=True and since_ts=None on every turn, so earlier discussion stays in context."""
     rig.slack.threads[(CHANNEL, THREAD)] = [SlackMessage(THREAD, "U1", "Root idea", None, None, THREAD)]
     await rig.mention("ask gemini first?")
-    pins = _counted(rig, "pins")
+    pins = rig.count("pins")
     await rig.mention("second?")
     assert len(pins) == 1
     chat_id = rig.job_rows()[-1]["chat_id"]
@@ -145,3 +135,22 @@ async def test_start_failure_names_another_model(rig):
     assert "ChatGPT didn't answer this time. Try another model, for example gemini." in [
         p["text"] for p in rig.slack.posts]
     assert rig.models_asked() == ["g/model"]
+
+
+async def test_concurrent_first_mentions_share_one_chat(rig, monkeypatch):
+    """Two first mentions racing in one thread find or start the same chat; neither put replaces the other."""
+    start = rig.services.advisors.start
+
+    async def slow_start(*args, **kwargs):  # yield between get and put, as a real catalog call does
+        for _ in range(5):
+            await asyncio.sleep(0)
+        return await start(*args, **kwargs)
+
+    monkeypatch.setattr(rig.services.advisors, "start", slow_start)
+    first, second = rig.event("<@UBOT> ask gemini one"), rig.event("<@UBOT> ask gemini two")
+    await asyncio.gather(rig.dispatcher.on_mention("T1", first), rig.dispatcher.on_mention("T1", second))
+    await rig.dispatcher.drain()
+    one, two = rig.job_rows()
+    assert one["chat_id"] == two["chat_id"]
+    assert len(rig.store.list(rig.scope)) == 1 and len(rig.chat_rows()) == 1
+    assert len(rig.deps.chat_locks) == 0  # dropped once idle
