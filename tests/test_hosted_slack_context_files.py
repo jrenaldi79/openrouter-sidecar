@@ -117,3 +117,9 @@ async def test_zero_budget_lists_everything(slack):
     f = slack_file("a.txt")
     slack.files[f.url] = b"x"
     assert await trigger_files(slack, [f], 0) == ([], ["a.txt"])
+
+
+async def test_nul_text_listed(slack):
+    f = slack_file("a.txt")
+    slack.files[f.url] = b"abc\x00def"
+    assert await trigger_files(slack, [f]) == ([], ["a.txt"])

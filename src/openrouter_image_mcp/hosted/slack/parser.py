@@ -100,7 +100,7 @@ def _unwrap_links(text: str) -> str:
     return "".join(out)
 
 
-def _decode_entities(text: str) -> str:
+def decode_entities(text: str) -> str:
     # Slack escapes only these three; `&amp;` goes last so `&amp;lt;` decodes once.
     return text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
 
@@ -116,11 +116,11 @@ def command_text(text: str, bot_user_id: str) -> str:
     mention = f"<@{bot_user_id}>"
     at = text.find(mention)
     if at == -1:
-        return _decode_entities(text).strip()
+        return decode_entities(text).strip()
     before, after = text[:at].strip(), text[at + len(mention) :].strip()
     if _starts_with_command(after):
-        return _decode_entities(after)
-    return _decode_entities(f"{before} {after}" if before and after else before or after)
+        return decode_entities(after)
+    return decode_entities(f"{before} {after}" if before and after else before or after)
 
 
 # --- one small parser per command -----------------------------------------------------

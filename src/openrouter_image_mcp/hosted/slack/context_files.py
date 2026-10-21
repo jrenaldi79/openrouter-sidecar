@@ -62,6 +62,9 @@ async def _read_text(api: SlackApi, file: SlackFile) -> str | None:
     try:
         data = await api.download(file.url, MAX_DOWNLOAD_BYTES)
         text = data.decode("utf-8")
+        if "\x00" in text:  # session files refuse binary content, which would fail the whole call
+            log.warning("slack attachment contains NUL, not text")
+            return None
     except SlackCallError as error:
         log.warning("slack attachment not downloaded: %s", error.code)
         return None

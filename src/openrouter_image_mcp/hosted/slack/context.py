@@ -7,7 +7,6 @@ best effort (a failure is logged and that part is left out); the thread read mus
 
 from __future__ import annotations
 
-import html
 import logging
 import re
 import time
@@ -19,6 +18,7 @@ from zoneinfo import ZoneInfo
 from ...session_files import MAX_SESSION_CHARS, FilePacket
 from .api import Page, SlackApi, SlackCallError, SlackMessage
 from .context_files import trigger_files
+from .parser import decode_entities
 
 log = logging.getLogger(__name__)
 
@@ -74,9 +74,9 @@ def _author(msg: SlackMessage, name: str) -> str:
 
 
 def _body(text: str) -> str:
-    """Slack's entity escaping undone, continuation lines indented so no line of a message body can
+    """Slack's three entities decoded (not HTML's), continuation lines indented so no line of a message body can
     pass for a `[time] Name:` line or a section header."""
-    return "\n  ".join(html.unescape(text).splitlines() or [""])
+    return "\n  ".join(decode_entities(text).splitlines() or [""])
 
 
 def format_message(msg: SlackMessage, name: str) -> str:
@@ -165,7 +165,7 @@ def trim_thread(lines: list[str], cap: int = THREAD_CHARS) -> list[str]:
 def _urls(messages: list[SlackMessage]) -> list[str]:
     found: dict[str, None] = {}
     for message in messages:
-        for match in _URL.findall(html.unescape(message.text)):
+        for match in _URL.findall(decode_entities(message.text)):
             url = match.rstrip(_URL_TRAILING)
             if url:
                 found.setdefault(url)
