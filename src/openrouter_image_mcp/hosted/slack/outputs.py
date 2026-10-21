@@ -30,7 +30,7 @@ MAX_EXT = 32
 SHELL_TYPES = frozenset({"openrouter:shell", "shell_call_output"})
 FIELDS = ("container_id", "file_id", "filename")
 OUTPUTS = "outputs"
-PROJECT_PREFIXES = ("/workspace/project/", "project/")
+HOME_PREFIXES = ("/workspace/home/", "~/")  # OpenRouter saves only /workspace/home and names files relative to it
 MAX_NOTES = 10  # per-file notes in the thread; the rest are summarized in one line
 MAX_DOWNLOAD_FAILURES = 3  # consecutive failures before the remaining downloads are skipped
 HIDDEN = frozenset({"Cc", "Cf", "Zl", "Zp"})  # controls, bidi and zero-width formatting, line separators
@@ -42,7 +42,7 @@ _UPLOAD = "Slack would not take the upload."
 @dataclass(frozen=True)
 class OutputRef:
     file_id: str
-    path: str  # relative to the project folder, always `outputs/<something>`
+    path: str  # relative to /workspace/home, always `outputs/<something>`
 
 
 def normalize(filename: object) -> str | None:
@@ -51,7 +51,7 @@ def normalize(filename: object) -> str | None:
         return None
     if any(unicodedata.category(c) in HIDDEN for c in filename):
         return None
-    rel = next((filename[len(p):] for p in PROJECT_PREFIXES if filename.startswith(p)), filename)
+    rel = next((filename[len(p):] for p in HOME_PREFIXES if filename.startswith(p)), filename)
     if rel.startswith("/"):  # any other absolute path
         return None
     parts = rel.split("/")

@@ -237,7 +237,7 @@ on OpenRouter.
 | `openrouter:web_fetch` | OpenRouter | Included only when the allowed-domain set is non-empty: domains of URLs people posted in the thread and triggering message (bot and model posts don't count), plus `fetch_allowlist`, passed as `allowed_domains`. With an empty set the tool is left out of the request entirely, so it can never fetch an arbitrary site. `max_uses` 5 |
 | `openrouter:shell` | OpenRouter | Sandbox chats only, as today |
 | `openrouter:subagent` | OpenRouter | Worker `subagent_model` with `web_search`, plus `web_fetch` under the same rule. `max_tool_calls` 8 |
-| `openrouter:fusion` | OpenRouter | `compare` only. Sent as the only tool, with `tool_choice` `{"type":"allowed_tools","mode":"required","tools":[{"type":"openrouter:fusion"}]}`, because `tool_choice` can't name a server tool directly. Panel and analyst from the registry, panelists given `web_search` (plus `web_fetch` under the same domain rule), `max_tool_calls` 4. **Pending the live check:** `FUSION_FORCED` in `hosted/slack/payload.py` selects this path. If the live spike (`tests/live/test_slack_spikes.py`) shows OpenRouter rejects it, the constant is set to False and `compare` uses the `openrouter/fusion` model with a `plugins` entry carrying the same panel, analyst and tools |
+| `openrouter:fusion` | OpenRouter | `compare` only. Sent as the only tool, with `tool_choice` `{"type":"allowed_tools","mode":"required","tools":[{"type":"openrouter:fusion"}]}`, because `tool_choice` can't name a server tool directly. Panel and analyst from the registry, panelists given `web_search` (plus `web_fetch` under the same domain rule), `max_tool_calls` 4. `FUSION_FORCED = True` in `hosted/slack/payload.py` selects this path; the live spike (`tests/live/test_slack_spikes.py`, 2026-10-21) confirmed it forces Fusion and returns `analysis`, `responses` and `sources`. The fallback (False: the `openrouter/fusion` model with a `plugins` entry carrying the same panel, analyst and tools) accepted `tools` but returned no analysis, so it stays unused |
 
 Server tools never take a channel, principal, container, file id or workspace as an argument:
 the channel comes from the job row. Tool results go back to the model as data.
@@ -267,11 +267,13 @@ inline chats (which now carry server tools) and 24 for sandbox chats.
 - Mode is part of the chat key, so a thread can have an inline chat and a sandbox chat with the
   same model. A follow-up goes to whichever of them answered last, unless it triggers the other
   mode.
-- Sandbox instructions add: write files meant for the team to `/workspace/project/outputs/`;
-  only that folder is posted.
+- Sandbox instructions add: write files meant for the team to `/workspace/home/outputs/` and leave
+  them out of scratch cleanup; only that folder is posted. OpenRouter saves and reports only files
+  under `/workspace/home`, so a file written anywhere else is never seen.
 - When the job finishes, `outputs.py` reads the `files` field of each shell result: a list of
   `{"type": "container_file_citation", "container_id", "file_id", "filename"}`, at most 10 per
-  result, where `filename` is the file's path. It keeps ids whose path is under `outputs/`, downloads each with
+  result, most recently changed first, where `filename` is the path relative to `/workspace/home`
+  (`outputs/chart.png`). It keeps ids whose path is under `outputs/`, downloads each with
   `GET /api/v1/containers/{container_id}/files/{file_id}/content` using the team key, and
   uploads them to the thread (`files:write`). Images preview inline.
 - Caps: 5 files and 20 MB per answer. Skipped files get a one-line note. A failed download
@@ -344,8 +346,10 @@ line instead: "Sidecar isn't set up for this channel. Ask your instructor to add
   set. Fusion takes a `tools` parameter, so panelists get `web_search` and `web_fetch` only under
   the same domain rule: with no allowed domains, `web_fetch` is left out of the Fusion `tools` too.
   This replaces the earlier plan, in which panelists always had web search and fetch with no
-  per-request domain setting. **Pending the live check:** acceptance step 5 confirms OpenRouter
-  honours the Fusion `tools` and allowed domains; if it doesn't, the old path returns and is
+  per-request domain setting. The live spike confirmed Fusion accepts `tools`, and that
+  `allowed_domains` also admits subdomains (`example.com` opened `www.example.com`), which is why
+  shared suffixes such as `github.io` are never allowed whole. **Pending the live check:**
+  acceptance step 5 confirms the panelists honour the allowed domains; if they don't, the old path returns and is
   accepted with the workspace blocklist from step 5. The other path stays accepted: web search
   queries can carry words from the conversation. The allowed domains come from links people
   posted in the thread (plus the channel's `fetch_allowlist`), never from Sidecar's own answers,
@@ -484,12 +488,15 @@ Settled in code:
   named `Sidecar team budget` in their own workspace (Keys and budget).
 - **Shell results' `files`:** the shape is in Sandbox outputs.
 
-Pending the live run before acceptance (`tests/live/test_slack_spikes.py`):
-- **Forcing Fusion.** Whether `tool_choice` with `allowed_tools` forces `openrouter:fusion`. If it
-  doesn't, `FUSION_FORCED` is set to False and `compare` uses the `openrouter/fusion` model with
-  `plugins`.
-- **Fusion `tools`.** Whether Fusion accepts a `tools` parameter and applies the allowed domains
-  to its panelists (Isolation and security).
+Settled by the live run on 2026-10-21 (`tests/live/test_slack_spikes.py`):
+- **Tool loop.** Replaying `function_call` items and their outputs in `input` works alongside
+  server tools.
+- **Forcing Fusion.** `tool_choice` with `allowed_tools` forces `openrouter:fusion`, so
+  `FUSION_FORCED` stays True.
+- **Fusion `tools`.** Accepted. Whether the panelists honour the allowed domains is acceptance
+  step 5 (Isolation and security).
+- **Shell files.** Only files under `/workspace/home` are saved and reported, named relative to it
+  (`outputs/a.txt`); downloads work with or without `workspace_id` (Sandbox outputs).
 
 ## Review
 

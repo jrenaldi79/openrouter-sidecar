@@ -5,7 +5,7 @@ import pytest
 from openrouter_image_mcp.hosted.slack.outputs import OutputRef, output_refs
 
 BOX = "nu_abc"
-ROOT = "/workspace/project/"
+ROOT = "/workspace/home/"
 
 
 def entry(file_id, filename, container=BOX):
@@ -30,14 +30,14 @@ def test_only_outputs_folder():
     assert found == [OutputRef("f1", "outputs/chart.png")]
 
 
-@pytest.mark.parametrize("name", [ROOT + "outputs/chart.png", "project/outputs/chart.png",
+@pytest.mark.parametrize("name", [ROOT + "outputs/chart.png", "~/outputs/chart.png",
                                   "outputs/chart.png"])
 def test_path_forms(name):
     assert refs(entry("f1", name)) == [OutputRef("f1", "outputs/chart.png")]
 
 
 @pytest.mark.parametrize("name", [
-    "/etc/outputs/x.png", "/outputs/x.png", "/workspace/other/outputs/x.png", "/workspace/outputs/x.png",
+    "/etc/outputs/x.png", "/outputs/x.png", "/workspace/other/outputs/x.png", "/workspace/outputs/x.png", "/workspace/project/outputs/x.png", "project/outputs/x.png",
     ROOT + "outputs/../secret.txt", "outputs/../../x", "../outputs/x.png", ROOT + "outputs/./x.png",
     ROOT + "outputs//x.png", ROOT + "outputs/a\\b.png", ROOT + "outputs/a\x00b.png",
     ROOT + "outputs/a\nb.png", "outputs\\x.png", ROOT + "outputs/x.png/",

@@ -170,9 +170,11 @@ def test_sandbox_keeps_shell_and_24_calls():
     p = build(sandbox=True)
     assert "openrouter:shell" in types(p["tools"]) and FUNCTION_NAMES <= set(types(p["tools"]))
     assert p["max_tool_calls"] == 24
-    assert "/workspace/project/outputs/" in p["instructions"]
+    assert "/workspace/home/outputs/" in p["instructions"]
     assert "only that folder is posted" in p["instructions"]
-    assert "/workspace/project/outputs/" not in build()["instructions"]
+    # SANDBOX_SAFETY asks for scratch under /workspace/home to be removed; outputs must survive that.
+    assert "not scratch" in p["instructions"]
+    assert "/workspace/home/outputs/" not in build()["instructions"]
 
 
 def test_compare_only_fusion_forced(monkeypatch):
@@ -252,7 +254,7 @@ def test_sandbox_keeps_upload_pointers_and_container_rules():
     assert "/workspace/home/12345678-files.json" in text and "/workspace/project/inputs/" in text
     assert "/workspace/home/l9999999-skills.json" in text
     assert " ".join(SANDBOX_SAFETY.split()) in " ".join(text.split())
-    assert "retrieve keys" in text and "/workspace/project/outputs/" in text
+    assert "retrieve keys" in text and "/workspace/home/outputs/" in text
     assert [t["parameters"]["environment"]["file_ids"] for t in p["tools"] if t["type"] == "openrouter:shell"] == [
         ["file-abcdefgh12345678", "file-skillskill9999999"]]
     assert "/workspace/project/inputs/" not in build(sandbox=True)["instructions"]

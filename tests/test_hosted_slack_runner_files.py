@@ -132,8 +132,8 @@ async def test_sandbox_chart_posted(slack_rig):
     rig.runner.outputs = Outputs(rig.slack)
     chat = rig.chat(sandbox=True, mode="sandbox")
     rig.model.container_files = {"file_png": b"PNG", "file_src": b"print()"}
-    shell = _shell_with(chat, ("file_png", "/workspace/project/outputs/chart.png"),
-                        ("file_src", "/workspace/project/main.py"))
+    shell = _shell_with(chat, ("file_png", "/workspace/home/outputs/chart.png"),
+                        ("file_src", "/workspace/home/main.py"))
     rig.model.respond = lambda request: body(shell, call()) if len(rig.model.requests) == 1 else body()
     await rig.run(rig.job(chat, mode="sandbox"))
     (upload,) = rig.slack.uploads

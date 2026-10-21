@@ -67,8 +67,10 @@ _PANEL_FETCH_ON = ("The panel can search the web, and it can open pages only on 
                    "thread or allowed for this channel.")
 _PANEL_FETCH_OFF = "The panel can search the web but cannot open pages directly."
 
+# OpenRouter saves and reports only files under /workspace/home, so the outputs folder lives there.
 _SANDBOX_TOOLS = ("You can also run code with the shell tool. Write files meant for the team to "
-                  "`/workspace/project/outputs/`; only that folder is posted.")
+                  "`/workspace/home/outputs/`; only that folder is posted. Files there are not scratch: "
+                  "leave them in place when you clean up.")
 
 _FILES_RULE = ("Files the thread lists as not attached are not available to you. The team can attach one "
                "again with their ask.")
