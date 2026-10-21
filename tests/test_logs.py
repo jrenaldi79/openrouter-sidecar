@@ -108,3 +108,11 @@ def test_redacts_slack_tokens():
         assert not any(run in text for run in ("1" * 4, "2" * 4, "3" * 4))
         assert text.startswith("token ") and text.endswith(" here")
     assert logs.redact_log("xoxb-" + "1" * 12 + "-abc") == logs.redact("xoxb-" + "1" * 12 + "-abc")
+
+
+def test_redacts_slack_tokens_after_word_characters():
+    # \b would skip a token glued to a letter or underscore; the redactor must fail closed.
+    for prefix, body in (("a_xoxb-", "4" * 12), ("_xapp-1-", "5" * 12), ("xxoxb-", "6" * 12)):
+        text = logs.redact("v=" + prefix + body + "-abc")
+        assert body[:4] not in text
+        assert logs.redact_log("v=" + prefix + body + "-abc") == text
