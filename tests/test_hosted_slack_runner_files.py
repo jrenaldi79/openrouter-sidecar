@@ -1,9 +1,10 @@
 """Slack job runner: session files, the listed note, compare jobs and sandbox bundles."""
 
 import pytest
-from slack_runner_rig import NEWEST, Rig, answer_item, body, call
+from slack_runner_rig import NEWEST, THREAD, Rig, answer_item, body, call
 
 from openrouter_image_mcp.hosted.slack.context import CONTEXT_PATH, Context
+from openrouter_image_mcp.hosted.slack.outputs import Outputs
 from openrouter_image_mcp.hosted.slack.payload import FUSION_CHOICE, fusion_tool
 from openrouter_image_mcp.hosted.slack.runner_steps import ChatFullError
 from openrouter_image_mcp.session_files import FilePacket
@@ -117,3 +118,52 @@ async def test_full_session_asks_for_restart(slack_rig):
     await rig.run(rig.job(chat, context=_context(_file("c.txt", 10))))
     assert rig.slack.updates[-1]["text"] == ChatFullError("Gemini").message
     assert rig.model.requests == [] and rig.job_rows()[0]["status"] == "failed"
+
+
+def _shell_with(chat, *files):
+    entries = [{"type": "container_file_citation", "container_id": chat.container_id, "file_id": file_id,
+                "filename": name} for file_id, name in files]
+    return {"type": "openrouter:shell", "id": "sh_1", "status": "completed",
+            "container_id": chat.container_id, "files": entries}
+
+
+async def test_sandbox_chart_posted(slack_rig):
+    rig = slack_rig
+    rig.runner.outputs = Outputs(rig.slack)
+    chat = rig.chat(sandbox=True, mode="sandbox")
+    rig.model.container_files = {"file_png": b"PNG", "file_src": b"print()"}
+    shell = _shell_with(chat, ("file_png", "/workspace/project/outputs/chart.png"),
+                        ("file_src", "/workspace/project/main.py"))
+    rig.model.respond = lambda request: body(shell, call()) if len(rig.model.requests) == 1 else body()
+    await rig.run(rig.job(chat, mode="sandbox"))
+    (upload,) = rig.slack.uploads
+    assert (upload["channel"], upload["thread_ts"], upload["filename"], upload["content"]) == (
+        "C1", THREAD, "chart.png", b"PNG")
+    assert upload["username"] == "Sidecar · Gemini"
+    assert len(rig.texts()) == 2 and rig.texts()[1].startswith("The answer.")  # working message, answer; no notes
+    assert rig.job_rows()[0]["status"] == "completed"
+    assert rig.slack.updates[-1]["text"] == "Sidecar · Gemini answered below."
+
+
+async def test_sandbox_output_failure_does_not_fail_the_answer(slack_rig):
+    rig = slack_rig
+    rig.runner.outputs = Outputs(rig.slack)
+    chat = rig.chat(sandbox=True, mode="sandbox")
+    shell = _shell_with(chat, ("file_gone", "outputs/chart.png"))  # the sandbox serves a 404
+    rig.model.respond = lambda request: body(shell, call()) if len(rig.model.requests) == 1 else body()
+    await rig.run(rig.job(chat, mode="sandbox"))
+    assert rig.slack.uploads == []
+    assert rig.texts()[-1] == "chart.png wasn't posted: it could not be fetched from the sandbox."
+    assert rig.job_rows()[0]["status"] == "completed"
+    assert rig.slack.updates[-1]["text"] == "Sidecar · Gemini answered below."
+
+
+async def test_inline_chat_posts_no_outputs(slack_rig):
+    rig = slack_rig
+    rig.runner.outputs = Outputs(rig.slack)
+    chat = rig.chat()
+    rig.model.container_files = {"file_png": b"PNG"}
+    shell = _shell_with(chat, ("file_png", "outputs/chart.png"))
+    rig.model.respond = lambda request: body(shell, call()) if len(rig.model.requests) == 1 else body()
+    await rig.run(rig.job(chat))
+    assert rig.slack.uploads == []

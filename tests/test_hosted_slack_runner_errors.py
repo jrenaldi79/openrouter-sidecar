@@ -117,7 +117,7 @@ async def test_delivery_marks_posted_before_outputs_and_survives_bookkeeping(sla
     seen = []
 
     class Outputs:
-        async def post(self, turn):
+        async def post(self, *args):
             seen.append(rig.job_rows()[0]["slack_posted_at"])
 
     rig.runner.outputs = Outputs()

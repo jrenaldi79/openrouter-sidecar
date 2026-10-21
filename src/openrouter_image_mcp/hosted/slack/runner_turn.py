@@ -20,6 +20,7 @@ from ...prompt_cache import configure_cache
 from ...session_files import FilePacket
 from .api import SlackCallError
 from .context import CONTEXT_PATH
+from .outputs import output_refs
 from .payload import build_slack_payload
 from .replies import footer, post_answer
 from .runner_steps import (
@@ -59,7 +60,8 @@ class Turn:
         self.working, self.entry, self.runner = working, entry, runner
         self.model: str = row["model"]
         self.sandbox = False  # set once the chat is loaded: a sandbox chat that isn't a compare
-        self.items: list[dict] = []  # every output item, for Task 15's sandbox outputs
+        self.items: list[dict] = []  # every output item, for the sandbox outputs
+        self.container_id = ""  # the chat's container, set once the chat is loaded
         self.spent: float | None = None  # what the tool loop's requests cost, even when the job fails
 
     # ---- job row ----
@@ -122,7 +124,7 @@ class Turn:
             note = s.files.upsert(scope, chat.id, packets).note()  # slack/context.md replaced, never added
         except BadRequestError:  # validated above, so this is the session size limit
             raise ChatFullError(job.label) from None
-        self.sandbox = chat.sandbox and not job.compare
+        self.sandbox, self.container_id = chat.sandbox and not job.compare, chat.container_id
         if not await s.advisors._cleanup(key, scope, chat.id, token):
             raise ProviderError(CLEANUP_FAILED)
         try:
@@ -239,13 +241,20 @@ class Turn:
         # The answer is posted: each step after it is logged on failure, and the job always says so.
         self._logged("mark posted", runner.jobs.mark_posted, self.scope, self.row["id"])  # first: no repost
         if runner.outputs is not None and self.sandbox:
-            try:
-                await runner.outputs.post(self)  # Task 15: sandbox outputs never fail the answer
-            except Exception as error:  # noqa: BLE001
-                log.warning("slack outputs failed: %s", type(error).__name__)
+            await self._post_outputs()
         self._logged("thread answered", runner.threads.answered, self.scope, job.chat_id)
         self._logged("thread seen", runner.threads.seen, self.scope, job.chat_id, job.context.newest_ts)
         await self.working.finish(f"Sidecar · {job.label} answered below.")
+
+    async def _post_outputs(self) -> None:
+        """Sandbox files for the thread; never fails the answer."""
+        job = self.job
+        try:
+            refs = output_refs(self.items, self.container_id)
+            await self.runner.outputs.post(self.services.client, self.key, job.channel_id, job.thread_ts,
+                                           job.label, self.container_id, refs)
+        except Exception as error:  # noqa: BLE001
+            log.warning("slack outputs failed: %s", type(error).__name__)
 
     @staticmethod
     def _logged(what: str, call, *args) -> None:
