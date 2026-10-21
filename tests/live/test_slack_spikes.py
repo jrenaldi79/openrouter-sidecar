@@ -2,29 +2,30 @@
 
 Deselected by default; run with
 `OPENROUTER_LIVE_KEY=... uv run pytest -m live tests/live/test_slack_spikes.py -s`
-(workspace id from `OPENROUTER_LIVE_WORKSPACE`, else the cohort's from `OPENROUTER_LIVE_COHORT`,
-default 2027). Each spike prints the facts later
+(workspace id from `OPENROUTER_LIVE_WORKSPACE`, else the Slack workspace). Each spike prints the facts later
 tasks depend on and asserts only that the requests succeeded. They spend small amounts
 of real money; run each once. Change MODEL or PANEL below to pick other models.
 """
 
 import json
 import os
+import secrets
 from dataclasses import dataclass, field
 
 import httpx
 import pytest
 
 from openrouter_image_mcp.advisor_client import AdvisorClient
-from openrouter_image_mcp.config import API_BASE, COHORT_WORKSPACES
+from openrouter_image_mcp.config import API_BASE
 from openrouter_image_mcp.errors import OpenRouterError
 
 pytestmark = pytest.mark.live
 
+# Becomes `config.SLACK_WORKSPACE` once the Slack workspace change lands on this branch.
+SLACK_WORKSPACE = "8a738968-da7d-4d55-900a-16789ba50003"
+
 MODEL = "openai/gpt-4.1-mini"
 PANEL = ["openai/gpt-4.1-mini", "google/gemini-2.5-flash"]
-SHELL_TOOL = {"type": "openrouter:shell", "parameters": {
-    "engine": "openrouter", "environment": {"type": "container_auto"}}}
 ECHO_TOOL = {
     "type": "function", "name": "echo", "description": "Return the given text unchanged.",
     "parameters": {"type": "object", "properties": {"text": {"type": "string"}},
@@ -47,9 +48,8 @@ def live():
     key = os.environ.get("OPENROUTER_LIVE_KEY")
     if not key:
         pytest.skip("set OPENROUTER_LIVE_KEY to a class workspace key to run live tests")
-    # A workspace id of its own (e.g. a scratch workspace for spikes) wins over the cohort's.
-    workspace = os.environ.get("OPENROUTER_LIVE_WORKSPACE")
-    return Live(key, workspace or COHORT_WORKSPACES[os.environ.get("OPENROUTER_LIVE_COHORT", "2027")])
+    # Slack team keys live in the Slack workspace; another workspace id can be given for a scratch run.
+    return Live(key, os.environ.get("OPENROUTER_LIVE_WORKSPACE") or SLACK_WORKSPACE)
 
 
 @pytest.fixture
@@ -123,11 +123,33 @@ async def _download(key: str, workspace: str, cite: dict, query: dict) -> tuple[
     return response.status_code, len(response.content)
 
 
+async def _list_files(key: str, container_id: str, query: dict) -> tuple[int, object]:
+    url = f"{API_BASE}/containers/{container_id}/files"
+    async with httpx.AsyncClient(timeout=60) as http:
+        response = await http.get(url, params={"limit": 100, **query},
+                                  headers={"Authorization": "Bearer " + key})
+    try:
+        return response.status_code, response.json()
+    except ValueError:
+        return response.status_code, response.text[:300]
+
+
 async def test_shell_files_shape(live, advisor):
     key, workspace = live
-    prompt = ("Using the shell, create the directory /workspace/project/outputs and write the "
-              "text 'hello spike' to /workspace/project/outputs/a.txt, then confirm it.")
-    body = await advisor.respond(key, _payload(prompt, [SHELL_TOOL], max_tool_calls=4))
+    # The bot's own shell setup: a container id we choose ("nu_" + 32 hex), the OpenRouter engine, no network.
+    container_id = "nu_" + secrets.token_hex(16)
+    shell = {"type": "openrouter:shell", "parameters": {"engine": "openrouter", "environment": {
+        "type": "container_reference", "container_id": container_id, "file_ids": [],
+        "network_policy": {"type": "disabled"}}}}
+    prompt = ("Using the shell, run exactly these commands and then confirm: "
+              "mkdir -p /workspace/home/outputs /workspace/project/outputs && "
+              "echo 'hello home' > /workspace/home/outputs/a.txt && "
+              "echo 'hello project' > /workspace/project/outputs/b.txt && "
+              "ls -la /workspace/home/outputs /workspace/project/outputs && pwd && echo $HOME")
+    body = await advisor.respond(key, _payload(prompt, [shell], max_tool_calls=4))
+    for query in ({}, {"workspace_id": workspace}):
+        status, listed = await _list_files(key, container_id, query)
+        _show(f"container file list {sorted(query) or 'plain'} (status {status})", listed, 4000)
     _show("output types", _types(body))
     for item in body.get("output", []):
         _show(f"{item.get('type')} item", item, 6000)
