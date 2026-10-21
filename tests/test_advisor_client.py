@@ -7,6 +7,7 @@ from openrouter_image_mcp.advisor_client import AdvisorClient
 from openrouter_image_mcp.errors import (
     AuthRequiredError,
     BadRequestError,
+    ContainerFileTooLargeError,
     ForbiddenError,
     InsufficientCreditsError,
     ModerationError,
@@ -40,7 +41,7 @@ async def test_container_file_returns_bytes_with_auth_and_workspace():
 
 async def test_container_file_size_cap_on_body():
     client = make(lambda request: httpx.Response(200, content=b"x" * 11))
-    with pytest.raises(ProviderError):
+    with pytest.raises(ContainerFileTooLargeError, match="larger than"):
         await client.container_file(KEY, "c", "f", max_bytes=10)
     assert await client.container_file(KEY, "c", "f", max_bytes=11) == b"x" * 11
     await client.aclose()
@@ -64,7 +65,7 @@ async def test_container_file_stream_cap_without_content_length():
         return httpx.Response(200, stream=Chunks([b"x" * 6, b"x" * 6]))
 
     client = make(handle)
-    with pytest.raises(ProviderError):
+    with pytest.raises(ContainerFileTooLargeError, match="larger than"):
         await client.container_file(KEY, "c", "f", max_bytes=10)
     assert await client.container_file(KEY, "c", "f", max_bytes=12) == b"x" * 12
     await client.aclose()
@@ -85,7 +86,7 @@ async def test_container_file_content_length_over_cap_rejected():
         return httpx.Response(200, headers={"content-length": "5000"}, content=b"x" * 5000)
 
     client = make(handle)
-    with pytest.raises(ProviderError):
+    with pytest.raises(ContainerFileTooLargeError, match="larger than"):
         await client.container_file(KEY, "c", "f", max_bytes=100)
     await client.aclose()
 

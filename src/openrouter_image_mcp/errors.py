@@ -62,6 +62,10 @@ class ProviderError(OpenRouterError):
     """HTTP 5xx after retry, timeouts and transport failures."""
 
 
+class ContainerFileTooLargeError(ProviderError):
+    """A sandbox output file is over the byte cap the caller allowed."""
+
+
 class NoImageError(OpenRouterError):
     """The model answered but returned no image."""
 

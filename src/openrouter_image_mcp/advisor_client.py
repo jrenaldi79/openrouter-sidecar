@@ -14,6 +14,7 @@ from .errors import (
     KEY_REJECTED,
     AuthRequiredError,
     BadRequestError,
+    ContainerFileTooLargeError,
     ForbiddenError,
     InsufficientCreditsError,
     OpenRouterError,
@@ -116,7 +117,7 @@ class AdvisorClient:
         # Ids come from model output; the pattern keeps them from altering the path.
         if not (CONTAINER_ID.fullmatch(container_id) and CONTAINER_ID.fullmatch(file_id)):
             raise BadRequestError("Sandbox file reference is invalid.")
-        too_big = ProviderError(redact(f"Sandbox file is larger than {max_bytes} bytes."))
+        too_big = ContainerFileTooLargeError(f"Sandbox file is larger than {max_bytes} bytes.")
         chunks, total = [], 0
         try:
             async with asyncio.timeout(self._timeout_s):

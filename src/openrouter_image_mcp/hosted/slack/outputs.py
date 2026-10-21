@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import logging
 import os
+import unicodedata
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ...errors import OpenRouterError
+from ...errors import ContainerFileTooLargeError, OpenRouterError
 from .api import SlackApi, SlackCallError
 from .replies import escape
 
@@ -30,8 +31,11 @@ SHELL_TYPES = frozenset({"openrouter:shell", "shell_call_output"})
 FIELDS = ("container_id", "file_id", "filename")
 OUTPUTS = "outputs"
 PROJECT_PREFIXES = ("/workspace/project/", "project/")
-TOO_BIG = "larger than"  # what `AdvisorClient.container_file` says when a file is over its cap
+MAX_NOTES = 10  # per-file notes in the thread; the rest are summarized in one line
+MAX_DOWNLOAD_FAILURES = 3  # consecutive failures before the remaining downloads are skipped
+HIDDEN = frozenset({"Cc", "Cf", "Zl", "Zp"})  # controls, bidi and zero-width formatting, line separators
 _FETCH = "it could not be fetched from the sandbox."
+_BIG = f"it would take this answer past {MAX_BYTES // 2**20} MB of files."
 _UPLOAD = "Slack would not take the upload."
 
 
@@ -43,13 +47,15 @@ class OutputRef:
 
 def normalize(filename: object) -> str | None:
     """`filename` as `outputs/<rel>`, or None for anything else (other folders, traversal, odd characters)."""
-    if not isinstance(filename, str) or "\\" in filename or any(ord(c) < 32 or ord(c) == 127 for c in filename):
+    if not isinstance(filename, str) or "\\" in filename:
+        return None
+    if any(unicodedata.category(c) in HIDDEN for c in filename):
         return None
     rel = next((filename[len(p):] for p in PROJECT_PREFIXES if filename.startswith(p)), filename)
     if rel.startswith("/"):  # any other absolute path
         return None
     parts = rel.split("/")
-    if any(part in ("", ".", "..") for part in parts) or parts[0] != OUTPUTS or len(parts) < 2:
+    if any(not part.strip() or part in (".", "..") for part in parts) or parts[0] != OUTPUTS or len(parts) < 2:
         return None
     return rel
 
@@ -91,42 +97,67 @@ def _skipped(name: str, why: str) -> str:
     return f"{name} wasn't posted: {why}"
 
 
+class _Notes:
+    """At most `MAX_NOTES` per-file notes; the files beyond that are counted for one summary line."""
+
+    def __init__(self) -> None:
+        self.lines: list[str] = []
+        self.more = 0
+
+    def add(self, name: str, why: str) -> None:
+        if len(self.lines) < MAX_NOTES:
+            self.lines.append(_skipped(name, why))
+        else:
+            self.more += 1
+
+    def finish(self) -> list[str]:
+        if self.more:
+            noun = "file wasn't" if self.more == 1 else "files weren't"
+            self.lines.append(f"\u2026and {self.more} more {noun} posted.")
+        return self.lines
+
+
 class Outputs:
     def __init__(self, api: SlackApi):
         self.api = api
 
     async def post(self, client: AdvisorClient, key: str, channel: str, thread_ts: str, label: str,
                    container_id: str, refs: list[OutputRef]) -> list[str]:
-        """Upload what fits and return the notes for the rest (also posted as one message). Never raises."""
-        username, notes, budget, sent = f"Sidecar · {label}", [], MAX_BYTES, 0
+        """Upload what fits and return the notes for the rest (also posted as one message). Never raises
+        (a cancellation still propagates)."""
+        username, notes, budget, sent, failures = f"Sidecar · {label}", _Notes(), MAX_BYTES, 0, 0
         try:
-            for ref in refs:
+            for index, ref in enumerate(refs):
+                if failures >= MAX_DOWNLOAD_FAILURES:  # the sandbox is down: don't try the rest
+                    notes.more += len(refs) - index
+                    break
                 name = upload_name(ref.path)
                 if sent >= MAX_FILES:
-                    notes.append(_skipped(name, f"only {MAX_FILES} files are posted per answer."))
+                    notes.add(name, f"only {MAX_FILES} files are posted per answer.")
                     continue
-                data, why = await self._fetch(client, key, container_id, ref, name, budget)
+                data, why = await self._fetch(client, key, container_id, ref, budget)
+                failures = failures + 1 if why == _FETCH else 0
                 if data is None:
-                    notes.append(_skipped(name, why))
-                    continue
-                if not await self._upload(channel, thread_ts, name, data, username):
-                    notes.append(_skipped(name, _UPLOAD))
-                    continue
-                sent, budget = sent + 1, budget - len(data)
-            await self._say(channel, thread_ts, username, notes)
+                    notes.add(name, why)
+                elif not await self._upload(channel, thread_ts, name, data, username):
+                    notes.add(name, _UPLOAD)
+                else:
+                    sent, budget = sent + 1, budget - len(data)
+            await self._say(channel, thread_ts, username, notes.finish())
         except Exception as error:  # noqa: BLE001 - outputs must never fail the answer
             log.warning("slack outputs failed: %s", type(error).__name__)
-        return notes
+        return notes.lines
 
     @staticmethod
-    async def _fetch(client, key, container_id, ref: OutputRef, name: str, budget: int):
+    async def _fetch(client, key, container_id, ref: OutputRef, budget: int):
         """(bytes, "") or (None, why); the reason never carries ids or error text."""
         try:
             return await client.container_file(key, container_id, ref.file_id, max_bytes=budget), ""
+        except ContainerFileTooLargeError:
+            return None, _BIG
         except OpenRouterError as error:
             log.warning("slack output download failed: %s", type(error).__name__)
-            big = TOO_BIG in getattr(error, "message", "")
-            return None, f"over the {MAX_BYTES // 2**20} MB limit." if big else _FETCH
+            return None, _FETCH
         except Exception as error:  # noqa: BLE001 - one bad file must not stop the rest
             log.warning("slack output download failed: %s", type(error).__name__)
             return None, _FETCH
