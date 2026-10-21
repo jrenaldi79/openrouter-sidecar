@@ -9,7 +9,7 @@ Use maintained guidance, status, and reference documents for current decisions. 
 | Document | Status | Description | Read when |
 | --- | --- | --- | --- |
 | [Local end-to-end run (synthetic)](E2E_LOCAL.md) | maintained | How to run the synthetic local end-to-end stack: fake identity, fake OpenRouter, Postgres and the hosted sidecar driven as test users. | Running or changing scripts/dev, or verifying hosted changes end to end before deploy. |
-| [Hosted Sidecar operations](HOSTED_OPERATIONS.md) | maintained | Operating the hosted sidecar on Railway: configuration, the shared Auth0 tenant, one-time setup, deploys, key rotation, retention purge and incidents. | Deploying, configuring or operating the hosted sidecar, or changing hosted settings. |
+| [Hosted Sidecar operations](HOSTED_OPERATIONS.md) | maintained | Operating the hosted sidecar on Railway: configuration, the shared Auth0 tenant, one-time setup, deploys, key rotation, retention purge, incidents, student keys and the Slack bot. | Deploying, configuring or operating the hosted sidecar, or changing hosted settings. |
 
 ## Status
 

@@ -30,7 +30,7 @@ no setup on the student's part.
    students never sign in.
 4. **One OpenRouter key per team**, provisioned on first use by `KeyProvisioner`, held only by
    the server, in the cohort's OpenRouter workspace (the one student keys use), assigned to the
-   instructor-created "Sidecar team budget" guardrail ($75/month).
+   instructor-created guardrail named `Sidecar team budget` ($75/month) in that workspace.
 5. **Mention-only.** Sidecar acts only on messages that mention it. It never follows a thread on
    its own, so replies meant for teammates or for Claude Tag are never billed, and commands
    meant for Claude Tag never reach Sidecar.
@@ -61,7 +61,8 @@ All new code lives in `src/openrouter_image_mcp/hosted/slack/`. Each module has 
 
 | Module | Job |
 | --- | --- |
-| `gateway.py` | Opens the Socket Mode connection when this replica gains the background-work lock and closes it when the lock is lost. Acks events within 3 seconds. Dedupes by event id in a Postgres table (`slack_events`, 24-hour expiry), so overlapping replicas during a deploy never process an event twice. Drops bot messages |
+| `wiring.py` | Builds the bot and hooks it to the owner lock. The owning replica starts Slack in a background task that retries `auth.test` with backoff from 5 seconds to 5 minutes (see Errors and edge cases), so a Slack outage never blocks the server. Closes everything at shutdown |
+| `gateway.py` | Opens the Socket Mode connection once the start task succeeds and closes it when the lock is lost. Acks events within 3 seconds. Dedupes by event id in a Postgres table (`slack_events`, 24-hour expiry), so overlapping replicas during a deploy never process an event twice. Drops bot messages |
 | `registry.py` | Channel registry table and lookups. Refuses unregistered and inactive channels |
 | `guests.py` | Guest and external-sharing checks (see Guest and shared channels) |
 | `principal.py` | Builds the team `Principal` from the event and registry row. Takes nothing from message text |
@@ -70,7 +71,9 @@ All new code lives in `src/openrouter_image_mcp/hosted/slack/`. Each module has 
 | `slack_tools.py` | Function tools for the advisor, bound to the job's channel |
 | `threads.py` | `(channel_id, thread_ts, model_alias, mode) -> chat_id` map, plus the newest Slack message each chat has seen |
 | `memory.py` | Channel memory notes per principal |
-| `runner.py` | Runs a Slack job to completion (tool loop, progress, final post) and, on startup, finishes or closes out Slack jobs left by another replica |
+| `runner.py` | Runs a Slack job to completion (tool loop, progress, final post) |
+| `recovery.py` | After a successful start, posts saved answers and closes out Slack jobs left by a previous process (see Errors and edge cases) |
+| `payload.py` | Builds the job payload: instructions, the tool list, `max_tool_calls`, and the Fusion request for `compare` |
 | `outputs.py` | Sandbox output retrieval and upload to the thread |
 | `replies.py` | Working message, final answers, splitting, escaping, errors |
 | `welcome.py` | Composes the welcome and `help` from the registry row |
@@ -86,8 +89,9 @@ Changes to existing code:
   a per-Slack-user rate limit is added for Slack jobs.
 - **`KeyProvisioner`:** team principals get key name `Sidecar · <team> · <cohort>` and the team
   guardrail.
-- **Job rows:** nullable `slack_user_id`, `slack_channel_id` and `slack_working_ts` columns, for
-  attribution and for finishing a job's Slack post after a restart.
+- **Job rows:** nullable `slack_user_id`, `slack_channel_id`, `slack_working_ts` and
+  `slack_posted_at` columns, for attribution and for finishing a job's Slack post after a restart.
+  The runner sets `slack_posted_at` right after the answer posts, so recovery never posts one twice.
 
 ## Channel registry
 
@@ -98,7 +102,7 @@ One row per capstone channel, written only by the ops script.
 | `slack_team_id`, `channel_id` | Primary key |
 | `team_label` | e.g. `abbott`; used in key names and usage reports |
 | `cohort`, `workspace_id` | The cohort's OpenRouter workspace, where the team key lives |
-| `default_model` | Alias for a plain `@sidecar <question>` |
+| `default_model` | The channel's default alias, for a plain `@sidecar <question>`. Must be one of the channel's aliases |
 | `alias_map` | Alias to model id or brand, e.g. `gpt -> ChatGPT`, `gemini -> Gemini` |
 | `fusion_panel`, `fusion_analyst` | Panel (1 to 8 models) and analyst for `compare` |
 | `subagent_model` | Worker model for `openrouter:subagent` (a cheap default) |
@@ -106,9 +110,18 @@ One row per capstone channel, written only by the ops script.
 | `daily_cap_usd`, `max_concurrent` | Team server limits. Defaults $4 and 3 |
 | `invoker_allowlist` | Optional Slack user ids; empty means any member |
 | `active`, `inactive_reason`, `welcomed_at` | Inactive when the bot is removed or a guest joins; welcome posted once |
+| `warned_month` | The month (`YYYY-MM`) the 80% budget warning was last claimed, so it posts once per month |
 
 Aliases resolve through `alias_map`, then `resolve_advisor_model`, so the existing model policy
 and catalog filters still apply.
+
+**Team model defaults are set at registration.** A brand alias (`gemini`, `gpt`) resolves to the
+team principal's saved model for that family, the same preference a student sets for themselves.
+`slack_channels.py add` and `update` take `--family-default family=model-id` (repeatable), check each
+id against the catalog, and save it as the team's preference. That creates the team key first when it
+doesn't exist yet. `--default-model` names the channel's default alias, not a model id. A brand alias
+whose family has no default gets "This alias has no model set yet. Ask your instructor." and the other
+models in the request still answer; `@sidecar models` shows it as "no model set yet".
 
 ## Guest and shared channels
 
@@ -125,9 +138,12 @@ Not supported. A channel is refused if it is shared with another organization (S
 
 ## Keys and budget
 
-- The server assigns team keys to the guardrail named by `SIDECAR_TEAM_GUARDRAIL_ID`. The
-  instructor creates it in OpenRouter ($75/month). If it is unset, team key provisioning is
-  refused; there is no fallback to the student guardrail.
+- The server assigns each team key to the guardrail named `Sidecar team budget` in the key's own
+  workspace, found by name the way `Sidecar student budget` is. OpenRouter guardrails belong to one
+  workspace, so a single guardrail id could not serve two cohort workspaces, and
+  `SIDECAR_TEAM_GUARDRAIL_ID` was dropped. The instructor creates the guardrail in each cohort
+  workspace ($75/month). If a workspace has none, no team key is created; there is no fallback to
+  the student guardrail.
 - Spend bills to the team key. Each job row records `slack_user_id`, so usage can be split by
   student without per-student keys.
 - Per-Slack-user limit: 10 requests per 10 minutes, on top of the team's limits.
@@ -138,7 +154,7 @@ Not supported. A channel is refused if it is shared with another organization (S
   daily cap, and a per-student breakdown from job rows, visible to the whole channel. It never
   shows key text.
 - Once a month's spend passes 80% of the budget, the next answer's footer adds a one-line
-  warning (once per month).
+  warning (once per month, tracked by the registry row's `warned_month`).
 
 ## Commands
 
@@ -183,15 +199,17 @@ Unknown aliases get a reply listing valid ones. Anything else is a question.
 
 ## Context
 
-- **First turn of a chat:** the whole thread, the channel's pinned messages, and the 20 most
-  recent channel messages before the thread's root, with the channel part capped at 8,000
-  characters (`SIDECAR_SLACK_CONTEXT_CHARS`). Older history is read on demand with the tools
-  below, the way Claude Tag does.
-- **Later turns:** only thread messages newer than the last one the chat has seen. The chat's
-  own history carries the rest.
+- **Every turn re-renders the whole thread.** The pinned messages, the 20 most recent channel
+  messages before the thread's root, and the thread, trimmed, are rendered into `slack/context.md`
+  on every turn, not only the part that is new. The channel part is capped at 8,000 characters
+  (`SIDECAR_SLACK_CONTEXT_CHARS`). Older history is read on demand with the tools below, the way
+  Claude Tag does. (`context.py` can render only the messages newer than a given ts, but the
+  request flow doesn't use that: the file is replaced anyway, and a full render keeps a chat that
+  missed turns, or one that another model answered in, accurate.)
 - **One file, replaced.** Context goes in the session file `slack/context.md`, replaced each turn
   (never added to), so a chat stays inside the 200k-character session limit and a sandbox chat
-  doesn't pile up copies of channel text.
+  doesn't pile up copies of channel text. `threads.py` still records the newest message each chat
+  has seen.
 - **Format:** `[Oct 20 10:14] Name: text`, names from a cached `users.info`. Claude Tag's and
   Sidecar's replies stay in, labeled (`Claude`, `Sidecar · Gemini`), so a model can critique
   them. Join and leave messages are dropped.
@@ -218,14 +236,16 @@ on OpenRouter.
 | `openrouter:web_fetch` | OpenRouter | Included only when the allowed-domain set is non-empty: domains of URLs in the thread and triggering message, plus `fetch_allowlist`, passed as `allowed_domains`. With an empty set the tool is left out of the request entirely, so it can never fetch an arbitrary site. `max_uses` 5 |
 | `openrouter:shell` | OpenRouter | Sandbox chats only, as today |
 | `openrouter:subagent` | OpenRouter | Worker `subagent_model` with `web_search`, plus `web_fetch` under the same rule. `max_tool_calls` 8 |
-| `openrouter:fusion` | OpenRouter | `compare` only, forced with `tool_choice`. Panel and analyst from the registry, `max_tool_calls` 4 |
+| `openrouter:fusion` | OpenRouter | `compare` only. Sent as the only tool, with `tool_choice` `{"type":"allowed_tools","mode":"required","tools":[{"type":"openrouter:fusion"}]}`, because `tool_choice` can't name a server tool directly. Panel and analyst from the registry, panelists given `web_search` (plus `web_fetch` under the same domain rule), `max_tool_calls` 4. **Pending the live check:** `FUSION_FORCED` in `hosted/slack/payload.py` selects this path. If the live spike (`tests/live/test_slack_spikes.py`) shows OpenRouter rejects it, the constant is set to False and `compare` uses the `openrouter/fusion` model with a `plugins` entry carrying the same panel, analyst and tools |
 
 Server tools never take a channel, principal, container, file id or workspace as an argument:
 the channel comes from the job row. Tool results go back to the model as data.
 
 ## Tool loop
 
-Slack jobs use a non-streaming Responses call. After each response:
+Slack jobs use a non-streaming Responses call. OpenRouter rejects `previous_response_id` and
+`store: true`, so every request sets `store: false` and the loop replays the output items in `input`
+itself. After each response:
 
 1. Collect `function_call` items whose name is one of the server's function tools. OpenRouter
    has already run any `openrouter:*` calls in the same response.
@@ -248,8 +268,9 @@ inline chats (which now carry server tools) and 24 for sandbox chats.
   mode.
 - Sandbox instructions add: write files meant for the team to `/workspace/project/outputs/`;
   only that folder is posted.
-- When the job finishes, `outputs.py` reads the `files` field of each shell result, keeps ids
-  whose path is under `outputs/`, downloads each with
+- When the job finishes, `outputs.py` reads the `files` field of each shell result: a list of
+  `{"type": "container_file_citation", "container_id", "file_id", "filename"}`, at most 10 per
+  result, where `filename` is the file's path. It keeps ids whose path is under `outputs/`, downloads each with
   `GET /api/v1/containers/{container_id}/files/{file_id}/content` using the team key, and
   uploads them to the thread (`files:write`). Images preview inline.
 - Caps: 5 files and 20 MB per answer. Skipped files get a one-line note. A failed download
@@ -318,9 +339,13 @@ line instead: "Sidecar isn't set up for this channel. Ask your instructor to add
   escaped, so model output can't form Slack mentions (`<!channel>`, `<!here>`, `<@user>`) or
   disguised links (`<https://…|text>`).
 - **Exfiltration.** Direct `web_fetch` exists in a request only with a non-empty allowed-domain
-  set. Two paths remain and are accepted, with acceptance checks below: Fusion panelists always
-  have web search and fetch with no per-request domain setting, and web search queries can
-  carry words from the conversation.
+  set. Fusion takes a `tools` parameter, so panelists get `web_search` and `web_fetch` only under
+  the same domain rule: with no allowed domains, `web_fetch` is left out of the Fusion `tools` too.
+  This replaces the earlier plan, in which panelists always had web search and fetch with no
+  per-request domain setting. **Pending the live check:** acceptance step 5 confirms OpenRouter
+  honours the Fusion `tools` and allowed domains; if it doesn't, the old path returns and is
+  accepted with the workspace blocklist from step 5. The other path stays accepted: web search
+  queries can carry words from the conversation.
 
 ## Data notice (student-facing)
 
@@ -336,10 +361,18 @@ Part of `help`, finalized with the pending student notice wording:
 ## Errors and edge cases
 
 - **Slack retries and deploy overlap:** deduped by event id in Postgres.
-- **Restarts:** when a replica gains the lock, `runner.py` looks for Slack jobs left by the
-  previous owner. A job whose result was saved but not posted is posted now. A job still
-  running is marked interrupted, and its working message (from `slack_working_ts`) is edited
-  to "Interrupted by a server restart. Ask again." No automatic retry.
+- **Slack unreachable at start:** the owning replica starts Slack in a background task, so the
+  server answers `/health` and `/ready` either way. The task retries `auth.test` (10 seconds per
+  attempt) with waits that double from 5 seconds to 5 minutes, logging failures by type only. Once
+  `auth.test` answers it sets the bot's user id, runs restart recovery and opens the Socket Mode
+  connection. Losing the lock cancels the task; regaining it starts it again.
+- **Restarts:** restart recovery runs after a successful start. It looks at Slack jobs left by a
+  previous process and skips rows created by this process, whatever their heartbeat. A completed
+  job that was never posted is posted now into its thread: post first, then mark it posted, so
+  delivery is at least once and a crash between the two can post an answer twice. A job still
+  running whose heartbeat has lapsed is marked interrupted, and its working message (from
+  `slack_working_ts`) is edited to "Interrupted by a server restart. Ask again." No automatic
+  retry. A completed row older than 24 hours is marked posted without posting.
 - **Provider errors:** the working message names the model and suggests another alias. Other
   models in the same request still answer.
 - **Fusion degradation:** if the analyst fails, the outer model answers from the panel
@@ -357,10 +390,12 @@ Part of `help`, finalized with the pending student notice wording:
 | --- | --- |
 | `SIDECAR_SLACK_ENABLED` | `true` starts the gateway. Unset by default |
 | `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` | Bot token (`xoxb-`) and Socket Mode app token (`xapp-`) |
-| `SIDECAR_TEAM_GUARDRAIL_ID` | The instructor's "Sidecar team budget" guardrail |
 | `SIDECAR_SLACK_CONTEXT_CHARS` | Channel part of first-turn context. Default 8000 |
 | `SIDECAR_SLACK_DAILY_CAP_USD`, `SIDECAR_SLACK_MAX_CONCURRENT` | Registry defaults. $4 and 3 |
 | `SIDECAR_SLACK_USER_LIMIT` | Per-Slack-user requests per 10 minutes. Default 10 |
+
+`SIDECAR_TEAM_GUARDRAIL_ID` does not exist: team keys find their guardrail by name (Keys and
+budget). With `SIDECAR_SLACK_ENABLED` set, a missing or malformed token stops startup.
 
 The Slack app manifest is committed at `deploy/slack/manifest.yaml` (a new folder). Bot scopes:
 `app_mentions:read`, `channels:history`, `groups:history`, `channels:read`, `groups:read`,
@@ -408,8 +443,9 @@ Record results in the decision record.
 ## Rollout
 
 1. Ship with `SIDECAR_SLACK_ENABLED` unset.
-2. The instructor creates the team guardrail and the Slack app from the manifest, and sets the
-   tokens and guardrail id in Railway.
+2. The instructor creates the `Sidecar team budget` guardrail in each cohort workspace and the
+   Slack app from the manifest, and sets the two tokens in Railway
+   (`docs/HOSTED_OPERATIONS.md`, "Slack Sidecar").
 3. Live acceptance in the test workspace.
 4. One capstone channel as a pilot, then the rest.
 5. Same blockers as the hosted Sidecar: OpenRouter org capacity, and approved student notice
@@ -417,14 +453,21 @@ Record results in the decision record.
 
 ## To confirm during implementation
 
-- Whether the job runner can cancel mid-inference (else `!stop` stays round-boundary only).
-- The Responses output item shape for shell results' `files` on the non-streaming path.
-- Whether OpenRouter accepts server-tool output items (shell results, Fusion, subagent) replayed
-  in `input` on the next round, or whether the loop must use `previous_response_id` instead.
-- The `tool_choice` form that forces `openrouter:fusion` on the Responses API. If it can't be
-  forced, `compare` uses the `openrouter/fusion` model alias with the registry panel instead.
-- Whether OpenRouter guardrails are scoped to a workspace; the team guardrail must be usable in
-  the cohort workspace that holds team keys.
+Settled in code:
+- **Cancelling mid-inference:** not supported. `!stop` takes effect before the job's next model
+  request, at a round boundary.
+- **Replaying server-tool items:** OpenRouter rejects `previous_response_id` and `store: true`, so
+  the loop replays output items in `input` (Tool loop).
+- **Guardrail scope:** OpenRouter guardrails belong to a workspace, so team keys use the guardrail
+  named `Sidecar team budget` in their own workspace (Keys and budget).
+- **Shell results' `files`:** the shape is in Sandbox outputs.
+
+Pending the live run before acceptance (`tests/live/test_slack_spikes.py`):
+- **Forcing Fusion.** Whether `tool_choice` with `allowed_tools` forces `openrouter:fusion`. If it
+  doesn't, `FUSION_FORCED` is set to False and `compare` uses the `openrouter/fusion` model with
+  `plugins`.
+- **Fusion `tools`.** Whether Fusion accepts a `tools` parameter and applies the allowed domains
+  to its panelists (Isolation and security).
 
 ## Review
 

@@ -60,6 +60,9 @@ Path-scoped rules live in `.claude/rules/` (TDD, code quality, testing, Python, 
   principal and cohort on first use (`hosted/provisioning.py`, middleware before tool calls), sealed per principal in
   `student_keys`. `HostedCredentials.resolve()` stays a synchronous lookup; never provision inside it. The management
   key is never used for inference, logged or returned. Instructors manage keys with `scripts/ops/openrouter_keys.py`.
+- **Slack identity comes from the signed event and the registry, never from message text:** the team principal is
+  built from the event's team and channel ids plus an active registry row, and team keys use the guardrail named
+  `Sidecar team budget` in their own workspace (no guardrail, no key).
 - **Keys never leak:** keys are vault-encrypted per principal; nothing writes to the OS keyring (`keystore.py` only
   reads the retired local key for `export-local`). Errors and logs pass through `logs.redact`. Tests pass keys through
   the `keys` fixture (`helpers.KeyBox`); `memory_keyring` exists only for the export tests.

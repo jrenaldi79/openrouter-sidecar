@@ -8,7 +8,7 @@
   },
   "HOSTED_OPERATIONS.md": {
     "title": "Hosted Sidecar operations",
-    "description": "Operating the hosted sidecar on Railway: configuration, the shared Auth0 tenant, one-time setup, deploys, key rotation, retention purge and incidents.",
+    "description": "Operating the hosted sidecar on Railway: configuration, the shared Auth0 tenant, one-time setup, deploys, key rotation, retention purge, incidents, student keys and the Slack bot.",
     "type": "guidance",
     "status": "maintained",
     "read_when": "Deploying, configuring or operating the hosted sidecar, or changing hosted settings."
