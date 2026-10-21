@@ -14,6 +14,7 @@ from openrouter_image_mcp.hosted.slack.context import (
     ContextBuilder,
     NameCache,
 )
+from openrouter_image_mcp.session_files import MAX_SESSION_CHARS
 
 
 def msg(ts, text, user="U1", *, label=None, subtype=None, thread_ts=None, files=()):
@@ -247,8 +248,51 @@ async def test_files_method_matches_render(builder, slack):
     assert [p.path for p in packets] == ["slack/files/data.csv"] and listed == []
 
 
+async def test_later_turn_urls_cover_whole_thread(builder, slack):
+    trigger = msg(TRIGGER, "new ask, no link", "U2", thread_ts=ROOT)
+    slack.threads[("C1", ROOT)] = [msg(ROOT, "docs at https://root.example/doc", thread_ts=ROOT),
+                                   msg(REPLY, "ok", thread_ts=ROOT), trigger]
+    ctx = await build(builder, slack, trigger, since=REPLY, first_turn=False)
+    assert "root.example" not in ctx.text
+    assert ctx.urls == ["https://root.example/doc"]
+
+
 async def test_urls_from_thread_and_trigger(builder, slack):
     trigger = msg(TRIGGER, "also <https://b.example/y|label> and https://a.example/x.", thread_ts=ROOT)
     slack.threads[("C1", ROOT)] = [msg(ROOT, "see https://a.example/x, ok", thread_ts=ROOT), trigger]
     ctx = await build(builder, slack, trigger)
     assert ctx.urls == ["https://a.example/x", "https://b.example/y"]
+
+
+def csv_file(fid, name="big.csv"):
+    return SlackFile(fid, name, "text/csv", 10, f"https://files.slack.com/{fid}/{name}")
+
+
+async def test_default_budget_leaves_room_for_context(slack):
+    first, second = csv_file("F1", "one.csv"), csv_file("F2", "two.csv")
+    slack.files[first.url] = b"a" * 100_000
+    slack.files[second.url] = b"b" * 100_000
+    builder = ContextBuilder(slack, NameCache(slack))
+    packets, listed = await builder.files(msg(TRIGGER, "t", files=[first, second]))
+    assert [p.path for p in packets] == ["slack/files/one.csv"] and listed == ["two.csv"]
+    attached = sum(len(p.content) for p in packets)
+    assert attached + builder.max_context_chars() <= MAX_SESSION_CHARS
+
+
+async def test_explicit_budget_overrides_default(slack):
+    first, second = csv_file("F1", "one.csv"), csv_file("F2", "two.csv")
+    slack.files[first.url] = b"a" * 50
+    slack.files[second.url] = b"b" * 50
+    builder = ContextBuilder(slack, NameCache(slack))
+    packets, listed = await builder.files(msg(TRIGGER, "t", files=[first, second]), budget=70)
+    assert [p.path for p in packets] == ["slack/files/one.csv"] and listed == ["two.csv"]
+
+
+async def test_render_lists_file_over_budget(slack):
+    first, second = csv_file("F1", "one.csv"), csv_file("F2", "two.csv")
+    slack.files[first.url] = b"a" * 100_000
+    slack.files[second.url] = b"b" * 100_000
+    trigger = msg(TRIGGER, "ask", thread_ts=ROOT, files=[first, second])
+    slack.threads[("C1", ROOT)] = [trigger]
+    ctx = await build(ContextBuilder(slack, NameCache(slack)), slack, trigger)
+    assert [p.path for p in ctx.files] == ["slack/files/one.csv"] and ctx.listed == ["two.csv"]

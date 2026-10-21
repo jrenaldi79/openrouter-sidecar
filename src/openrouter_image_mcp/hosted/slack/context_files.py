@@ -11,7 +11,12 @@ import os
 import re
 from collections.abc import Sequence
 
-from ...session_files import MAX_FILE_CHARS, MAX_PATH_CHARS, FilePacket
+from ...session_files import (
+    MAX_FILE_CHARS,
+    MAX_PATH_CHARS,
+    MAX_SESSION_CHARS,
+    FilePacket,
+)
 from .api import SlackApi, SlackCallError, SlackFile
 
 log = logging.getLogger(__name__)
@@ -69,14 +74,19 @@ async def _read_text(api: SlackApi, file: SlackFile) -> str | None:
     return text if len(text) <= MAX_FILE_CHARS else None
 
 
-async def trigger_files(api: SlackApi, files: Sequence[SlackFile]) -> tuple[list[FilePacket], list[str]]:
+async def trigger_files(api: SlackApi, files: Sequence[SlackFile],
+                        budget: int = MAX_SESSION_CHARS) -> tuple[list[FilePacket], list[str]]:
+    """Packets for the readable text files while their total stays within `budget` characters;
+    the rest are listed by name."""
     packets: list[FilePacket] = []
     listed: list[str] = []
     taken: set[str] = set()
+    used = 0
     for file in files:
         text = await _read_text(api, file) if is_text_file(file) else None
-        if text is None:
+        if text is None or used + len(text) > budget:
             listed.append(file.name or "file")
             continue
+        used += len(text)
         packets.append(FilePacket(path=f"{FILES_DIR}/{_unique(safe_name(file.name), taken)}", content=text))
     return packets, listed

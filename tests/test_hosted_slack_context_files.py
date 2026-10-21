@@ -95,3 +95,25 @@ async def test_hostile_name_stays_inside_prefix(slack):
     slack.files[f.url] = b"print(1)"
     packets, _ = await trigger_files(slack, [f])
     assert packets[0].path == "slack/files/x.py"
+
+
+async def test_budget_lists_files_that_do_not_fit(slack):
+    first, second = slack_file("a.csv", fid="F1"), slack_file("b.csv", fid="F2")
+    slack.files[first.url] = b"x" * 60
+    slack.files[second.url] = b"y" * 60
+    packets, listed = await trigger_files(slack, [first, second], 100)
+    assert [p.path for p in packets] == ["slack/files/a.csv"] and listed == ["b.csv"]
+
+
+async def test_budget_counts_only_attached_files(slack):
+    big, small = slack_file("big.csv", fid="F1"), slack_file("small.csv", fid="F2")
+    slack.files[big.url] = b"x" * 200
+    slack.files[small.url] = b"y" * 60
+    packets, listed = await trigger_files(slack, [big, small], 100)
+    assert [p.path for p in packets] == ["slack/files/small.csv"] and listed == ["big.csv"]
+
+
+async def test_zero_budget_lists_everything(slack):
+    f = slack_file("a.txt")
+    slack.files[f.url] = b"x"
+    assert await trigger_files(slack, [f], 0) == ([], ["a.txt"])

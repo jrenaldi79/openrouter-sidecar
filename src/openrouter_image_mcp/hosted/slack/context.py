@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from ...session_files import FilePacket
+from ...session_files import MAX_SESSION_CHARS, FilePacket
 from .api import Page, SlackApi, SlackCallError, SlackMessage
 from .context_files import trigger_files
 
@@ -35,11 +35,13 @@ MAX_HISTORY_PAGES = 3
 HISTORY_PAGE = 50
 FAILED_NAME_TTL_S = 60.0  # a failed lookup is retried soon, not held for the whole ttl
 TRIM_NOTE_ROOM = 80
+CONTEXT_OVERHEAD_CHARS = 2_000  # preface, section headers and the trim note around the capped parts
 DROPPED_SUBTYPES = frozenset({"channel_join", "channel_leave"})
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 _ZONE = ZoneInfo(TZ)
 _URL = re.compile(r"https?://[^\s<>|]+")
 _URL_TRAILING = ".,;:!?)]}'\""
+_UNPRINTABLE = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]")
 
 
 def ts_key(ts: str) -> tuple[int, int]:
@@ -59,14 +61,26 @@ def _stamp(ts: str) -> str:
     return f"{MONTHS[when.month - 1]} {when.day} {when:%H:%M}"  # day is not zero padded; %-d is not portable
 
 
+def _one_line(value: str) -> str:
+    """No control characters or line breaks, so a name cannot start a forged line."""
+    return " ".join(_UNPRINTABLE.sub(" ", value).split())
+
+
 def _author(msg: SlackMessage, name: str) -> str:
-    if msg.label:
-        return "Claude" if msg.label.strip().lower() == "claude" else msg.label
-    return name or "bot"
+    label = _one_line(msg.label or "")
+    if label:
+        return "Claude" if label.lower() == "claude" else label
+    return _one_line(name) or "bot"
+
+
+def _body(text: str) -> str:
+    """Slack's entity escaping undone, continuation lines indented so no line of a message body can
+    pass for a `[time] Name:` line or a section header."""
+    return "\n  ".join(html.unescape(text).splitlines() or [""])
 
 
 def format_message(msg: SlackMessage, name: str) -> str:
-    return f"[{_stamp(msg.ts)}] {_author(msg, name)}: {msg.text}"
+    return f"[{_stamp(msg.ts)}] {_author(msg, name)}: {_body(msg.text)}"
 
 
 def _display_name(info: dict, fallback: str) -> str:
@@ -195,10 +209,16 @@ class ContextBuilder:
         listed += [f.name for m in shown if m.ts != g.trigger.ts for f in m.files]
         newest = max((m.ts for m in g.thread), key=ts_key, default=g.trigger.ts)
         return Context("\n\n".join(sections), max(newest, g.trigger.ts, key=ts_key), packets,
-                       list(dict.fromkeys(listed)), _urls(shown))
+                       list(dict.fromkeys(listed)), g.urls)  # all links, not just the delta: the fetch allowlist
 
-    async def files(self, trigger: SlackMessage) -> tuple[list[FilePacket], list[str]]:
-        return await trigger_files(self._api, trigger.files)
+    def max_context_chars(self) -> int:
+        return THREAD_CHARS + PINS_CHARS + self._channel_chars + CONTEXT_OVERHEAD_CHARS
+
+    async def files(self, trigger: SlackMessage, *, budget: int | None = None) -> tuple[list[FilePacket], list[str]]:
+        """`budget` is the session room left for these files; the default leaves space for the largest
+        `slack/context.md` this builder renders. A file that would not fit is listed, not attached."""
+        room = MAX_SESSION_CHARS - self.max_context_chars() if budget is None else budget
+        return await trigger_files(self._api, trigger.files, room)
 
     async def _lines(self, messages: list[SlackMessage]) -> list[str]:
         return [format_message(m, "" if m.label or not m.user else await self._names.name(m.user))
