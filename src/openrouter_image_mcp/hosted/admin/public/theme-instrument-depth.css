@@ -1,0 +1,23 @@
+/* Depth and texture on top of B (theme-instrument.css): soft plates on a textured board, engraved rules, shallow wells,
+   flat purple tone steps on a textured rail, a halftone band, lit Pipeline nodes and pressable buttons. Paint only:
+   shadows, backgrounds, radii and filters never change a box's size, so page heights match B without this file.
+   Values come from tokens.css only; the node gradients live in views/partials/svg-defs.ejs. */
+/* The board and the rail: quiet gradient textures, fixed so they don't scroll with the page */
+body { background: var(--board-tex); background-color: var(--board); background-attachment: fixed; }
+.rail { background: var(--rail-tex); background-attachment: fixed; box-shadow: var(--shadow-rail-edge); }
+.rail-top { background: var(--nu-strip); }
+.rail nav a[aria-current='page'] { box-shadow: var(--shadow-rail-current); }
+
+/* Controls: a 4px radius; buttons press 1px down */
+.btn.btn { border-radius: var(--radius-control); box-shadow: var(--soft-btn); transition: background-color 0.15s ease-out, border-color 0.15s ease-out, transform 60ms linear, box-shadow 60ms linear; }
+.btn.btn-quiet { box-shadow: none; }
+.btn.btn:active { transform: translateY(var(--press-depth)); box-shadow: var(--soft-pressed); }
+
+/* Under 900px the rail is a top bar: no side edge */
+@media (max-width: 900px) {
+  .rail, .rail nav a[aria-current='page'] { box-shadow: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn.btn { transition: none; }
+  .btn.btn:active { transform: none; }
+}

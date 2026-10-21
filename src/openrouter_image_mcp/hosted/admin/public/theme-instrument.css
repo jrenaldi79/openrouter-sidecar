@@ -1,0 +1,52 @@
+/* Visual language B, Instrument, on every admin page. tokens.css sets the values (one 13px size, no radius, ink rules,
+   flat NU purple, signal yellow); this file restyles the semantic classes with them: capitals and weight for rank,
+   reversed title strips, ruled boxes, a drawing title block for the page head, square status marks and mono figures.
+   Values come from tokens.css only. Layout stays with shell.css and the console stylesheets. */
+/* Pico, re-pointed for B: squared controls, soft rules inside tables */
+:root:root:root { --pico-border-radius: 0; --pico-table-border-color: var(--rule-soft); --pico-form-element-border-color: var(--rule-strong); }
+.ic { width: var(--icon-size); height: var(--icon-size); stroke-width: var(--icon-stroke); stroke-linecap: square; stroke-linejoin: miter; }
+code { font-size: var(--text-code); }
+/* Figures are mono: times, costs, counts, step names */
+.num, code, .c-when, .c-took, .c-cost, .score b, .roster-table td, .failed-count, .jobs-views a span { font-family: var(--mono); font-variant-numeric: tabular-nums; letter-spacing: var(--num-track); }
+/* Headings: one size, capitals and weight */
+.main h1, .main h2, .main h3, .main h4 { font-size: var(--text-base); font-weight: var(--label-weight); text-transform: var(--label-case); letter-spacing: var(--label-track); line-height: var(--leading); color: var(--ink); }
+.main.page h1 { display: inline-block; padding: 7px 14px; background: var(--surface-reversed); color: var(--on-reversed); }
+.main.page h2, .main.page h3 { padding-bottom: 6px; border-bottom: var(--border-strong); }
+.main.page article { border: var(--border-card); box-shadow: none; }
+.main.page th { color: var(--ink); font-weight: 700; text-transform: var(--label-case); letter-spacing: var(--label-track-tight); border-bottom: var(--border-head); }
+
+/* Buttons: ruled, squared, capitals */
+.btn.btn { border: var(--border-strong); background: var(--surface-card); color: var(--ink); text-transform: var(--label-case); letter-spacing: var(--label-track-tight); font-weight: 700; min-height: 28px; }
+.btn.btn:hover { background: var(--surface-reversed); color: var(--on-reversed); border-color: var(--surface-reversed); }
+.btn.btn-primary { background: var(--btn-bg); border-color: var(--btn-bg); color: var(--btn-ink); }
+.btn.btn-primary:hover { background: var(--btn-hover); border-color: var(--btn-hover); color: var(--btn-ink); }
+.btn.btn-quiet { border-color: transparent; background: transparent; color: var(--ink); }
+
+/* Rail: a flat purple block; the current item is reversed */
+.rail { padding: 0; color: var(--on-nu); }
+.rail-top { padding: 16px 14px; border-bottom: var(--border-on-brand-strong); }
+.rail .brand { padding: 0; }
+.rail .brand strong { text-transform: var(--label-case); letter-spacing: var(--label-track); font-weight: var(--label-weight); }
+.brand-mark { padding: 2px; }
+.rail nav ul { gap: 0; margin: 0; }
+.rail nav a { padding: 0.55rem 14px; color: var(--on-nu); border-bottom: var(--border-on-brand); text-transform: var(--label-case); letter-spacing: var(--label-track); font-weight: 600; }
+.rail nav a:hover { background: var(--on-brand-hover); }
+.rail nav a[aria-current='page'] { background: var(--on-brand-current); color: var(--on-brand-current-ink); }
+.rail nav a { gap: 10px; }
+.rail nav .ic { display: block; width: var(--icon-nav); height: var(--icon-nav); stroke-width: var(--icon-stroke-fine); opacity: var(--icon-dim); }
+.rail nav a[aria-current='page'] .ic { opacity: 1; }
+.rail-foot { margin: 0; padding: 14px; border-top: 0; font-size: var(--text-base); }
+.rail-foot p { color: var(--on-nu); }
+.btn.rail-btn { border-color: var(--on-brand-line-hover); color: var(--on-nu); background: transparent; }
+.btn.rail-btn:hover { background: var(--on-brand-press); color: var(--on-brand-press-ink); border-color: var(--on-brand-press); }
+@media (max-width: 900px) {
+  .rail { padding: 0; }
+  .rail-top { padding: 10px 14px; }
+  .rail-body { padding-top: 0; }
+}
+/* Feature pages: a reversed title's aside stays legible; meters are flat ink bars */
+.main.page h1 :is(small, .muted, code) { color: var(--on-reversed); background: transparent; font-weight: 500; }
+meter { border-radius: 0; background: var(--bar-off); }
+meter::-webkit-meter-bar { border-radius: 0; border: 0; background: var(--bar-off); }
+meter::-webkit-meter-optimum-value { border-radius: 0; background: var(--bar-on); }
+meter::-moz-meter-bar { border-radius: 0; background: var(--bar-on); }

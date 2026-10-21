@@ -1,0 +1,26 @@
+{% extends "layout.html" %}
+{% block title %}Change log{% endblock %}
+{% block body %}
+<h1>Change log</h1>
+<p class="muted">The newest 200 changes, in Chicago time.</p>
+<table>
+  <thead><tr><th>Time</th><th>Admin</th><th>Channel</th><th>Action</th><th>Changes</th></tr></thead>
+  <tbody>
+  {% for entry in entries %}
+  <tr>
+    <td>{{ entry.at|chicago }}</td>
+    <td>{{ entry.actor_email }}</td>
+    <td>{{ entry.label }} <span class="muted">{{ entry.channel_id }}</span></td>
+    <td>{{ entry.action }}</td>
+    <td>
+      {% for field, pair in entry.changes.items() %}
+      <div><code>{{ field }}</code>: {{ pair[0]|plain }} → {{ pair[1]|plain }}</div>
+      {% endfor %}
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5" class="muted">No changes yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -177,6 +177,44 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/hosted/admin/copy.py](../src/openrouter_image_mcp/hosted/admin/copy.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/admin/sessions.py](../src/openrouter_image_mcp/hosted/admin/sessions.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/admin/settings.py](../src/openrouter_image_mcp/hosted/admin/settings.py)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/views.py](../src/openrouter_image_mcp/hosted/admin/views.py)
+
+### [src/openrouter&#95;image&#95;mcp/hosted/admin/public](../src/openrouter_image_mcp/hosted/admin/public/CLAUDE.md): Static assets for the /admin page: the Interview Coach admin design system (fonts.css, tokens.css, shell.css, admin.css, theme-instrument&#42;.css, admin.js), copied from mpd-class-mcp and served without a session at /admin/public.
+
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/public/admin.css](../src/openrouter_image_mcp/hosted/admin/public/admin.css)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/public/admin.js](../src/openrouter_image_mcp/hosted/admin/public/admin.js)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/public/fonts.css](../src/openrouter_image_mcp/hosted/admin/public/fonts.css)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/public/shell.css](../src/openrouter_image_mcp/hosted/admin/public/shell.css)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/public/theme-instrument-depth.css](../src/openrouter_image_mcp/hosted/admin/public/theme-instrument-depth.css)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/public/theme-instrument.css](../src/openrouter_image_mcp/hosted/admin/public/theme-instrument.css)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/public/tokens.css](../src/openrouter_image_mcp/hosted/admin/public/tokens.css)
+
+### [src/openrouter&#95;image&#95;mcp/hosted/admin/public/brand](../src/openrouter_image_mcp/hosted/admin/public/brand/CLAUDE.md): The MPD logo and favicon the admin rail and browser tab show, copied from mpd-class-mcp and served at /admin/public/brand.
+
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/public/brand/favicon.ico](../src/openrouter_image_mcp/hosted/admin/public/brand/favicon.ico)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/public/brand/mpd-logo.png](../src/openrouter_image_mcp/hosted/admin/public/brand/mpd-logo.png)
+
+### [src/openrouter&#95;image&#95;mcp/hosted/admin/public/fonts](../src/openrouter_image_mcp/hosted/admin/public/fonts/CLAUDE.md): The self-hosted admin typefaces (Archivo SemiCondensed and JetBrains Mono as woff2) with their SIL OFL licences, copied from mpd-class-mcp and served at /admin/public/fonts.
+
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/public/fonts/ArchivoSemiCondensed-Bold.woff2](../src/openrouter_image_mcp/hosted/admin/public/fonts/ArchivoSemiCondensed-Bold.woff2)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/public/fonts/ArchivoSemiCondensed-ExtraBold.woff2](../src/openrouter_image_mcp/hosted/admin/public/fonts/ArchivoSemiCondensed-ExtraBold.woff2)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/public/fonts/ArchivoSemiCondensed-Medium.woff2](../src/openrouter_image_mcp/hosted/admin/public/fonts/ArchivoSemiCondensed-Medium.woff2)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/public/fonts/ArchivoSemiCondensed-Regular.woff2](../src/openrouter_image_mcp/hosted/admin/public/fonts/ArchivoSemiCondensed-Regular.woff2)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/public/fonts/ArchivoSemiCondensed-SemiBold.woff2](../src/openrouter_image_mcp/hosted/admin/public/fonts/ArchivoSemiCondensed-SemiBold.woff2)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/public/fonts/JetBrainsMono-Bold.woff2](../src/openrouter_image_mcp/hosted/admin/public/fonts/JetBrainsMono-Bold.woff2)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/public/fonts/JetBrainsMono-Regular.woff2](../src/openrouter_image_mcp/hosted/admin/public/fonts/JetBrainsMono-Regular.woff2)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/public/fonts/JetBrainsMono-SemiBold.woff2](../src/openrouter_image_mcp/hosted/admin/public/fonts/JetBrainsMono-SemiBold.woff2)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/public/fonts/OFL-Archivo.txt](../src/openrouter_image_mcp/hosted/admin/public/fonts/OFL-Archivo.txt)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/public/fonts/OFL-JetBrainsMono.txt](../src/openrouter_image_mcp/hosted/admin/public/fonts/OFL-JetBrainsMono.txt)
+
+### [src/openrouter&#95;image&#95;mcp/hosted/admin/templates](../src/openrouter_image_mcp/hosted/admin/templates/CLAUDE.md): Jinja2 templates for the /admin page, in the Interview Coach admin markup: layout, Channels, the register and edit form, Change log and the standalone message page.
+
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/templates/channel&#95;form.html](../src/openrouter_image_mcp/hosted/admin/templates/channel_form.html)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/templates/channels.html](../src/openrouter_image_mcp/hosted/admin/templates/channels.html)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/templates/layout.html](../src/openrouter_image_mcp/hosted/admin/templates/layout.html)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/templates/log.html](../src/openrouter_image_mcp/hosted/admin/templates/log.html)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/templates/macros.html](../src/openrouter_image_mcp/hosted/admin/templates/macros.html)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/templates/message.html](../src/openrouter_image_mcp/hosted/admin/templates/message.html)
 
 ### [src/openrouter&#95;image&#95;mcp/hosted/skills](../src/openrouter_image_mcp/hosted/skills/CLAUDE.md): Hosted variants of the class skills, served to claude.ai and Desktop as MCP prompts and skill:// resources.
 

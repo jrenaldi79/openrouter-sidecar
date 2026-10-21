@@ -1,0 +1,94 @@
+/* The admin shell, shared by every page: Pico re-pointed at the tokens, primitives and the left rail.
+   Every value comes from tokens.css. CSP-safe: no inline style; quantities are drawn with SVG attributes or
+   discrete segments. Pico still styles the feature pages' content. */
+/* Pico, themed from the same tokens so the other pages sit in the same world (triple :root beats Pico's own). */
+:root:root:root {
+  --pico-font-family: var(--font); --pico-font-size: 100%; --pico-line-height: 1.5;
+  --pico-background-color: var(--page); --pico-color: var(--ink2);
+  --pico-primary: var(--acc-text); --pico-primary-underline: var(--acc-text); --pico-primary-hover: var(--nu-deep);
+  --pico-primary-background: var(--btn-bg); --pico-primary-border: var(--btn-bg); --pico-primary-inverse: var(--btn-ink);
+  --pico-primary-hover-background: var(--btn-hover); --pico-primary-hover-border: var(--btn-hover);
+  --pico-primary-focus: color-mix(in srgb, var(--acc-text) 30%, transparent);
+  --pico-muted-color: var(--ink3); --pico-muted-border-color: var(--rule);
+  --pico-card-background-color: var(--card); --pico-card-sectioning-background-color: var(--sunk);
+  --pico-table-border-color: var(--rule); --pico-border-radius: var(--radius-md);
+  --pico-h1-color: var(--ink); --pico-h2-color: var(--ink); --pico-h3-color: var(--ink); --pico-h4-color: var(--ink);
+  --pico-form-element-background-color: var(--card); --pico-form-element-border-color: var(--rule-strong);
+  --pico-form-element-focus-color: var(--acc-text); --pico-code-background-color: var(--tint);
+  --pico-code-color: var(--ink);
+}
+
+body { margin: 0; background: var(--surface-page); color: var(--ink2); font: var(--text-base)/var(--leading) var(--font); font-variant-numeric: tabular-nums lining-nums; font-feature-settings: 'tnum' 1, 'lnum' 1; }
+::selection { background: var(--selection-bg); color: var(--selection-ink); }
+a { color: var(--acc-text); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: var(--focus-ring); outline-offset: 2px; border-radius: var(--radius-sm); }
+* { scrollbar-color: var(--rule-strong) transparent; }
+code, .mono { font-family: var(--mono); font-size: var(--text-code); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.skip { position: absolute; left: -999px; top: 0; padding: 0.5rem 0.75rem; background: var(--surface-card); color: var(--ink); z-index: 9; }
+.skip:focus { left: 0.5rem; top: 0.5rem; }
+.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+html.js .nojs.nojs { display: none; }
+
+/* Icons: one authored sprite (partials/icons.ejs), 1.75 stroke, round caps */
+.ic { width: 1.1rem; height: 1.1rem; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.ic-sm { width: 0.95rem; height: 0.95rem; }
+
+/* Buttons: the report's CTA family, sized for a working screen (doubled class to beat Pico's button states) */
+.btn.btn { display: inline-flex; align-items: center; gap: 0.4rem; width: auto; min-height: 32px; margin: 0; padding: 0.3rem 0.8rem; border-radius: var(--radius-md); border: var(--border-strong); background: var(--surface-card); color: var(--ink); font: 600 var(--text-sm)/1.2 var(--font); text-decoration: none; cursor: pointer; white-space: nowrap; box-shadow: none; transition: background-color 0.15s ease-out, border-color 0.15s ease-out; }
+.btn.btn:hover { background: var(--tint); border-color: var(--sw-staged-line); }
+.btn.btn:focus-visible { outline: var(--focus-ring); outline-offset: 2px; box-shadow: none; }
+.btn.btn-primary { background: var(--btn-bg); border-color: var(--btn-bg); color: var(--btn-ink); }
+.btn.btn-primary:hover { background: var(--btn-hover); border-color: var(--btn-hover); }
+.btn.btn-quiet { border-color: transparent; background: transparent; color: var(--acc-text); padding-inline: 0.5rem; }
+.btn.btn-quiet:hover { background: var(--tint); border-color: transparent; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* The rail: 216px and sticky, the brand, the nav (the current page marked by aria-current) and the account
+   right under the nav, so Sign out is always within reach */
+.frame { display: grid; grid-template-columns: 216px minmax(0, 1fr); min-height: 100vh; }
+.rail { position: sticky; top: 0; height: 100vh; overflow-y: auto; display: flex; flex-direction: column; background: var(--surface-rail); color: var(--on-nu2); padding: 18px 12px; z-index: 6; }
+.rail-top { display: flex; align-items: center; gap: 0.5rem; }
+.rail .brand { display: flex; align-items: center; gap: 0.65rem; padding: 0 6px 22px; color: var(--on-nu); text-decoration: none; }
+/* The logo is purple on purple: the brand mark's own surface sets it apart from the rail. */
+.brand-mark { display: grid; place-items: center; padding: 3px; border-radius: var(--radius-mark); background: var(--surface-brand-mark); box-shadow: var(--shadow-brand-mark); flex: none; }
+.logo { display: block; width: 36px; height: 36px; border-radius: var(--radius-md); }
+.rail .brand strong { display: block; color: var(--on-nu); font-size: var(--text-md); line-height: 1.2; }
+.rail .brand span span { display: block; font-size: var(--text-2xs); line-height: 1.2; color: var(--on-nu2); }
+.rail-body { display: flex; flex-direction: column; }
+.rail ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.rail nav li { margin: 0; padding: 0; list-style: none; }
+.rail nav a { display: flex; align-items: center; gap: 0.7rem; margin: 0; padding: 0.5rem 0.65rem; border-radius: var(--radius-lg); color: var(--on-nu2); text-decoration: none; font-weight: 550; }
+.rail nav a:hover { background: var(--on-brand-hover); color: var(--on-nu); }
+.rail nav a[aria-current='page'] { background: var(--surface-card); color: var(--acc-text); box-shadow: var(--shadow-active); }
+.rail a:focus-visible, .rail button:focus-visible { outline-color: var(--focus-on-brand); }
+.rail-foot { margin-top: 14px; padding: 14px 6px 0; border-top: var(--border-on-brand); font-size: var(--text-2xs); }
+.rail-foot p { margin: 0 0 8px; overflow-wrap: anywhere; color: var(--on-nu2); }
+.rail form.logout { margin: 0; }
+.btn.rail-btn { background: transparent; color: var(--on-nu); border-color: var(--on-brand-line-strong); }
+.btn.rail-btn:hover { background: var(--on-brand-press); border-color: var(--on-brand-line-hover); }
+.btn.btn.menu-btn { display: none; margin-left: auto; padding-inline: 0.5rem; }
+
+.main { min-width: 0; padding: 26px 32px 96px; }
+/* Pages other than the Overview keep Pico content inside a sheet column. */
+.main.page { max-width: 1200px; }
+/* A wide page table (the roster) scrolls inside the content column, never under the rail. */
+.main.page { overflow-x: auto; }
+
+/* Under 900px the rail becomes a top bar; the menu button (admin.js) opens the links below it.
+   Without script the links stay open. */
+@media (max-width: 900px) {
+  .frame { display: block; }
+  .rail { position: sticky; height: auto; padding: 10px 16px; }
+  .rail .brand { padding: 0; }
+  .btn.btn.menu-btn { display: inline-flex; }
+  .rail-body { padding-top: 12px; }
+  html.js .rail:not(:has([data-menu][aria-expanded='true'])) .rail-body { display: none; }
+  .main { padding: 18px 16px 64px; }
+  /* Wide Pico tables on the other pages scroll inside themselves instead of widening the page. */
+  .main.page table { display: block; position: relative; max-width: 100%; overflow-x: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

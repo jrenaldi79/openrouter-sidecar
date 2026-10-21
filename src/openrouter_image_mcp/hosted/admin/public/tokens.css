@@ -1,0 +1,156 @@
+/* The admin's design tokens: the one place that sets a colour, font, type size, radius, border, shadow, pattern
+   or spacing value. Every other admin stylesheet reads these custom properties only. The values are visual
+   language B, Instrument: Archivo and JetBrains Mono at one 13px size, ruled boxes with no radius, flat NU purple,
+   signal yellow for the one thing that needs a look. theme-instrument.css restyles the semantic classes with them;
+   theme-instrument-depth.css adds the soft plates, engraving, tone steps and textures from the depth group below. Dark mode
+   redefines the colour tokens under prefers-color-scheme (an explicit data-theme="light" on <html> opts out). */
+:root {
+  color-scheme: light dark;
+
+  /* Type: one size; rank comes from weight, capitals, reversal and rule (theme-instrument.css), never size */
+  --font: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  --font-route: var(--mono);
+  --text-base: 13px; --text-2xs: 13px; --text-xs: 13px; --text-sm: 13px; --text-md: 13px; --text-lg: 13px; --text-xl: 13px;
+  --text-code: 12px; --text-svg: 12px; --text-svg-s: 11px; --leading: 1.45;
+  --label-case: uppercase; --label-track: 0.06em; --label-track-tight: 0.04em; --label-track-snug: 0.02em; --label-weight: 800; --num-track: -0.01em;
+  --icon-size: 13px; --icon-stroke: 2; --icon-nav: 16px; --icon-heading: 15px; --icon-stroke-fine: 1.6; --icon-dim: 0.85;
+
+  /* Ground, text and accent */
+  --page: #f4f4f2; --card: #ffffff; --sunk: #f4f4f2;
+  --ink: #111111; --ink2: #2b2b2b; --ink3: #5c5c5c;
+  --nu: #4e2a84; --nu-deep: #3a1f63; --acc-text: #4e2a84; --on-nu: #ffffff; --on-nu2: #ffffff;
+  --tint: #ecebee; --tint-strong: #dcdae0;
+  --rule: #111111; --rule-soft: #d6d6d3; --rule-strong: #111111;
+  --signal: #ffd84a; --signal-ink: #111111;
+  --selection-bg: var(--signal); --selection-ink: var(--signal-ink);
+
+  /* Status: text, background and mark (square) per state */
+  --ok: #1f6b3f; --ok-bg: transparent; --ok-mark: #1f6b3f;
+  --warn: #111111; --warn-bg: var(--signal); --warn-mark: #e0b400;
+  --bad: #b3261e; --bad-bg: transparent; --bad-mark: #b3261e;
+  --idle: #5c5c5c; --idle-bg: transparent;
+  --mark-hollow: inset 0 0 0 var(--mark-line-width) var(--ink3);
+
+  /* Data marks: 10-segment score bars, step progress, share bars, roster legend keys */
+  --bar-off: #d6d6d3; --bar-on: #111111; --bar-soft: #4e2a84;
+  --sw-in: #4e2a84; --sw-staged: transparent; --sw-staged-line: #111111; --sw-off: #d6d6d3; --sw-sus: #b3261e;
+
+  /* Buttons */
+  --btn-bg: #111111; --btn-ink: #ffffff; --btn-hover: #4e2a84;
+
+  /* Surfaces */
+  --surface-page: var(--page); --surface-card: var(--card); --surface-sunk: var(--sunk); --surface-head: var(--card);
+  --surface-brand: var(--nu); --surface-band: var(--surface-brand); --surface-rail: var(--surface-brand);
+  --surface-live: transparent; --surface-live-cell: var(--nu); --surface-brand-mark: #ffffff;
+  --surface-reversed: var(--ink); --on-reversed: var(--card); --surface-hover: var(--tint);
+
+  /* Lines on the brand surfaces (rail, band) */
+  --on-brand-line: rgba(255, 255, 255, 0.2); --on-brand-line-strong: rgba(255, 255, 255, 0.35);
+  --on-brand-line-hover: #ffffff; --on-brand-hover: rgba(0, 0, 0, 0.18);
+  --on-brand-press: #ffffff; --on-brand-press-ink: #4e2a84; --focus-on-brand: #ffffff;
+  --on-brand-current: #ffffff; --on-brand-current-ink: #4e2a84; --band-line: rgba(255, 255, 255, 0.4);
+
+  /* The Pipeline route, drawn on the band */
+  --route-track: #ffffff; --route-track-idle: rgba(255, 255, 255, 0.5); --route-track-failed: #ffffff;
+  --route-stage: rgba(255, 255, 255, 0.5); --route-station-line: #ffffff; --route-station-major: #ffffff;
+  --route-end-done: #ffffff; --route-end-done-ink: #4e2a84; --route-end-failed: var(--signal); --route-end-failed-ink: var(--signal-ink);
+  --route-job-dot: var(--signal); --route-job-ring: #111111; --route-job-stem: #ffffff;
+  --route-callout: #ffffff; --route-callout-ink: #111111; --route-callout-ink-soft: #444444;
+
+  /* Feature pages (admin.css): read from the status colours so they follow dark mode */
+  --error-ink: var(--bad); --warning-ink: var(--warn); --success-ink: var(--ok); --info-ink: var(--acc-text);
+  --diff-add-bg: #e3f1e8; --diff-add-ink: var(--ok); --diff-del-bg: #f8e3e1; --diff-del-ink: var(--bad);
+  --source-env-bg: var(--tint-strong); --source-env-ink: var(--acc-text); --source-db-bg: var(--signal); --source-db-ink: var(--signal-ink);
+  --alert-bg: #f8e3e1; --alert-ink: var(--bad);
+
+  /* Borders: boxes are ruled in ink; a table head sits on a 2px rule */
+  --line-width: 1px; --mark-line-width: 1.5px;
+  --border: var(--line-width) solid var(--rule); --border-soft: var(--line-width) solid var(--rule-soft);
+  --border-strong: var(--line-width) solid var(--rule-strong); --border-on-brand: var(--line-width) solid var(--on-brand-line);
+  --border-band: var(--line-width) solid var(--band-line); --border-on-brand-strong: var(--line-width) solid var(--on-brand-line-strong);
+  --border-card: var(--line-width) solid var(--rule-strong); --border-head: 2px solid var(--rule-strong);
+  --border-error: 4px solid var(--error-ink);
+  --focus-ring: 2px solid var(--acc-text);
+
+  /* Shadows: B itself is flat; the depth group below feeds theme-instrument-depth.css */
+  --shadow-card: none; --shadow-active: none; --shadow-tab: none; --shadow-brand-mark: none;
+  --filter-callout: none;
+
+  /* Radii: squared off everywhere */
+  --radius-hair: 0; --radius-xs: 0; --radius-sm: 0; --radius-md: 0; --radius-lg: 0; --radius-mark: 0;
+  --radius: 0; --radius-band: 0; --radius-pill: 0; --radius-round: 50%; --radius-signal: 0;
+
+  /* Spacing: --gap between every Overview block, --pad inside a panel */
+  --gap: 24px; --pad: 14px;
+
+  /* Depth (theme-instrument-depth.css): plates on a board a tone below them, with short ink-tinted soft shadows and
+     a 6px radius; engraved rules, shallow wells, flat purple tone steps, a halftone band and hatched empty boxes. */
+  --board: #e6e6e2;
+  --soft-plate: 0 1px 1px rgba(17, 17, 17, 0.06), 0 2px 4px rgba(17, 17, 17, 0.06), 0 8px 18px -8px rgba(17, 17, 17, 0.22);
+  --soft-band: 0 1px 2px rgba(42, 20, 80, 0.18), 0 10px 24px -10px rgba(42, 20, 80, 0.45);
+  --soft-btn: 0 1px 0 rgba(17, 17, 17, 0.35), 0 2px 5px -2px rgba(17, 17, 17, 0.3);
+  --soft-pressed: 0 0 1px rgba(17, 17, 17, 0.3); --soft-tabs: 0 1px 3px rgba(17, 17, 17, 0.12);
+  --soft-frame: rgba(17, 17, 17, 0.22); --soft-radius: 6px; --radius-control: 4px; --radius-control-inner: 3px;
+  --press-depth: 1px;
+  --engrave-hi: rgba(255, 255, 255, 0.9); --engrave-on-brand: rgba(255, 255, 255, 0.14);
+  --well: #ecebe8; --well-shade: rgba(0, 0, 0, 0.12); --press-shade: rgba(0, 0, 0, 0.35);
+  --nu-edge: #3a1f63; --nu-strip: #43246f; --dot: rgba(255, 255, 255, 0.09); --hatch: rgba(17, 17, 17, 0.28);
+  --node-purple-face: #4e2a84; --node-purple-lit: #8a6cc0; --node-white-face: #ffffff; --node-white-shade: #cbc3da;
+  --node-yellow-face: #ffd84a; --node-yellow-shade: #d1a600;
+  --shadow-engrave: 0 1px 0 var(--engrave-hi); --shadow-engrave-cell: inset 0 1px 0 var(--engrave-hi);
+  --shadow-engrave-brand: 0 1px 0 var(--engrave-on-brand);
+  --shadow-well: inset 0 2px 0 var(--well-shade);
+  --shadow-rail-edge: inset -5px 0 0 var(--nu-edge); --shadow-rail-current: inset -5px 0 0 var(--on-brand-current);
+  --shadow-tab-pressed: inset 0 2px 0 var(--press-shade);
+  --filter-node: drop-shadow(0 1px 1.5px rgba(20, 8, 45, 0.45)); --filter-node-lit: drop-shadow(0 1.5px 2px rgba(20, 8, 45, 0.5));
+  --filter-callout-plate: drop-shadow(0 3px 6px rgba(20, 8, 45, 0.35));
+  --pattern-halftone: radial-gradient(var(--dot) 0.9px, transparent 1.3px) 0 0 / 5px 5px;
+  /* Texture: the rail is a vertical purple gradient with a top-left light and a faint 135deg hairline hatch; the
+     board has a faint purple light in two corners, an 18px dot grid and a soft vertical grey gradient. */
+  --rail-tex:
+    radial-gradient(120% 60% at 0% 0%, rgba(255, 255, 255, 0.14), transparent 60%),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 7px),
+    linear-gradient(180deg, #5b3497 0%, #4e2a84 45%, #3c1f67 100%);
+  --board-tex:
+    radial-gradient(90% 70% at 100% 0%, rgba(78, 42, 132, 0.13), transparent 65%),
+    radial-gradient(70% 60% at 0% 100%, rgba(78, 42, 132, 0.09), transparent 70%),
+    radial-gradient(rgba(17, 17, 17, 0.11) 0.9px, transparent 1px) 0 0 / 18px 18px,
+    linear-gradient(180deg, #f1f0ee, #e7e6e3);
+  --pattern-hatch: repeating-linear-gradient(45deg, var(--hatch) 0 1px, transparent 1px 3px);
+  /* Student portal (src/portal/public/student.css): the same language with a real type scale and more air */
+  --st-text: 16px; --st-small: 14px; --st-xs: 13px; --st-h1: clamp(26px, 3.2vw, 34px); --st-h2: 20px; --st-h3: 17px;
+  --st-gap: 28px; --st-pad: 24px; --st-max: 1180px; --st-col: 720px; --st-side: 360px; --st-mark: 10px;
+  --st-live: var(--nu); --st-done: var(--bar-soft);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --page: #0c0c0d; --card: #242427; --sunk: #0c0c0d;
+    --ink: #f2f2f0; --ink2: #d9d9d6; --ink3: #a3a3a0;
+    --acc-text: #c6b3f0;
+    --tint: #1f1f22; --tint-strong: #2b2b2f;
+    --rule: #f2f2f0; --rule-soft: #2f2f31; --rule-strong: #f2f2f0;
+    --signal: #f2c94c;
+    --ok: #7fd6a3; --ok-mark: #7fd6a3; --bad: #ff8f86; --bad-mark: #ff8f86; --idle: #a3a3a0;
+    --bar-off: #333336; --bar-on: #f2f2f0; --bar-soft: #c6b3f0;
+    --sw-in: #c6b3f0; --sw-staged-line: #f2f2f0; --sw-off: #333336; --sw-sus: #ff8f86;
+    --btn-bg: #f2f2f0; --btn-ink: #0c0c0d; --btn-hover: #c6b3f0;
+    --diff-add-bg: #16281f; --diff-del-bg: #331a19; --alert-bg: #331a19;
+    --board: #161618;
+    --soft-plate: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 2px 4px rgba(0, 0, 0, 0.35), 0 10px 22px -8px rgba(0, 0, 0, 0.6);
+    --soft-band: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 12px 26px -10px rgba(0, 0, 0, 0.7);
+    --soft-btn: 0 1px 0 rgba(0, 0, 0, 0.6), 0 2px 6px -2px rgba(0, 0, 0, 0.5);
+    --soft-pressed: 0 0 1px rgba(0, 0, 0, 0.6); --soft-tabs: 0 1px 3px rgba(0, 0, 0, 0.5); --soft-frame: rgba(255, 255, 255, 0.1);
+    --engrave-hi: rgba(255, 255, 255, 0.06); --well: #1a1a1c; --well-shade: rgba(0, 0, 0, 0.6);
+    --nu-edge: #2e1850; --nu-strip: #3e2069; --hatch: rgba(242, 242, 240, 0.3);
+    --rail-tex:
+      radial-gradient(120% 60% at 0% 0%, rgba(255, 255, 255, 0.08), transparent 60%),
+      repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 7px),
+      linear-gradient(180deg, #43246f 0%, #351c5c 50%, #26143f 100%);
+    --board-tex:
+      radial-gradient(90% 70% at 100% 0%, rgba(140, 100, 210, 0.1), transparent 65%),
+      radial-gradient(rgba(255, 255, 255, 0.05) 0.8px, transparent 1px) 0 0 / 18px 18px,
+      linear-gradient(180deg, #18171a, #121214);
+    --st-live: var(--acc-text);
+  }
+}

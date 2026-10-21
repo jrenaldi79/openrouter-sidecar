@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/admin/public/brand/favicon.ico" sizes="any">
+  <title>MPD Admin</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2.1.1/css/pico.min.css" integrity="sha384-L1dWfspMTHU/ApYnFiMz2QID/PlP1xCW9visvBdbEkOLkSSWsP6ZJWhPw6apiXxU" crossorigin="anonymous">
+  <link rel="stylesheet" href="/admin/public/fonts.css">
+  <link rel="stylesheet" href="/admin/public/tokens.css">
+  <link rel="stylesheet" href="/admin/public/shell.css">
+  <link rel="stylesheet" href="/admin/public/admin.css">
+  <link rel="stylesheet" href="/admin/public/theme-instrument.css">
+</head>
+<body>
+  <main class="container">
+    <article>
+      <h1>MPD Admin</h1>
+      <p>{{ text }}</p>
+      {% if session %}
+      {% import "macros.html" as m %}
+      <p>You are signed in as <strong>{{ session.email }}</strong>.</p>
+      {{ m.logout(session.csrf_token) }}
+      {% endif %}
+      <p><a href="/admin">Back to admin</a></p>
+    </article>
+  </main>
+</body>
+</html>

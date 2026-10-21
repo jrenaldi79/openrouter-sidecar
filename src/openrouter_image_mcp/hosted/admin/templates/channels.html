@@ -1,0 +1,47 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% block title %}Channels{% endblock %}
+{% block body %}
+<h1>Channels</h1>
+{% if overview.slack_note %}
+<p class="warning" role="status">{{ overview.slack_note }}</p>
+{% endif %}
+{% set editable = overview.slack_note != copy.SLACK_OFF %}
+<table>
+  <thead><tr><th>Label</th><th>Channel</th><th>Cohort</th><th>Status</th><th>Default model</th><th>Daily cap</th><th>Concurrent</th><th></th></tr></thead>
+  <tbody>
+  {% for row, name in overview.registered %}
+  <tr>
+    <td>{{ row.team_label }}</td>
+    <td>{% if name == row.channel_id %}{{ name }}{% else %}#{{ name }}{% endif %}</td>
+    <td>{{ row.cohort }}</td>
+    <td>{{ m.status(row) }}</td>
+    <td>{{ row.default_model }}</td>
+    <td>${{ "%.2f"|format(row.daily_cap_usd) }}</td>
+    <td>{{ row.max_concurrent }}</td>
+    <td>{% if editable %}<a href="/admin/channels/{{ row.slack_team_id|urlencode }}/{{ row.channel_id|urlencode }}">Edit</a>{% endif %}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="8" class="muted">No channels are registered yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% if not overview.slack_note %}
+<h2>Channels Sidecar is in but not registered</h2>
+{% if overview.unregistered %}
+<table>
+  <thead><tr><th>Channel</th><th></th></tr></thead>
+  <tbody>
+  {% for channel in overview.unregistered %}
+  <tr>
+    <td>#{{ channel.name }}</td>
+    <td><a href="/admin/channels/new?channel={{ channel.id|urlencode }}">Register</a></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">{{ no_channels_text }}</p>
+{% endif %}
+{% endif %}
+{% endblock %}

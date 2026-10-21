@@ -1,0 +1,60 @@
+{% import "macros.html" as m %}
+{% set nav = [("/admin", "Channels", "i-teams"), ("/admin/log", "Change log", "i-prompts")] %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/admin/public/brand/favicon.ico" sizes="any">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  {# htmx 2 does not swap 4xx bodies by default; a 422 or 409 answer is a re-rendered page and is swapped.
+     includeIndicatorStyles:false keeps htmx from injecting an inline <style>, which the CSP forbids;
+     allowEval:false keeps hx-on and js: features off (the CSP has no 'unsafe-eval'). #}
+  <meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"422","swap":true},{"code":"409","swap":true},{"code":"[45]..","swap":false,"error":true}]}'>
+  <title>{% block title %}{% endblock %} · MPD Admin</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2.1.1/css/pico.min.css" integrity="sha384-L1dWfspMTHU/ApYnFiMz2QID/PlP1xCW9visvBdbEkOLkSSWsP6ZJWhPw6apiXxU" crossorigin="anonymous">
+  <link rel="stylesheet" href="/admin/public/fonts.css">
+  <link rel="stylesheet" href="/admin/public/tokens.css">
+  <link rel="stylesheet" href="/admin/public/shell.css">
+  <link rel="stylesheet" href="/admin/public/admin.css">
+  {# The visual language (B, Instrument) restyles the semantic classes from tokens.css; the depth layer loads last. #}
+  <link rel="stylesheet" href="/admin/public/theme-instrument.css">
+  <link rel="stylesheet" href="/admin/public/theme-instrument-depth.css">
+  <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.11/dist/htmx.min.js" integrity="sha384-2OatzQy1H+Zd/IIrjr1TcuDGqLXeHhbooAyJY1KdQMKnr4LZ22k31GBLdYKHmVjg" crossorigin="anonymous" defer></script>
+  {# Shows failed htmx requests in #htmx-error. Same origin, under the CSP's /admin/public/ script source. #}
+  <script src="/admin/public/admin.js" defer></script>
+</head>
+<body hx-headers='{"x-csrf-token": "{{ csrf_token }}"}'>
+  <a class="skip" href="#main">Skip to content</a>
+  {# The icons this page uses, from the Coach's drafting set; referenced with <use href="#i-…">. #}
+  <svg xmlns="http://www.w3.org/2000/svg" class="sr" aria-hidden="true" focusable="false">
+    <symbol id="i-teams" viewBox="0 0 24 24"><circle cx="12" cy="6" r="2.2"/><circle cx="5.8" cy="17.5" r="2.2"/><circle cx="18.2" cy="17.5" r="2.2"/><path d="M10.9 7.9l-4 7.7M13.1 7.9l4 7.7M8 17.5h8"/></symbol>
+    <symbol id="i-prompts" viewBox="0 0 24 24"><path d="M6 3.5h8.5l3.5 3.5v13.5H6z"/><path d="M14.5 3.5V7H18"/><path d="M9 11.5h6M9 14.5h6M9 17.5h3.5"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M14 4.5H6.5v15H14"/><path d="M10.5 12H20"/><path d="m17 9 3 3-3 3"/></symbol>
+  </svg>
+  <div class="frame">
+  {# The rail. Under 900px it is a top bar; the menu button (admin.js) opens the links. #}
+  <aside class="rail">
+    <div class="rail-top">
+      <a class="brand" href="/admin"><span class="brand-mark"><img class="logo" src="/admin/public/brand/mpd-logo.png" width="36" height="36" alt=""></span><span><strong>MPD Admin</strong><span>Sidecar</span></span></a>
+      <button type="button" class="btn rail-btn menu-btn" aria-controls="rail-body" aria-expanded="false" data-menu><svg class="ic" aria-hidden="true"><use href="#i-menu"/></svg><span class="sr">Menu</span></button>
+    </div>
+    <div class="rail-body" id="rail-body">
+      <nav aria-label="Admin">
+        <ul>
+          {% for href, label, icon in nav %}
+          <li><a href="{{ href }}"{% if href == current %} aria-current="page"{% endif %}><svg class="ic" aria-hidden="true"><use href="#{{ icon }}"/></svg><span>{{ label }}</span></a></li>
+          {% endfor %}
+        </ul>
+      </nav>
+      <div class="rail-foot"><p>{{ email }}</p>{{ m.logout(csrf_token, "btn rail-btn", true) }}</div>
+    </div>
+  </aside>
+  <main id="main" class="main page">
+  <div id="htmx-error" class="htmx-error" role="alert" hidden></div>
+{% block body %}{% endblock %}
+  </main>
+  </div>
+</body>
+</html>

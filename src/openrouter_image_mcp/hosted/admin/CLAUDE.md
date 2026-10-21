@@ -15,11 +15,14 @@ read_when: "Changing or adding files in src/openrouter_image_mcp/hosted/admin/."
 - `sessions.py`: pending Auth0 logins (single use, 10 minutes, at most 500) and signed-in sessions (2 hours idle,
   12 hours absolute), both stored by the SHA-256 of the cookie or `state`; the clock is injected.
 - `audit.py`: the `admin_audit` change log. `insert(db, ...)` writes on the caller's connection so a registry write
-  and its entry share one transaction (the caller runs `audit.SCHEMA` first); `AdminAudit` records on its own
+  and its entry share one transaction (it creates its table there); `AdminAudit` records on its own
   transaction and reads the newest entries.
-- Being built (`docs/superpowers/plans/2026-10-21-slack-admin.md`): `oidc.py` (Auth0 sign-in), `views.py` with
-  `templates/` and `public/` (the Interview Coach admin design system), `forms.py`, `routes.py` and `wiring.py`. The
-  Slack side is `hosted/slack/channel_admin.py`.
+- `views.py`: renders the pages (`Views.page`, `Views.message`), builds the CSP and other response headers
+  (`security_headers`) and holds the static-file allowlist (`STATIC_FILES`, `PUBLIC_DIR`). Its `templates/` are Jinja2
+  with autoescaping; `public/` is the Interview Coach admin design system, copied from `mpd-class-mcp` (change it
+  there first).
+- Being built (`docs/superpowers/plans/2026-10-21-slack-admin.md`): `oidc.py` (Auth0 sign-in), `forms.py`, `routes.py`
+  and `wiring.py`. The Slack side is `hosted/slack/channel_admin.py`.
 
 **Invariants:**
 

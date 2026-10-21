@@ -1,0 +1,51 @@
+/* Small additions on top of Pico CSS for the feature pages (tokens.css holds every value, shell.css the shell). */
+.muted {
+  color: var(--pico-muted-color);
+}
+.error {
+  color: var(--error-ink);
+}
+.warning {
+  color: var(--warning-ink);
+}
+.inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+.inline > * {
+  margin-bottom: 0;
+}
+td form,
+td input,
+td select,
+td button {
+  margin-bottom: 0;
+}
+/* Logout is a POST form (CSRF); style its button like a nav link. */
+form.logout {
+  display: inline;
+  margin: 0;
+}
+button.link {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  width: auto;
+  color: var(--pico-primary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+/* Filled by admin.js when an htmx request fails (layout.ejs). */
+.htmx-error {
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border-radius: var(--pico-border-radius);
+  background: var(--alert-bg);
+  color: var(--alert-ink);
+}
+.htmx-error[hidden] {
+  display: none;
+}

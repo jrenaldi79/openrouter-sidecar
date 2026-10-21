@@ -1,0 +1,152 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{% set editing = mode == "edit" %}
+{% set base = "/admin/channels/" ~ (row.slack_team_id|urlencode ~ "/" ~ row.channel_id|urlencode if editing else "new") %}
+{% block title %}{{ "Edit" if editing else "Register" }} #{{ channel.name }}{% endblock %}
+{% block body %}
+<p><a href="/admin">← Channels</a></p>
+<h1>{{ "Edit" if editing else "Register" }} #{{ channel.name }}</h1>
+{% if error %}
+<p class="error" role="alert">{{ error }}</p>
+{% endif %}
+{% if editing %}
+<p>Status: {{ m.status(row) }}</p>
+{% endif %}
+{% if setup_unfinished %}
+<p class="warning" role="status">{{ copy.SETUP_UNFINISHED }}. The channel is saved but off. Finish setup tries again to make the team's key and save its models.</p>
+{% endif %}
+<form method="post" action="{{ base if editing else base ~ '?channel=' ~ channel.id|urlencode }}">
+  {{ m.csrf(csrf_token) }}
+  {% if editing %}
+  {% for field in ["default_model", "alias_map", "fusion_panel", "fusion_analyst", "subagent_model", "fetch_allowlist", "daily_cap_usd", "max_concurrent", "invoker_allowlist", "family_models"] %}
+  <input type="hidden" name="orig_{{ field }}" value="{{ values[field]|tojson|forceescape }}">
+  {% endfor %}
+  <p><span class="muted">Label</span> <code>{{ row.team_label }}</code> · <span class="muted">Cohort</span> <code>{{ row.cohort }}</code></p>
+  <p class="muted">The label names the team's key and the cohort decides which workspace holds it, so neither changes after the first save.</p>
+  {% else %}
+  <label>Label
+    <input name="label" value="{{ values.label }}" required maxlength="40" pattern="[a-z0-9\-]{1,40}" autocomplete="off">
+    <small>Lowercase letters, digits and dashes. It names the team's key and can't change after you save.</small>
+  </label>
+  <label>Cohort
+    <select name="cohort">
+      {% for c in cohorts %}
+      <option value="{{ c }}"{% if c == values.cohort %} selected{% endif %}>{{ c }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  {% endif %}
+
+  <h2>Models</h2>
+  <p class="muted">The model each family uses in this channel's chats.</p>
+  <div class="grid">
+    {% for family in families %}
+    <label>{{ family }}
+      {{ m.model_select("model_" ~ family, models, values.family_models.get(family, ""), "Model for " ~ family, family=family) }}
+    </label>
+    {% endfor %}
+  </div>
+
+  <h2>Aliases</h2>
+  <p class="muted">A short name people type, and the brand or exact model id it stands for.</p>
+  <table>
+    <thead><tr><th>Alias</th><th>Brand or model id</th></tr></thead>
+    <tbody>
+      {% for alias, target in values.alias_map.items() %}
+      <tr>
+        <td><input name="alias_name" value="{{ alias }}" maxlength="40" aria-label="Alias"></td>
+        <td><input name="alias_target" value="{{ target }}" maxlength="200" aria-label="Brand or model id"></td>
+      </tr>
+      {% endfor %}
+      {% for blank in range(2) %}
+      <tr>
+        <td><input name="alias_name" value="" maxlength="40" aria-label="New alias"></td>
+        <td><input name="alias_target" value="" maxlength="200" aria-label="Brand or model id for the new alias"></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <label>Default alias
+    <select name="default_model">
+      {% for alias in aliases %}
+      <option value="{{ alias }}"{% if alias == values.default_model %} selected{% endif %}>{{ alias }}</option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <h2>Fusion</h2>
+  <p class="muted">Fusion asks a panel of 1 to 8 models, then an analyst combines their answers. The helper model does the small jobs.</p>
+  <div class="grid">
+    {% for i in range(8) %}
+    <label>Panel model {{ i + 1 }}
+      {{ m.model_select("fusion_panel", models, values.fusion_panel[i] if i < values.fusion_panel|length else "", "Panel model " ~ (i + 1), blank=true) }}
+    </label>
+    {% endfor %}
+  </div>
+  <div class="grid">
+    <label>Analyst
+      {{ m.model_select("fusion_analyst", models, values.fusion_analyst, "Fusion analyst model") }}
+    </label>
+    <label>Helper
+      {{ m.model_select("subagent_model", models, values.subagent_model, "Helper model") }}
+    </label>
+  </div>
+
+  <h2>Limits</h2>
+  <div class="grid">
+    <label>Daily cap in dollars
+      <input name="daily_cap_usd" type="number" min="0.01" step="0.01" value="{{ values.daily_cap_usd }}" required>
+    </label>
+    <label>Chats running at once
+      <input name="max_concurrent" type="number" min="1" step="1" value="{{ values.max_concurrent }}" required>
+    </label>
+  </div>
+  <label>Web pages Sidecar may fetch
+    <textarea name="fetch_allowlist" rows="4" spellcheck="false">
+{{ values.fetch_allowlist|join("\n") }}</textarea>
+    <small>One domain per line. Links people post in the thread are always allowed.</small>
+  </label>
+
+  <h2>Who can use Sidecar</h2>
+  <p class="muted">Leave everyone unchecked to let everyone in the channel use it.</p>
+  {% if members is none %}
+  <label>Slack user ids
+    <textarea name="invoker_allowlist_text" rows="4" spellcheck="false">
+{{ values.invoker_allowlist|join("\n") }}</textarea>
+    <small>One id per line. The member names didn't load, or the channel has more than 50 members.</small>
+  </label>
+  {% else %}
+  <fieldset>
+    {% set listed = members|map(attribute=0)|list %}
+    {% for id, name in members %}
+    <label><input type="checkbox" name="invoker_allowlist" value="{{ id }}"{% if id in values.invoker_allowlist %} checked{% endif %}> {{ name }}</label>
+    {% endfor %}
+    {% for id in values.invoker_allowlist if id not in listed %}
+    <label><input type="checkbox" name="invoker_allowlist" value="{{ id }}" checked> {{ id }}</label>
+    {% endfor %}
+  </fieldset>
+  {% endif %}
+
+  <div class="inline">
+    <button type="submit" class="btn btn-primary">{{ "Save" if editing else "Register" }}</button>
+    {% if setup_unfinished %}
+    <button type="submit" class="btn" formaction="{{ base }}/finish">Finish setup</button>
+    {% endif %}
+  </div>
+</form>
+
+{% if editing and row.active %}
+<h2>Turn off</h2>
+<form method="post" action="{{ base }}/off" class="inline" hx-boost="true" hx-confirm="Turn off #{{ channel.name }}? Sidecar stops answering there until you turn it on.">
+  {{ m.csrf(csrf_token) }}
+  <input name="reason" required maxlength="200" placeholder="Why" aria-label="Reason for turning it off">
+  <button type="submit" class="btn">Turn off</button>
+</form>
+{% elif editing and not setup_unfinished %}
+<h2>Turn on</h2>
+<form method="post" action="{{ base }}/on" class="inline" hx-boost="true" hx-confirm="Turn on #{{ channel.name }}? Sidecar starts answering there.">
+  {{ m.csrf(csrf_token) }}
+  <button type="submit" class="btn btn-primary">Turn on</button>
+</form>
+{% endif %}
+{% endblock %}

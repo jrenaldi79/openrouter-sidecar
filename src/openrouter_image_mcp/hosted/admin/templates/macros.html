@@ -1,0 +1,30 @@
+{# Shared pieces. Macros take their data as arguments: an imported template doesn't see the page's context. #}
+{% macro csrf(token) %}<input type="hidden" name="_csrf" value="{{ token }}">{% endmacro %}
+{% macro status(row) %}{% if row.active %}On{% elif row.inactive_reason %}Off: {{ row.inactive_reason }}{% else %}Off{% endif %}{% endmacro %}
+{% macro logout(token, button_class="link", icon=false) %}<form method="post" action="/admin/logout" class="logout">{{ csrf(token) }}<button type="submit" class="{{ button_class }}">{% if icon %}<svg class="ic ic-sm" aria-hidden="true"><use href="#i-logout"/></svg>{% endif %}Sign out</button></form>{% endmacro %}
+{# A model choice. With `family` only that family's models are listed; otherwise they are grouped by family. A saved
+   model that is no longer on the list stays selectable, so saving the form can't drop it silently. #}
+{% macro option(model, selected) %}<option value="{{ model.id }}"{% if model.id == selected %} selected{% endif %}>{{ model.name }}</option>{% endmacro %}
+{% macro model_select(name, models, selected, label, family=none, blank=false) %}
+<select name="{{ name }}" aria-label="{{ label }}">
+  {% if blank %}
+  <option value=""{% if not selected %} selected{% endif %}>None</option>
+  {% endif %}
+  {% if selected and selected not in models|map(attribute="id") %}
+  <option value="{{ selected }}" selected>{{ selected }}</option>
+  {% endif %}
+  {% if family %}
+  {% for m in models if m.family == family %}
+  {{ option(m, selected) }}
+  {% endfor %}
+  {% else %}
+  {% for group, items in models|groupby("family") %}
+  <optgroup label="{{ group }}">
+    {% for m in items %}
+    {{ option(m, selected) }}
+    {% endfor %}
+  </optgroup>
+  {% endfor %}
+  {% endif %}
+</select>
+{% endmacro %}
