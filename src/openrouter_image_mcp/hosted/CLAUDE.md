@@ -1,6 +1,6 @@
 ---
 title: "src/openrouter_image_mcp/hosted"
-description: "Hosted remote MCP (Railway): authenticated multi-tenant Streamable HTTP server with Auth0 verification, per-principal provisioned OpenRouter keys and vault, cohort workspaces, limits, image assets with signed uploads and downloads, health, sweeper and retention."
+description: "Hosted remote MCP (Railway): authenticated multi-tenant Streamable HTTP server with Auth0 verification, per-principal provisioned OpenRouter keys and vault, cohort workspaces, limits, image assets with signed uploads and downloads, health, sweeper, retention, and the Slack bot wired to the owner lock."
 type: "guidance"
 status: "maintained"
 read_when: "Changing or adding files in src/openrouter_image_mcp/hosted/."
@@ -8,7 +8,7 @@ read_when: "Changing or adding files in src/openrouter_image_mcp/hosted/."
 
 **Owns:**
 
-- Server: `app.py` (`build_hosted_server`, transport security, tool registration), `main.py` (`serve-http` entry), `settings.py` (environment config; fails closed on unsafe values), `health.py` (liveness, readiness, the gate that follows the owner lock), `ownership.py` (`OwnerLock`: the single-owner Postgres advisory lock with `on_gain` and `on_lose` hooks).
+- Server: `app.py` (`build_hosted_server`, transport security, tool registration; builds the Slack bot with `slack/wiring.py` only when `SIDECAR_SLACK_ENABLED`, hooks it to the owner lock and closes it first at shutdown, `server.hosted["slack"]`), `main.py` (`serve-http` entry), `settings.py` (environment config; fails closed on unsafe values), `health.py` (liveness, readiness, the gate that follows the owner lock), `ownership.py` (`OwnerLock`: the single-owner Postgres advisory lock with `on_gain` and `on_lose` hooks).
 - Identity: `verifier.py` (Auth0 RS256, exact issuer and audience), `principal.py` (stable key `issuer|subject`), `credentials.py` (principal plus provisioned key; resolve() is a synchronous lookup, forget() marks a key rejected after a 401).
 - Student OpenRouter keys: `openrouter_keys.py` (the management API seam, `KeyManager`, plus `current_key` for `GET /key`), `provisioning.py` (`KeyProvisioner.ensure`: one key per principal and cohort on first use, orphan cleanup, recheck of rejected keys; `key_middleware` runs it before tool calls), `student_keys.py` (the `student_keys` table), `vault.py` (keys encrypted at rest; associated data binds a ciphertext to its principal), `account.py` (`account_status`: key, spend and budget).
 - Images: `images.py` (the shared `ImageService` with asset ids in and out), `image_tools.py`, `image_results.py`, `uploads.py` (single-use upload URLs that answer CORS preflight, HMAC-signed download links). Hosted generate, edit and remask bind the gallery app, and Apps clients also get `open_image_uploader`.

@@ -6,11 +6,15 @@ import pytest
 from slack_dispatch_rig import DispatchRig, FakePreferences
 from slack_runner_rig import CHANNEL, body, call, wait_until
 
+from openrouter_image_mcp.errors import BadRequestError
 from openrouter_image_mcp.hosted.slack.commands import (
+    NO_MODEL_SET,
     RESTARTED,
+    NoModelSet,
     UnknownAlias,
     resolve_alias,
 )
+from openrouter_image_mcp.preferences import NO_DEFAULT
 
 
 @pytest.fixture
@@ -34,6 +38,26 @@ async def test_resolve_alias_brand_and_exact_id(rig):
     with pytest.raises(UnknownAlias):
         await resolve_alias(row, "nobody/missing", prefs)
     assert prefs.calls == ["Gemini", "z/exact", "nobody/missing"]
+
+
+class _Refuses(FakePreferences):
+    def __init__(self, message):
+        super().__init__()
+        self.message = message
+
+    async def resolve(self, model=None):
+        raise BadRequestError(self.message)
+
+
+async def test_brand_without_a_default_says_no_model_set(rig):
+    row = rig.registry.get("T1", CHANNEL)
+    with pytest.raises(NoModelSet) as caught:
+        await resolve_alias(row, "gemini", _Refuses(NO_DEFAULT))
+    assert caught.value.text == NO_MODEL_SET == "This alias has no model set yet. Ask your instructor."
+    with pytest.raises(BadRequestError):  # any other refusal is still a provider problem
+        await resolve_alias(row, "gemini", _Refuses("Choose an available exact advisor model ID."))
+    with pytest.raises(UnknownAlias):  # an exact id is never "not set"
+        await resolve_alias(row, "z/exact", _Refuses(NO_DEFAULT))
 
 
 async def test_models_and_set_default(rig):

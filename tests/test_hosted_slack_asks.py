@@ -8,8 +8,10 @@ from slack_runner_rig import CHANNEL, THREAD
 
 from openrouter_image_mcp.hosted.slack.api import SlackMessage
 from openrouter_image_mcp.hosted.slack.asks import COMPARE_ALIAS, SANDBOX_OFF
+from openrouter_image_mcp.hosted.slack.commands import NO_MODEL_SET
 from openrouter_image_mcp.hosted.slack.context import CONTEXT_PATH
 from openrouter_image_mcp.hosted.slack.payload import FUSION_CHOICE, fusion_tool
+from openrouter_image_mcp.preferences import PreferenceService
 
 
 @pytest.fixture
@@ -135,6 +137,13 @@ async def test_start_failure_names_another_model(rig):
     assert "ChatGPT didn't answer this time. Try another model, for example gemini." in [
         p["text"] for p in rig.slack.posts]
     assert rig.models_asked() == ["g/model"]
+
+
+async def test_alias_without_a_team_default_says_no_model_set(rig):
+    rig.services.preferences = PreferenceService(rig.advisors)  # the team never saved a google default
+    await rig.mention("ask gemini hello")
+    assert [p["text"] for p in rig.slack.posts] == [NO_MODEL_SET]
+    assert rig.models_asked() == []
 
 
 async def test_concurrent_first_mentions_share_one_chat(rig, monkeypatch):

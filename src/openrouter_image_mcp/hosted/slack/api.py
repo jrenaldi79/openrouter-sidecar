@@ -60,6 +60,7 @@ class Page:
 
 
 class SlackApi(Protocol):
+    async def bot_user_id(self) -> str: ...
     async def replies(self, channel: str, thread_ts: str, *, cursor: str | None = None,
                       limit: int = 200) -> Page: ...
     async def history(self, channel: str, *, latest: str | None = None, cursor: str | None = None,
@@ -107,6 +108,18 @@ class SdkSlackApi:
             response = error.response
             code = str(response.get("error") or "unknown") if response is not None else "unknown"
             raise SlackCallError(method, code, _retry_after(getattr(response, "headers", None))) from error
+
+    async def aclose(self) -> None:
+        """Close the download client this API was given (the web client opens a session per call)."""
+        if self._http is not None:
+            await self._http.aclose()
+
+    async def bot_user_id(self) -> str:
+        """The bot's own user id (`auth.test`), so the bot can find its mention and ignore its own posts."""
+        user = (await self._call("bot_user_id", "auth_test")).get("user_id")
+        if not isinstance(user, str) or not user:
+            raise SlackCallError("bot_user_id", "no_user_id")
+        return user
 
     async def replies(self, channel, thread_ts, *, cursor=None, limit=200) -> Page:
         args = {"channel": channel, "ts": thread_ts, "limit": limit, **({"cursor": cursor} if cursor else {})}

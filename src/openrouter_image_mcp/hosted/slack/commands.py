@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from ...advisor_store import Scope
 from ...errors import BadRequestError, OpenRouterError
+from ...preferences import NO_DEFAULT
 from ..principal import Principal
 from .api import SlackMessage
 from .parser import (
@@ -46,6 +47,7 @@ EMPTY = "Ask me a question after @sidecar, or send @sidecar help to see everythi
 RESTARTED = "Started fresh. My next answer here rereads the thread."
 NO_NOTES = "I don't have any notes for this channel yet."
 USAGE_UNAVAILABLE = "I couldn't read this team's spend right now. Try again in a minute."
+NO_MODEL_SET = "This alias has no model set yet. Ask your instructor."
 
 
 @dataclass(frozen=True)
@@ -72,6 +74,16 @@ class UnknownAlias(Exception):
         super().__init__("Unknown model alias.")
 
 
+class NoModelSet(Exception):
+    """A brand alias whose model family has no default saved for this team (the ops script sets them)."""
+
+    text = escape(NO_MODEL_SET)
+
+    def __init__(self, alias: str):
+        self.alias = alias
+        super().__init__("No model set for this alias.")
+
+
 def unknown_alias_text(error: UnknownAlias) -> str:
     return escape(f"I don't know the model {error.alias}. Use one of: {', '.join(error.valid)}. "
                   "An exact OpenRouter model id also works.")
@@ -80,16 +92,19 @@ def unknown_alias_text(error: UnknownAlias) -> str:
 async def resolve_alias(row: ChannelRow, alias: str, preferences) -> tuple[str, str]:
     """(model id, label) for an alias of this channel or an exact OpenRouter id, through the channel's
     `alias_map` and then `PreferenceService.resolve` (the model policy and catalog filters). The label is the
-    brand from `alias_map`, else the catalog name."""
+    brand from `alias_map`, else the catalog name. A brand whose family default the team hasn't saved raises
+    `NoModelSet`."""
     valid = sorted(row.alias_map)
     brand = row.alias_map.get(alias)
     if brand is None and "/" not in alias:
         raise UnknownAlias(alias, valid)
     try:
         found = await preferences.resolve(brand or alias)
-    except BadRequestError:
+    except BadRequestError as error:
         if brand is None:  # an exact id the catalog doesn't offer
             raise UnknownAlias(alias, valid) from None
+        if error.message == NO_DEFAULT:  # the team's family default is unset: our copy, never the error text
+            raise NoModelSet(alias) from None
         raise
     label = brand if brand and "/" not in brand else found.get("name") or found["model"]
     return found["model"], label
@@ -110,6 +125,8 @@ async def _models(intent: Models, turn: Turn, deps: Deps) -> str:
         try:
             model, label = await resolve_alias(row, alias, turn.services.preferences)
             now = f"{label} ({model})"
+        except NoModelSet:
+            now = f"{row.alias_map[alias]} (no model set yet)"
         except (UnknownAlias, OpenRouterError):
             now = f"{row.alias_map[alias]} (not available right now)"
         lines.append(f"• {alias} → {now}")

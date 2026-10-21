@@ -104,8 +104,22 @@ def _register_images(server: MCPServer, settings: HostedSettings, target, servic
     return {"assets": assets, "transfers": transfers, "sweeper": sweeper}
 
 
+def _build_slack(settings: HostedSettings, target, keys, provisioner, admission: Limits, health: Health,
+                 transport, options: dict | None):
+    """The Slack bot, hooked to the owner lock; None (and nothing Slack imported) unless enabled."""
+    if not (settings.slack and settings.slack.enabled):
+        return None
+    from .slack.wiring import build_slack
+
+    slack = build_slack(settings, target, keys, provisioner, admission, transport=transport, **(options or {}))
+    health.lock.on_gain.append(slack.on_gain)
+    health.lock.on_lose.append(slack.on_lose)
+    return slack
+
+
 def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transport=None,
-                        limits: dict | None = None) -> MCPServer:
+                        limits: dict | None = None, slack: dict | None = None) -> MCPServer:
+    """`slack` passes test doubles to `build_slack` (`api`, `client_factory`)."""
     target = storage_target(settings.database_url)
     keys = StudentKeyStore(target, Vault(settings.vault_keys))
     # Without a management key the server still runs; only new student keys are refused.
@@ -120,6 +134,7 @@ def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transpor
                                   summary_model=settings.summary_model)
     health = Health(target, gate, maintenance=settings.maintenance, asset_dir=settings.asset_dir)
     shares = AdvisorShares(ByWorkspace(workspaces, settings.profile_claim, gate, "jobs"))
+    slack_app = _build_slack(settings, target, keys, provisioner, admission, health, transport, slack)
 
     images: dict = {}
 
@@ -132,6 +147,8 @@ def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transpor
             yield {}
         finally:
             gate.reason = SHUTTING_DOWN
+            if slack_app is not None:
+                await slack_app.close()
             if "sweeper" in images:
                 await images["sweeper"].stop()
             for item in workspaces.values():
@@ -170,5 +187,5 @@ def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transpor
         images.update(_register_images(server, settings, target, services, gate, admission))
     health.register(server)
     server.hosted = {"keys": keys, "provisioner": provisioner, "workspaces": workspaces, "gate": gate, "health": health,
-                     **images}
+                     "slack": slack_app, **images}
     return annotate(server)

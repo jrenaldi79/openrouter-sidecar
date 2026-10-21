@@ -137,7 +137,7 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/tool&#95;annotations.py](../src/openrouter_image_mcp/tool_annotations.py)
 - [src/openrouter&#95;image&#95;mcp/tool&#95;support.py](../src/openrouter_image_mcp/tool_support.py)
 
-### [src/openrouter&#95;image&#95;mcp/hosted](../src/openrouter_image_mcp/hosted/CLAUDE.md): Hosted remote MCP (Railway): authenticated multi-tenant Streamable HTTP server with Auth0 verification, per-principal provisioned OpenRouter keys and vault, cohort workspaces, limits, image assets with signed uploads and downloads, health, sweeper and retention.
+### [src/openrouter&#95;image&#95;mcp/hosted](../src/openrouter_image_mcp/hosted/CLAUDE.md): Hosted remote MCP (Railway): authenticated multi-tenant Streamable HTTP server with Auth0 verification, per-principal provisioned OpenRouter keys and vault, cohort workspaces, limits, image assets with signed uploads and downloads, health, sweeper, retention, and the Slack bot wired to the owner lock.
 
 - [src/openrouter&#95;image&#95;mcp/hosted/&#95;&#95;init&#95;&#95;.py](../src/openrouter_image_mcp/hosted/__init__.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/account.py](../src/openrouter_image_mcp/hosted/account.py)
@@ -171,7 +171,7 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/hosted/skills/architectural-render-polish.prompt-template.md](../src/openrouter_image_mcp/hosted/skills/architectural-render-polish.prompt-template.md)
 - [src/openrouter&#95;image&#95;mcp/hosted/skills/openrouter-image.md](../src/openrouter_image_mcp/hosted/skills/openrouter-image.md)
 
-### [src/openrouter&#95;image&#95;mcp/hosted/slack](../src/openrouter_image_mcp/hosted/slack/CLAUDE.md): Slack Sidecar: the @sidecar bot inside the hosted server (Socket Mode): settings, Slack I/O, registry, team identity, parsing, context, channel tools, payload, the job runner, sandbox outputs, the usage report, the request flow, the Socket Mode gateway and restart recovery.
+### [src/openrouter&#95;image&#95;mcp/hosted/slack](../src/openrouter_image_mcp/hosted/slack/CLAUDE.md): Slack Sidecar: the @sidecar bot inside the hosted server (Socket Mode): settings, Slack I/O, registry, team identity, parsing, context, channel tools, payload, the job runner, sandbox outputs, the usage report, the request flow, the Socket Mode gateway, restart recovery and the wiring into the hosted server.
 
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/&#95;&#95;init&#95;&#95;.py](../src/openrouter_image_mcp/hosted/slack/__init__.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/api.py](../src/openrouter_image_mcp/hosted/slack/api.py)
@@ -200,6 +200,7 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/threads.py](../src/openrouter_image_mcp/hosted/slack/threads.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/usage.py](../src/openrouter_image_mcp/hosted/slack/usage.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/welcome.py](../src/openrouter_image_mcp/hosted/slack/welcome.py)
+- [src/openrouter&#95;image&#95;mcp/hosted/slack/wiring.py](../src/openrouter_image_mcp/hosted/slack/wiring.py)
 
 ### [src/openrouter&#95;image&#95;mcp/ui](../src/openrouter_image_mcp/ui/CLAUDE.md): Generated MCP App bundles: one self-contained HTML file per app, built from ui/src by ui/build.mjs, (preview, advisor, settings, uploader), plus the Northwestern logo. Never edit by hand.
 

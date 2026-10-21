@@ -127,6 +127,17 @@ class Dispatcher:
         while self._tasks:
             await asyncio.gather(*list(self._tasks), return_exceptions=True)
 
+    async def shutdown(self, timeout_s: float) -> None:
+        """At server shutdown: give running jobs `timeout_s`, then cancel the rest (the runner interrupts their
+        rows, so restart recovery has nothing half-done to guess about)."""
+        pending = list(self._tasks)
+        if not pending:
+            return
+        _, still = await asyncio.wait(pending, timeout=timeout_s)
+        for task in still:
+            task.cancel()
+        await asyncio.gather(*still, return_exceptions=True)
+
     async def _gate(self, team: str, channel: str, user: str, say: Say) -> ChannelRow | None:
         row = self.deps.registry.get(team, channel)
         if row is None:

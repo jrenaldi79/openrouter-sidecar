@@ -28,6 +28,8 @@ _PRICE_FIELDS = ("prompt", "completion", "request", "image", "web_search",
                  "internal_reasoning", "input_cache_read", "input_cache_write")
 _SETTINGS_ERROR = "Sidecar settings changed or are unavailable for this sign-in. Refresh settings."
 _MODEL_ERROR = "Choose an available exact advisor model ID; reopen sidecar settings."
+# Matched by the Slack bot (hosted/slack/commands.py) to tell a team its alias has no model yet.
+NO_DEFAULT = "No advisor default selected; reopen sidecar settings."
 
 
 def model_family(model_id):
@@ -261,7 +263,7 @@ class PreferenceService:
         else:
             selected, source = model, "explicit"
         if not selected:
-            raise BadRequestError("No advisor default selected; reopen sidecar settings.")
+            raise BadRequestError(NO_DEFAULT)
         models = {row["id"]: row for row in await self._catalog(key, scope)}
         self.advisors._current(scope)
         if selected not in models or family is not None and models[selected]["family"] != family:

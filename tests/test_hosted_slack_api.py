@@ -115,6 +115,21 @@ async def test_pins_members_user_info():
     assert (await api.channel_info("C1"))["id"] == "C1"
 
 
+async def test_bot_user_id_from_auth_test():
+    api = SdkSlackApi(StubClient({"auth_test": {"ok": True, "user_id": "UBOT"}}))
+    assert await api.bot_user_id() == "UBOT"
+    with pytest.raises(SlackCallError) as caught:
+        await SdkSlackApi(StubClient({"auth_test": {"ok": True}})).bot_user_id()
+    assert caught.value.code == "no_user_id"
+
+
+async def test_aclose_closes_the_download_client():
+    http = httpx.AsyncClient()
+    await SdkSlackApi(StubClient(), http=http).aclose()
+    assert http.is_closed
+    await SdkSlackApi(StubClient()).aclose()  # nothing to close
+
+
 async def test_members_follows_cursor():
     pages = iter([{"members": ["U1"], "response_metadata": {"next_cursor": "n"}},
                   {"members": ["U2"], "response_metadata": {"next_cursor": ""}}])

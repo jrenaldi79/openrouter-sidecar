@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 from ...errors import OpenRouterError
 from .api import SlackCallError
-from .commands import Turn, UnknownAlias, resolve_alias, unknown_alias_text
+from .commands import NoModelSet, Turn, UnknownAlias, resolve_alias, unknown_alias_text
 from .context import Context
 from .context_files import is_text_file
 from .parser import Ask, Compare, wants_sandbox
@@ -65,6 +65,9 @@ async def _ask_picks(intent: Ask, turn: Turn, deps: Deps, last: ThreadChat | Non
     for alias in aliases:
         try:
             model, label = await resolve_alias(turn.row, alias, turn.services.preferences)
+        except NoModelSet as error:  # the instructor hasn't set this alias's model for the team yet
+            await say(error.text)
+            continue
         except OpenRouterError as error:  # a mapped brand the catalog can't serve now: the others still answer
             log.warning("slack alias resolution failed: %s", type(error).__name__)
             await _cannot_start(turn, alias, turn.row.alias_map.get(alias, alias), say)
