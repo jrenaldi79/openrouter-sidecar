@@ -112,15 +112,15 @@ class AdvisorClient:
                         raise ProviderError(redact(
                             f"Sandbox file download failed (HTTP {response.status_code})."))
                     declared = response.headers.get("content-length", "")
-                    if declared.isdigit() and int(declared) > max_bytes:
+                    if declared.isascii() and declared.isdigit() and int(declared) > max_bytes:
                         raise too_big
                     async for chunk in response.aiter_bytes():
                         total += len(chunk)
                         if total > max_bytes:
                             raise too_big
                         chunks.append(chunk)
-        except (httpx.TransportError, TimeoutError):
-            raise ProviderError("Sandbox file download could not be completed.") from None
+        except (httpx.HTTPError, TimeoutError):
+            raise ProviderError(redact("Sandbox file download could not be completed.")) from None
         return b"".join(chunks)
 
     async def respond_stream(self, key: str, payload: dict, on_text, check_event) -> dict:

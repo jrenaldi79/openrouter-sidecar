@@ -208,3 +208,76 @@ async def test_caller_payload_not_mutated_and_string_input_converted():
     user = {"type": "message", "role": "user", "content": "hello"}
     assert script.inputs()[0] == [user]
     assert script.inputs()[1][0] == user
+
+
+async def test_runner_raising_loop_stopped_propagates_with_partial_totals():
+    async def stop(name, arguments):
+        raise LoopStopped
+
+    script = Script(body(call(), cost=0.25), body(answer()))
+    with pytest.raises(LoopStopped) as caught:
+        await run_tool_loop(script.client, KEY, payload(), {"lookup": stop})
+    assert caught.value.items == [call()] and caught.value.cost_usd == pytest.approx(0.25)
+    assert len(script.requests) == 1
+
+
+async def test_should_stop_carries_items_and_cost_so_far():
+    script = Script(body(SEARCH, call(), cost=0.5), body(answer()))
+    stops = iter([False, True])
+    with pytest.raises(LoopStopped) as caught:
+        await run_tool_loop(script.client, KEY, payload(), {"lookup": echo},
+                            should_stop=lambda: next(stops))
+    assert caught.value.items == [SEARCH, call()] and caught.value.cost_usd == 0.5
+
+
+async def test_malformed_item_next_to_valid_call_is_dropped_from_replay():
+    bad = {"type": "function_call", "name": "lookup", "arguments": "{}"}
+    script = Script(body(bad, call()), body(answer()))
+    await run_tool_loop(script.client, KEY, payload(), {"lookup": echo})
+    second = script.inputs()[1]
+    assert bad not in second and call() in second
+    assert [i["call_id"] for i in second if i["type"] == "function_call_output"] == ["call_1"]
+
+
+async def test_only_dropped_calls_end_the_loop():
+    bad = {"type": "function_call", "name": "lookup", "arguments": "{}"}
+    script = Script(body(bad))
+    result = await run_tool_loop(script.client, KEY, payload(), {"lookup": echo})
+    assert result.rounds == 1 and len(script.requests) == 1
+
+
+async def test_non_string_name_with_valid_id_gets_malformed_output():
+    odd = {"type": "function_call", "name": 7, "call_id": "c9", "arguments": "{}"}
+    script = Script(body(odd), body(answer()))
+    await run_tool_loop(script.client, KEY, payload(), {"lookup": echo})
+    second = script.inputs()[1]
+    assert odd in second
+    assert second[-1] == {"type": "function_call_output", "call_id": "c9",
+                          "output": "Error: malformed call"}
+
+
+async def test_duplicate_call_id_runs_first_and_replays_once():
+    ran = []
+
+    async def lookup(name, arguments):
+        ran.append(arguments)
+        return "ok"
+
+    first, second_call = call(args='{"n":1}'), call(args='{"n":2}')
+    script = Script(body(first, second_call), body(answer()))
+    await run_tool_loop(script.client, KEY, payload(), {"lookup": lookup})
+    replay = script.inputs()[1]
+    assert ran == ['{"n":1}']
+    assert replay.count(first) == 1 and second_call not in replay
+    assert len([i for i in replay if i["type"] == "function_call_output"]) == 1
+
+
+async def test_tool_failure_log_has_type_but_no_message_or_traceback(caplog):
+    async def boom(name, arguments):
+        raise ValueError("student essay text")
+
+    script = Script(body(call()), body(answer()))
+    with caplog.at_level("WARNING"):
+        await run_tool_loop(script.client, KEY, payload(), {"lookup": boom})
+    assert "ValueError" in caplog.text and "student essay text" not in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)

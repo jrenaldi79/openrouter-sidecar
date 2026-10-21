@@ -41,6 +41,40 @@ async def test_container_file_size_cap_on_body():
     await client.aclose()
 
 
+class Chunks(httpx.AsyncByteStream):
+    """A streamed body without Content-Length, optionally failing after its chunks."""
+
+    def __init__(self, chunks, error=None):
+        self.chunks, self.error = chunks, error
+
+    async def __aiter__(self):
+        for chunk in self.chunks:
+            yield chunk
+        if self.error:
+            raise self.error
+
+
+async def test_container_file_stream_cap_without_content_length():
+    def handle(request):
+        return httpx.Response(200, stream=Chunks([b"x" * 6, b"x" * 6]))
+
+    client = make(handle)
+    with pytest.raises(ProviderError):
+        await client.container_file(KEY, "c", "f", max_bytes=10)
+    assert await client.container_file(KEY, "c", "f", max_bytes=12) == b"x" * 12
+    await client.aclose()
+
+
+async def test_container_file_other_httpx_errors_become_provider_error():
+    def handle(request):
+        return httpx.Response(200, stream=Chunks([b"x"], error=httpx.DecodingError("bad")))
+
+    client = make(handle)
+    with pytest.raises(ProviderError, match="could not be completed"):
+        await client.container_file(KEY, "c", "f", max_bytes=10)
+    await client.aclose()
+
+
 async def test_container_file_content_length_over_cap_rejected():
     def handle(request):
         return httpx.Response(200, headers={"content-length": "5000"}, content=b"x" * 5000)

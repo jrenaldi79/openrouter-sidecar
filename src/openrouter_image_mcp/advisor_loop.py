@@ -26,7 +26,16 @@ ItemsCallback = Callable[[list[dict]], Awaitable[None]]
 
 
 class LoopStopped(Exception):
-    """`should_stop()` was set before a request."""
+    """`should_stop()` was set before a request, or a function raised it.
+
+    `items` and `cost_usd` cover the requests made before the stop (cost is None when
+    any of them lacked a numeric cost).
+    """
+
+    def __init__(self, items: list[dict] | None = None, cost_usd: float | None = None):
+        super().__init__("Tool loop stopped.")
+        self.items = items if items is not None else []
+        self.cost_usd = cost_usd
 
 
 @dataclass
@@ -56,22 +65,40 @@ def _starting_input(value) -> list[dict]:
     return copy.deepcopy(value)
 
 
-def _callable_items(output: list[dict]) -> list[dict]:
-    return [item for item in output if item.get("type") == "function_call"
-            and isinstance(item.get("name"), str) and isinstance(item.get("call_id"), str)]
+def _plan_round(output: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Split a response into (items to replay, calls to answer).
+
+    A function_call is replayed only when the API can match it: it needs a string
+    `call_id`, and a repeated `call_id` in one response is dropped after the first.
+    """
+    replay, calls, seen = [], [], set()
+    for item in output:
+        if item.get("type") == "function_call":
+            call_id = item.get("call_id")
+            if not isinstance(call_id, str) or call_id in seen:
+                continue
+            seen.add(call_id)
+            calls.append(item)
+        replay.append(item)
+    return replay, calls
 
 
 async def _run_one(functions: Mapping[str, FunctionRunner], item: dict) -> dict:
-    name, runner = item["name"], functions.get(item["name"])
-    if runner is None:
+    name = item.get("name")
+    runner = functions.get(name) if isinstance(name, str) else None
+    if not isinstance(name, str):
+        output = "Error: malformed call"
+    elif runner is None:
         output = "Error: unknown tool"
     else:
         arguments = item.get("arguments")
         try:
             output = await runner(name, arguments if isinstance(arguments, str) else "{}")
-        except Exception as exc:  # a tool failure is an answer, not a crash
-            # Type name only: exception text may carry secrets or student content.
-            log.warning("Advisor tool %s failed (%s)", name, type(exc).__name__, exc_info=True)
+        except LoopStopped:
+            raise
+        except Exception as exc:  # noqa: BLE001 - a tool failure is an answer, not a crash
+            # Name and type only: exception text may carry student content or secrets.
+            log.warning("Advisor tool %s failed (%s)", name, type(exc).__name__)
             output = f"Error: {type(exc).__name__}"
     return {"type": "function_call_output", "call_id": item["call_id"], "output": output}
 
@@ -81,14 +108,20 @@ async def run_tool_loop(
     *, on_items: ItemsCallback | None = None, should_stop: Callable[[], bool] = lambda: False,
     max_rounds: int = MAX_ROUNDS,
 ) -> LoopResult:
-    """Run `payload` until the model answers without calling one of `functions`.
+    """Run `payload` until the model answers without calling a function.
 
     The caller's payload is not modified. After `max_rounds` rounds that still called
     functions, one more request runs with `tool_choice: "none"` and `FINAL_NOTE`.
+    `LoopStopped` carries the items and cost of the requests made so far. A
+    `ProviderError` mid-loop discards the partial cost; callers see the items that
+    arrived through `on_items`.
     """
     history = _starting_input(payload.get("input", []))
     items: list[dict] = []
     costs: list[float | None] = []
+
+    def total() -> float | None:
+        return None if None in costs else sum(costs)
 
     async def request(extra: dict | None = None) -> tuple[dict, list[dict]]:
         if should_stop():
@@ -102,17 +135,20 @@ async def run_tool_loop(
             await on_items(output)
         return body, output
 
-    def result(body: dict) -> LoopResult:
-        total = None if None in costs else sum(costs)
-        return LoopResult(body, items, len(costs), total)
+    async def drive() -> LoopResult:
+        for _ in range(max_rounds):
+            body, output = await request()
+            replay, calls = _plan_round(output)
+            if not calls:
+                return LoopResult(body, items, len(costs), total())
+            history.extend(replay)
+            history.extend([await _run_one(functions, call) for call in calls])
+        note = {"type": "message", "role": "user", "content": FINAL_NOTE}
+        body, _ = await request({"tool_choice": "none", "input": [note]})
+        return LoopResult(body, items, len(costs), total())
 
-    for _ in range(max_rounds):
-        body, output = await request()
-        calls = _callable_items(output)
-        if not calls:
-            return result(body)
-        history.extend(output)
-        history.extend([await _run_one(functions, call) for call in calls])
-    note = {"type": "message", "role": "user", "content": FINAL_NOTE}
-    body, _ = await request({"tool_choice": "none", "input": [note]})
-    return result(body)
+    try:
+        return await drive()
+    except LoopStopped as stop:
+        stop.items, stop.cost_usd = list(items), total()
+        raise
