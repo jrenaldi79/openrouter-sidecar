@@ -83,6 +83,7 @@ class ThreadMap:
                     ("thr_" + secrets.token_hex(16), *key, chat_id, self.clock()))
                 if cursor.rowcount == 1:
                     return
+        raise RuntimeError("Could not link the thread to its chat; the mapping was not saved.")
 
     def seen(self, scope: Scope, chat_id: str, ts: str) -> None:
         """Advance the newest message the chat has seen; never move it back."""
@@ -92,10 +93,12 @@ class ThreadMap:
                                (scope.owner, scope.workspace, chat_id)).fetchone()
             if found is None or _ts_value(ts) <= _ts_value(found["last_seen_ts"]):
                 return
-            # Guarded on the value just read, so a concurrent newer ts is never overwritten.
-            db.execute(f"UPDATE slack_threads SET last_seen_ts=? WHERE {where} "
-                       "AND (last_seen_ts IS ? OR last_seen_ts=?)",
-                       (ts, scope.owner, scope.workspace, chat_id, found["last_seen_ts"], found["last_seen_ts"]))
+            # Guarded on the value just read, so a concurrent newer ts is never overwritten. NULL and a
+            # value are separate statements: Postgres rejects a bound parameter after IS.
+            previous = found["last_seen_ts"]
+            guard, extra = ("last_seen_ts IS NULL", ()) if previous is None else ("last_seen_ts=?", (previous,))
+            db.execute(f"UPDATE slack_threads SET last_seen_ts=? WHERE {where} AND {guard}",
+                       (ts, scope.owner, scope.workspace, chat_id, *extra))
 
     def answered(self, scope: Scope, chat_id: str) -> None:
         with self._db() as db:
