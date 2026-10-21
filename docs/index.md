@@ -173,7 +173,9 @@ Filenames grouped by folder; each heading links that folder's note.
 ### [src/openrouter&#95;image&#95;mcp/hosted/admin](../src/openrouter_image_mcp/hosted/admin/CLAUDE.md): The /admin web page: MPD admins sign in with Auth0 (sidecar:admin) and register and edit Slack channels; settings, Auth0 login, sessions, audit, views and routes.
 
 - [src/openrouter&#95;image&#95;mcp/hosted/admin/&#95;&#95;init&#95;&#95;.py](../src/openrouter_image_mcp/hosted/admin/__init__.py)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/audit.py](../src/openrouter_image_mcp/hosted/admin/audit.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/admin/copy.py](../src/openrouter_image_mcp/hosted/admin/copy.py)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/sessions.py](../src/openrouter_image_mcp/hosted/admin/sessions.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/admin/settings.py](../src/openrouter_image_mcp/hosted/admin/settings.py)
 
 ### [src/openrouter&#95;image&#95;mcp/hosted/skills](../src/openrouter_image_mcp/hosted/skills/CLAUDE.md): Hosted variants of the class skills, served to claude.ai and Desktop as MCP prompts and skill:// resources.

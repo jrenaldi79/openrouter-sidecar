@@ -12,9 +12,14 @@ read_when: "Changing or adding files in src/openrouter_image_mcp/hosted/admin/."
 - `settings.py`: `AdminSettings` and `load_admin_settings` (page on unless `SIDECAR_ADMIN_ENABLED` is false, 0 or no;
   Auth0 client id and secret of at least 32 characters; callback and logout URLs; Secure cookies unless the origin is
   local http). Unset client values mean "not configured", not an error. `HostedSettings.admin` carries it.
-- Being built (`docs/superpowers/plans/2026-10-21-slack-admin.md`): `sessions.py` (pending logins and sessions), `audit.py` (the change log), `oidc.py` (Auth0 sign-in),
-  `views.py` with `templates/` and `public/` (the Interview Coach admin design system), `forms.py`, `routes.py` and
-  `wiring.py`. The Slack side is `hosted/slack/channel_admin.py`.
+- `sessions.py`: pending Auth0 logins (single use, 10 minutes, at most 500) and signed-in sessions (2 hours idle,
+  12 hours absolute), both stored by the SHA-256 of the cookie or `state`; the clock is injected.
+- `audit.py`: the `admin_audit` change log. `insert(db, ...)` writes on the caller's connection so a registry write
+  and its entry share one transaction (the caller runs `audit.SCHEMA` first); `AdminAudit` records on its own
+  transaction and reads the newest entries.
+- Being built (`docs/superpowers/plans/2026-10-21-slack-admin.md`): `oidc.py` (Auth0 sign-in), `views.py` with
+  `templates/` and `public/` (the Interview Coach admin design system), `forms.py`, `routes.py` and `wiring.py`. The
+  Slack side is `hosted/slack/channel_admin.py`.
 
 **Invariants:**
 
