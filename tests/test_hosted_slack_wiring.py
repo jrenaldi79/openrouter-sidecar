@@ -141,7 +141,7 @@ async def test_built_and_started_on_gain(world):
     await asyncio.sleep(0)
     assert [c.calls for c in world.clients] == [["connect"]]
     assert world.clients[0].app_token == world.settings.slack.app_token
-    assert await world.app.recovery_task == {"posted": 1, "closed": 0}
+    assert await world.app.recovery_task == {"posted": 1, "closed": 0, "waiting": 0}
     assert world.slack.posts[-1]["text"].startswith("Saved answer.")
     with AdvisorResults(AdvisorStore(world.target)).connection() as db:
         assert db.execute("SELECT slack_posted_at FROM advisor_jobs WHERE id=?", (job_id,)).fetchone()["slack_posted_at"]

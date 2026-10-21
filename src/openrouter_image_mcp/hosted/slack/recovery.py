@@ -1,7 +1,8 @@
 """Restart recovery: a replica that gains the owner lock finishes what the dead owner left behind.
 
 Finished answers that were never posted are posted; jobs still active after their heartbeat lapsed are
-closed with a note in Slack. Nothing is retried. Every row is handled under its own team (the sweep is
+closed with a note in Slack, and those whose heartbeat still looks live are counted as `waiting`, so the
+caller can look again once it would have lapsed (`SlackApp` does, once). Nothing is retried. Every row is handled under its own team (the sweep is
 cross-team), and a row that is not a registered Slack team's is skipped and logged. `recover` never raises.
 """
 
@@ -76,7 +77,7 @@ class _Recovery:
     def __init__(self, jobs, results_for, api, registry, threads, process_id, clock):
         self.jobs, self.results_for, self.api = jobs, results_for, api
         self.registry, self.threads, self.process_id, self.clock = registry, threads, process_id, clock
-        self.counts = {"posted": 0, "closed": 0}
+        self.counts = {"posted": 0, "closed": 0, "waiting": 0}
 
     async def row(self, row: dict) -> None:
         try:
@@ -93,7 +94,8 @@ class _Recovery:
 
     async def _close(self, row: dict, scope: Scope) -> None:
         if row["heartbeat_until"] > self.clock():
-            return  # a live owner is still running it (takeover window)
+            self.counts["waiting"] += 1  # a live owner may still run it (takeover window), or a dead one
+            return
         # Acts only when the row's own process still holds it: that is the orphan's process id.
         self.results_for(row["workspace"]).interrupt(scope, row["id"], row["process_id"], error=RESTART_ERROR)
         self.counts["closed"] += 1
@@ -127,10 +129,10 @@ class _Recovery:
 async def recover(jobs: SlackJobs, results_for: Callable[[str], AdvisorResults], api: SlackApi,
                   registry: ChannelRegistry, threads: ThreadMap, *, process_id: str,
                   clock: Callable[[], float] = time.time) -> dict:
-    """Finish what other processes left behind; returns `{"posted": n, "closed": m}`.
+    """Finish what other processes left behind; returns `{"posted": n, "closed": m, "waiting": w}`.
 
     `results_for(workspace_id)` gives the advisor results of that cohort. An active row counts as
-    orphaned only once its `heartbeat_until` has lapsed by `clock`.
+    orphaned only once its `heartbeat_until` has lapsed by `clock`; until then it is `waiting`.
     """
     work = _Recovery(jobs, results_for, api, registry, threads, process_id, clock)
     try:

@@ -19,6 +19,7 @@ from slack_sdk.web.async_client import AsyncWebClient
 
 from ...advisor import AdvisorService
 from ...advisor_client import AdvisorClient
+from ...advisor_results import HEARTBEAT_S as ROW_HEARTBEAT_S
 from ...advisor_results import AdvisorResults
 from ...advisor_store import AdvisorStore
 from ...config import ADVISOR_MAX_TIMEOUT_S, COHORT_WORKSPACES
@@ -44,6 +45,9 @@ AUTH_TEST_S = 10.0  # cap on one auth.test attempt
 START_RETRY_S = 5.0  # first wait after a failed auth.test; doubles each time
 START_RETRY_MAX_S = 300.0  # the longest wait between attempts
 DRAIN_S = 10.0  # how long shutdown waits for running answers before cancelling them
+# A job row's heartbeat runs at most ROW_HEARTBEAT_S ahead, so a row that still looks live this long after
+# the first sweep belongs to a live owner; one whose owner died has lapsed by then.
+RECOVERY_RECHECK_S = ROW_HEARTBEAT_S + 15.0
 
 Closer = Callable[[], Awaitable[None]]
 
@@ -59,7 +63,8 @@ class SlackApp:
 
     `on_gain` only starts one held start task, so the lock hook returns at once. That task retries
     `auth.test` with backoff until it learns the bot's user id, then starts restart recovery (one task at a
-    time) and the gateway. After `close()` nothing starts again.
+    time) and the gateway. Recovery sweeps a second time `RECOVERY_RECHECK_S` later when the first sweep left
+    rows that still looked live; `on_lose` and `close` cancel that wait. After `close()` nothing starts again.
     """
 
     def __init__(self, gateway: Gateway, dispatcher: Dispatcher, services: dict[str, SlackServices],
@@ -104,6 +109,17 @@ class SlackApp:
             log.error("Slack start failed (%s); it is retried on the next lock gain", type(error).__name__)
 
     async def _recover(self) -> dict:
+        """One sweep, and a second once the heartbeats the first one found live would have lapsed: a crashed
+        owner's rows look live for up to a minute, and nothing else would close them or edit their messages."""
+        counts = await self._sweep()
+        if counts.get("waiting"):
+            await self.sleep(RECOVERY_RECHECK_S)
+            again = await self._sweep()
+            counts = {name: counts.get(name, 0) + again.get(name, 0) for name in ("posted", "closed")} | {
+                "waiting": again.get("waiting", 0)}
+        return counts
+
+    async def _sweep(self) -> dict:
         try:
             counts = await self.recover_once()
         except Exception as error:  # noqa: BLE001 - nobody awaits this task: log the type, never the message
