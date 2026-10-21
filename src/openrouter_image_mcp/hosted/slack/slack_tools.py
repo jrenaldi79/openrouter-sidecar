@@ -38,7 +38,7 @@ PAGE = 200
 THREAD_PAGES = 10
 LABEL_QUERY_CHARS = 40
 TOOL_ERROR = "Tool error"
-_TS = re.compile(r"\d{1,12}\.\d{1,8}")
+_TS = re.compile(r"[0-9]{1,12}\.[0-9]{1,8}")  # not \d: that accepts non-ASCII digits
 
 _TS_PROP = {"type": "string", "description": "A Slack message timestamp such as 1700000000.000100."}
 _LIMIT_PROP = {"type": "integer", "description": f"How many messages to return (1 to {READ_LIMIT})."}
@@ -186,7 +186,7 @@ class ChannelTools:
         hits = [m for m in searched if all(t in decode_entities(m.text).lower() for t in terms)]
         shown = sorted(hits, key=lambda m: ts_key(m.ts))[-limit:]
         unshown = len(hits) - len(shown)
-        out = await self._output(shown, lambda _kept, cut: _search_notes(unshown + cut, searched, exhausted))
+        out = await self._output(shown, lambda _kept, cut: _search_notes(unshown, cut, searched, exhausted))
         return out, f"Searched the channel for '{_clip(query)}'"
 
     # --- reading ----------------------------------------------------------------------------
@@ -207,16 +207,18 @@ class ChannelTools:
                     ) -> tuple[list[SlackMessage], bool]:
         """Top-level channel messages older than `before`, newest first, until `want` are found or the pages run
         out. The flag is True only when the channel's history was read to its start."""
-        found: list[SlackMessage] = []
+        found: dict[str, SlackMessage] = {}  # by ts, like `_thread`: a repeated page must not count twice
         older = _before({"before": before})
         cursor = None
         for _ in range(max_pages):
             page = await self._api.history(self._channel, latest=before, cursor=cursor, limit=page_size)
-            found += [m for m in page.messages if is_channel_message(m) and older(m)]
+            for m in page.messages:
+                if is_channel_message(m) and older(m):
+                    found.setdefault(m.ts, m)
             cursor = page.next_cursor
             if not cursor or len(found) >= want:
                 break
-        return sorted(found, key=lambda m: ts_key(m.ts), reverse=True), cursor is None
+        return sorted(found.values(), key=lambda m: ts_key(m.ts), reverse=True), cursor is None
 
     async def _output(self, shown: list[SlackMessage], footer: Footer) -> str:
         """The preface, `shown` (oldest first) trimmed to CHARS_CAP keeping the newest, then the footer lines."""
@@ -230,10 +232,12 @@ class ChannelTools:
         return format_message(message, name)
 
 
-def _search_notes(unshown: int, searched: list[SlackMessage], exhausted: bool) -> list[str]:
+def _search_notes(over_limit: int, over_cap: int, searched: list[SlackMessage], exhausted: bool) -> list[str]:
     notes = []
-    if unshown:
-        notes.append(f"[{_count(unshown, 'more match', 'more matches')} not shown; narrow the query or raise limit.]")
+    if over_limit:
+        notes.append(f"[{_count(over_limit, 'more match', 'more matches')} not shown; raise limit or narrow the query.]")
+    if over_cap:  # raising `limit` cannot help when the size cap did the cutting
+        notes.append(f"[{_count(over_cap, 'match', 'matches')} left out to fit the size cap; narrow the query.]")
     summary = f"Searched {_count(len(searched), 'message', 'messages')} in this channel"
     if not searched:
         return [*notes, summary + "."]

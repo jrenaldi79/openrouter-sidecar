@@ -113,7 +113,7 @@ class WorkingMessage:
 
     async def start(self) -> str:
         """Post the message; a failure propagates so the runner can handle a failed start."""
-        self._text = f"Sidecar · {self._label} is working…"
+        self._text = escape(f"Sidecar · {self._label} is working…")
         self._ts = await self._api.post(self._channel, self._thread_ts, self._text,
                                         username=f"Sidecar · {self._label}")
         self._last_edit = self._clock()
@@ -121,7 +121,7 @@ class WorkingMessage:
 
     async def step(self, text: str) -> None:
         """Edit when the text changed and the interval has passed; intermediate steps are dropped."""
-        now = self._clock()
+        text, now = escape(text), self._clock()  # step text can carry model-chosen words, so no caller may forget
         if text == self._text or now - self._last_edit < self._every_s:
             return
         self._last_edit = now  # a failed edit also waits out the interval, so a 429 isn't hammered
@@ -129,7 +129,7 @@ class WorkingMessage:
 
     async def finish(self, text: str) -> None:
         """Always edit; never raises."""
-        await self._edit(text)
+        await self._edit(escape(text))
 
     async def _edit(self, text: str) -> None:
         try:

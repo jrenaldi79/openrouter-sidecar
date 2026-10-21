@@ -99,7 +99,7 @@ async def test_search_label_clips_the_query(tools):
 @pytest.mark.parametrize("tool,field", [("read_thread", "thread_ts"), ("read_thread", "before"),
                                         ("read_channel_history", "before")])
 @pytest.mark.parametrize("bad", ["abc", "1700000000", "1700000000.", "1700000000.000001\n", "1.2.3",
-                                 "1234567890123.1", "1.123456789", "1700000000.000001 ", "", 17.5, ["1.1"], {"a": 1}])
+                                 "1234567890123.1", "1.123456789", "1700000000.000001 ", "", "١٢٣.١٢٣", "１２３.１２３", 17.5, ["1.1"], {"a": 1}])
 async def test_bad_timestamp(tools, spy, tool, field, bad):
     out, label = await tools.call(tool, json.dumps({field: bad}))
     assert (out, label) == ("Error: bad timestamp", ERROR)
@@ -140,3 +140,34 @@ async def test_search_default_limit_is_twenty(tools, slack):
     fill(slack, 60, text="same")
     out, _ = await run(tools, "search_channel", query="same", limit="lots")
     assert len(re.findall(r"Ann: same", out)) == 20
+
+
+async def test_search_footer_does_not_suggest_limit_when_the_size_cap_cut(tools, slack):
+    slack.history["C1"] = [msg(n, "match " + "z" * 1_000) for n in range(1, 101)]
+    out, _ = await run(tools, "search_channel", query="match", limit=200)
+    assert "left out to fit the size cap; narrow the query." in out
+    assert "raise limit" not in out
+    slack.history["C1"] = [msg(n, f"match {n}") for n in range(1, 31)]
+    out, _ = await run(tools, "search_channel", query="match", limit=5)
+    assert "raise limit or narrow the query" in out and "size cap" not in out
+
+
+async def test_history_dedupes_a_repeated_page_by_ts(slack):
+    from openrouter_image_mcp.hosted.slack.api import Page
+
+    page = [msg(3), msg(2), msg(1)]
+
+    class Repeating:
+        calls = 0
+
+        async def history(self, channel, *, latest=None, cursor=None, limit=200):
+            Repeating.calls += 1
+            return Page(list(page), "same" if Repeating.calls < 3 else None)
+
+    api = Repeating()
+    out, _ = await run(ChannelTools(api, NameCache(slack), "C1", ROOT), "read_channel_history", limit=10)
+    assert Repeating.calls == 3
+    assert numbers(out) == [1, 2, 3] and "before=" not in out
+    Repeating.calls = 0
+    out, _ = await run(ChannelTools(api, NameCache(slack), "C1", ROOT), "search_channel", query="message")
+    assert "Searched 3 messages" in out

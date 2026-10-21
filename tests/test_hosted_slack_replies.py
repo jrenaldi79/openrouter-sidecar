@@ -169,3 +169,17 @@ def test_working_message_finish_always_edits_and_never_raises():
         return slack.updates
 
     assert [u["text"] for u in asyncio.run(run())] == ["done"]
+
+
+def test_working_message_escapes_every_text_it_posts():
+    async def run():
+        slack, clock = FakeSlack(), Clock()
+        wm = make(slack, clock)
+        await wm.start()
+        clock.now = 20
+        await wm.step("Searched the channel for '<!channel> & <@U1>'")
+        await wm.finish("<!here>")
+        return slack.updates
+
+    texts = [u["text"] for u in asyncio.run(run())]
+    assert texts == ["Searched the channel for '&lt;!channel&gt; &amp; &lt;@U1&gt;'", "&lt;!here&gt;"]
