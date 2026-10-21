@@ -195,7 +195,7 @@ OPENROUTER_MANAGEMENT_KEY=… uv run python scripts/ops/openrouter_keys.py guard
 
 ## 9. Slack Sidecar
 
-The `@sidecar` bot answers in each capstone team's Slack channel with models other than Claude. It runs inside the hosted service over Socket Mode, so it adds no public endpoint. Design: `docs/superpowers/specs/2026-10-21-slack-sidecar-design.md`. It is off until `SIDECAR_SLACK_ENABLED` is set. Run the live acceptance in the spec before a pilot channel.
+The `@Sidecar` bot answers in each capstone team's Slack channel with models other than Claude. It runs inside the hosted service over Socket Mode, so it adds no public endpoint. Design: `docs/superpowers/specs/2026-10-21-slack-sidecar-design.md`. It is off until `SIDECAR_SLACK_ENABLED` is set. Run the live acceptance in the spec before a pilot channel.
 
 **One-time setup, in this order:**
 
@@ -213,20 +213,39 @@ The `@sidecar` bot answers in each capstone team's Slack channel with models oth
    | `SLACK_BOT_TOKEN` | when enabled | `xoxb-…`. The server refuses to start with it missing or without that prefix |
    | `SLACK_APP_TOKEN` | when enabled | `xapp-…`, with the same check |
    | `SIDECAR_SLACK_CONTEXT_CHARS` | no | Channel part of each turn's context. Default 8000 |
-   | `SIDECAR_SLACK_DAILY_CAP_USD` | no | Default daily cap for a team. Default 4 |
-   | `SIDECAR_SLACK_MAX_CONCURRENT` | no | Default concurrent jobs for a team. Default 3 |
+   | `SIDECAR_SLACK_DAILY_CAP_USD` | no | The daily cap `slack_channels.py add` gives a new channel when `--daily-cap` is omitted. Default 4. Read from the environment the script runs in, not by the server |
+   | `SIDECAR_SLACK_MAX_CONCURRENT` | no | The same for `--max-concurrent`. Default 3 |
    | `SIDECAR_SLACK_USER_LIMIT` | no | Requests per Slack user per 10 minutes. Default 10 |
 
    ```bash
    railway variables set SLACK_BOT_TOKEN=… SLACK_APP_TOKEN=… SIDECAR_SLACK_ENABLED=true
    ```
 
-   The bot also needs `DATABASE_URL`, `VAULT_KEYS` and `OPENROUTER_MANAGEMENT_KEY` (§1), because team keys are created and sealed the way student keys are. The owning replica starts Slack in the background: if Slack is down or a token is wrong at start, the server still serves `/health` and `/ready`, and the bot retries `auth.test` every 5 seconds, backing off to 5 minutes. Check the logs for the failure type. Once `auth.test` works, the bot posts any answers a restart left unposted and opens the connection.
+   The bot also needs `DATABASE_URL`, `VAULT_KEYS` and `OPENROUTER_MANAGEMENT_KEY` (§1), because team keys are created and sealed the way student keys are. A missing token, or one without its `xoxb-` or `xapp-` prefix, stops the server from starting. A well-formed token that Slack rejects or has revoked, or a Slack outage, doesn't: the owning replica starts Slack in the background, the server keeps serving `/health` and `/ready`, and the bot retries `auth.test` every 5 seconds, backing off to 5 minutes. Check the logs for the failure type. Once `auth.test` works, the bot posts any answers a restart left unposted and opens the connection.
 
-4. **Register each channel.** Invite `@Sidecar` to the channel first (the guest check reads its members). Then register it with `scripts/ops/slack_channels.py`. It reads `DATABASE_URL` from the environment, plus `SLACK_BOT_TOKEN` for `add` and `update --active`, and `VAULT_KEYS` and `OPENROUTER_MANAGEMENT_KEY` when `--family-default` is given, so run it through `railway run` and it prints no tokens or keys.
+4. **Register each channel.** Invite `@Sidecar` to the channel first (the guest check reads its members). Then register it with `scripts/ops/slack_channels.py`. It prints no tokens or keys.
+
+   **Run the ops scripts from your machine with the environment set by hand.** `${{Postgres.DATABASE_URL}}` (§1) is Railway's private URL, and a laptop can't reach it, so don't rely on `railway run` to supply it. Set `DATABASE_URL` to the Postgres service's public URL (Railway shows it as `DATABASE_PUBLIC_URL` on the Postgres service), and set the rest from your password manager, not from a file or your shell history:
+
+   | Variable | Needed by |
+   |---|---|
+   | `DATABASE_URL` | every script: the public Postgres URL |
+   | `VAULT_KEYS` | `add` or `update` with `--family-default`, and `slack_usage.py`. The same value the server uses |
+   | `OPENROUTER_MANAGEMENT_KEY` | `add` or `update` with `--family-default` (creates the team key) |
+   | `SLACK_BOT_TOKEN` | `add` and `update --active` (the guest check). `slack_usage.py` uses it for names, and falls back to Slack ids without it |
+   | `SIDECAR_SLACK_DAILY_CAP_USD`, `SIDECAR_SLACK_MAX_CONCURRENT` | optional: the defaults `add` uses when `--daily-cap` or `--max-concurrent` is omitted (4 and 3 when unset). `update` never uses them |
 
    ```bash
-   railway run uv run python scripts/ops/slack_channels.py add \
+   read -rs DATABASE_URL && export DATABASE_URL        # the public URL
+   read -rs VAULT_KEYS && export VAULT_KEYS
+   read -rs OPENROUTER_MANAGEMENT_KEY && export OPENROUTER_MANAGEMENT_KEY
+   read -rs SLACK_BOT_TOKEN && export SLACK_BOT_TOKEN
+   ```
+
+   Whether this setup reaches the database and the team key as written is checked during the live acceptance (step 5); fix this section if it doesn't.
+
+   ```bash
+   uv run python scripts/ops/slack_channels.py add \
        --team-id T… --channel C… --label abbott --cohort 2027 \
        --fusion-panel provider/model-a,provider/model-b,provider/model-c \
        --fusion-analyst provider/model-a --subagent-model provider/model-c \
@@ -238,26 +257,26 @@ The `@sidecar` bot answers in each capstone team's Slack channel with models oth
    - `add` refuses a channel that is shared outside the organization or has a guest member, and says why.
    - **`--default-model`** is the channel's default alias, the one used when a mention names no model. It must be one of the channel's aliases (the defaults, plus any added with `--alias`). It is not a model id.
    - **`--family-default family=model-id`** (repeatable) sets which model each brand alias means for this team: `google`, `openai`, `x-ai` or `open_weight`. Each id is checked against the OpenRouter catalog, and the result is saved as the team's model preference. This creates the team's OpenRouter key if it doesn't exist yet. A brand alias whose family has no default answers "This alias has no model set yet. Ask your instructor.", so set every family the team's aliases use. If `add` fails after the key was created, the key stays with no channel row; a retry reuses it.
-   - Other options: `--alias name=Brand` or `name=model-id` (adds or replaces, never removes), `--fetch-allow domain` (domains `web_fetch` may always reach), `--daily-cap` (USD, default 4), `--max-concurrent` (default 3) and `--invoker U…` (limit who can ask).
+   - Other options: `--alias name=Brand` or `name=model-id` (adds or replaces, never removes), `--fetch-allow domain` (domains `web_fetch` may always reach), `--daily-cap` (USD) and `--max-concurrent`, which default to the two environment variables above (4 and 3), and `--invoker U…` (limit who can ask).
 
    Change a channel later with `update`, which takes the label first and then only the options to change:
 
    ```bash
-   railway run uv run python scripts/ops/slack_channels.py update abbott --default-model gpt
-   railway run uv run python scripts/ops/slack_channels.py list
+   uv run python scripts/ops/slack_channels.py update abbott --default-model gpt
+   uv run python scripts/ops/slack_channels.py list
    ```
 
    The first mention in a registered channel posts the welcome and creates the team key. A channel that went inactive (the bot was removed, or a guest joined or the channel was shared) comes back with `update <label> --active`, which re-runs the guest check.
 
 5. **Check one channel** with the live acceptance steps in the design spec before registering the rest. Record the results in the decision record.
 
-**Reading usage.** `@sidecar usage` in a channel posts the team's spend for everyone there. For the same report in a terminal, which also works for an inactive channel:
+**Reading usage.** `@Sidecar usage` in a channel posts the team's spend for everyone there. For the same report in a terminal, which also works for an inactive channel:
 
 ```bash
-railway run uv run python scripts/ops/slack_usage.py --team abbott
+uv run python scripts/ops/slack_usage.py --team abbott
 ```
 
-It needs `DATABASE_URL` and `VAULT_KEYS`, shows names when `SLACK_BOT_TOKEN` is set and Slack ids otherwise, and never prints a key. A team with no key yet (no family default was set and nobody has mentioned the bot) has nothing to report, and the script says so. Team keys show in `scripts/ops/openrouter_keys.py list` and in the OpenRouter dashboard as `Sidecar · <label> · <cohort>`.
+It needs `DATABASE_URL` (the public URL) and `VAULT_KEYS`, set as in step 4, shows names when `SLACK_BOT_TOKEN` is set and Slack ids otherwise, and never prints a key. A team with no key yet (no family default was set and nobody has mentioned the bot) has nothing to report, and the script says so. Team keys show in `scripts/ops/openrouter_keys.py list` and in the OpenRouter dashboard as `Sidecar · <label> · <cohort>`.
 
 **Turning it off.**
 - **One channel:** `slack_channels.py deactivate <label> --reason "..."`. Mentions there are then ignored. Removing the bot from the channel does the same on its own.

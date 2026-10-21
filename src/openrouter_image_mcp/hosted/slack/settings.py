@@ -44,14 +44,22 @@ def _token(env: Mapping[str, str], name: str, prefix: str) -> str:
     return value
 
 
+def registry_defaults(env: Mapping[str, str]) -> tuple[float, int]:
+    """(daily cap in USD, max concurrent jobs) for a new channel row; `slack_channels.py add` uses these
+    when its flags are omitted. Needs no tokens, so the ops script can call it."""
+    return (_number(env, "SIDECAR_SLACK_DAILY_CAP_USD", 4.0, float, 0),
+            _number(env, "SIDECAR_SLACK_MAX_CONCURRENT", 3, int, 0))
+
+
 def load_slack_settings(env: Mapping[str, str]) -> SlackSettings:
     # Deferred: hosted/settings.py imports this module to build HostedSettings.slack.
     from ..settings import _TRUE
 
+    daily_cap_usd, max_concurrent = registry_defaults(env)
     numbers = {
         "context_chars": _number(env, "SIDECAR_SLACK_CONTEXT_CHARS", 8000, int, 0),
-        "daily_cap_usd": _number(env, "SIDECAR_SLACK_DAILY_CAP_USD", 4.0, float, 0),
-        "max_concurrent": _number(env, "SIDECAR_SLACK_MAX_CONCURRENT", 3, int, 0),
+        "daily_cap_usd": daily_cap_usd,
+        "max_concurrent": max_concurrent,
         "user_limit": _number(env, "SIDECAR_SLACK_USER_LIMIT", 10, int, 0),
     }
     if env.get("SIDECAR_SLACK_ENABLED", "").lower() not in _TRUE:

@@ -33,7 +33,7 @@ Use maintained guidance, status, and reference documents for current decisions. 
 | [Slack Sidecar implementation plan](superpowers/plans/2026-10-21-slack-sidecar.md) | pending | Task-by-task TDD plan for the @sidecar Slack bot: registry, team keys, context and tools, tool loop, runner, gateway, ops and live acceptance | Implementing or reviewing the Slack Sidecar (hosted/slack/), or changing the advisor tool loop, team keys or owner lock |
 | [Advisor shared results design](superpowers/specs/2026-10-19-advisor-shared-results-design.md) | maintained | Share with Claude saves the shared answer on the server; Claude reads it with a plain tool and is reminded on its next Sidecar call | When changing how the advisor viewer hands an answer back to Claude |
 | [Provisioned student OpenRouter keys](superpowers/specs/2026-10-19-provisioned-student-keys-design.md) | completed | Design for issuing each student an OpenRouter key automatically from a management key, replacing the OpenRouter linking flow | Changing how the hosted Sidecar gets, stores, checks or removes a student's OpenRouter key, or operating student keys |
-| [Slack Sidecar design](superpowers/specs/2026-10-21-slack-sidecar-design.md) | pending | An @sidecar Slack bot in each capstone team's channel: other models' answers next to Claude Tag, channel context and tools, team keys, memory, sandbox outputs and Fusion | Building or changing the Slack Sidecar, the channel registry, team keys, the advisor tool loop, or sandbox output retrieval |
+| [Slack Sidecar design](superpowers/specs/2026-10-21-slack-sidecar-design.md) | pending | An @Sidecar Slack bot in each capstone team's channel: other models' answers next to Claude Tag, channel context and tools, team keys, memory, sandbox outputs and Fusion | Building or changing the Slack Sidecar, the channel registry, team keys, the advisor tool loop, or sandbox output retrieval |
 
 ## History
 
@@ -174,7 +174,7 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/hosted/skills/architectural-render-polish.prompt-template.md](../src/openrouter_image_mcp/hosted/skills/architectural-render-polish.prompt-template.md)
 - [src/openrouter&#95;image&#95;mcp/hosted/skills/openrouter-image.md](../src/openrouter_image_mcp/hosted/skills/openrouter-image.md)
 
-### [src/openrouter&#95;image&#95;mcp/hosted/slack](../src/openrouter_image_mcp/hosted/slack/CLAUDE.md): Slack Sidecar: the @sidecar bot inside the hosted server (Socket Mode): settings, Slack I/O, registry, team identity, parsing, context, channel tools, payload, the job runner, sandbox outputs, the usage report, the request flow, the Socket Mode gateway, restart recovery and the wiring into the hosted server.
+### [src/openrouter&#95;image&#95;mcp/hosted/slack](../src/openrouter_image_mcp/hosted/slack/CLAUDE.md): Slack Sidecar: the @Sidecar bot inside the hosted server (Socket Mode): settings, Slack I/O, registry, team identity, parsing, context, channel tools, payload, the job runner, sandbox outputs, the usage report, the request flow, the Socket Mode gateway, restart recovery and the wiring into the hosted server.
 
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/&#95;&#95;init&#95;&#95;.py](../src/openrouter_image_mcp/hosted/slack/__init__.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/api.py](../src/openrouter_image_mcp/hosted/slack/api.py)

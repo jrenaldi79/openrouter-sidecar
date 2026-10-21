@@ -13,6 +13,10 @@ is created if needed so the catalog check can run). Prints no tokens or keys.
     uv run python scripts/ops/slack_channels.py deactivate <label> --reason "..."
     uv run python scripts/ops/slack_channels.py list
 
+When `add` is given no `--daily-cap` or `--max-concurrent`, it uses SIDECAR_SLACK_DAILY_CAP_USD and
+SIDECAR_SLACK_MAX_CONCURRENT from the environment the script runs in (4 and 3 when unset). `update` only
+changes the options it is given.
+
 `--default-model` is the channel's default alias, the one Sidecar uses when a mention names none; it must be
 one of the channel's aliases. `--family-default family=model-id` sets the team's model for a family (what an
 alias like `gemini` resolves to), checked against the OpenRouter catalog. `--alias` adds or replaces aliases
@@ -25,6 +29,7 @@ In `update`, put the label first, before the multi-value flags (`--alias`, `--fa
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 from dataclasses import replace
@@ -47,6 +52,7 @@ from openrouter_image_mcp.hosted.slack.registry import (
     ChannelRegistry,
     new_row,
 )
+from openrouter_image_mcp.hosted.slack.settings import registry_defaults
 from openrouter_image_mcp.preferences import ALIASES
 
 ALIAS_NAME = re.compile(r"^[a-z0-9]{1,20}$")
@@ -107,6 +113,11 @@ async def _seed(row, args) -> None:
 def _add_fields(args) -> dict:
     options = _options(args, DEFAULT_ALIASES)
     options.setdefault("alias_map", dict(DEFAULT_ALIASES))
+    # Omitted caps come from the environment this script runs in, with the server's validation (4.0 and 3
+    # when unset). `update` never does this: it changes only what it is given.
+    daily_cap, max_concurrent = registry_defaults(os.environ)
+    options.setdefault("daily_cap_usd", daily_cap)
+    options.setdefault("max_concurrent", max_concurrent)
     return options
 
 

@@ -4,6 +4,7 @@ from openrouter_image_mcp.hosted.settings import load_hosted_settings
 from openrouter_image_mcp.hosted.slack.settings import (
     SlackSettings,
     load_slack_settings,
+    registry_defaults,
 )
 
 BOT = "xoxb-" + "7" * 20
@@ -70,3 +71,20 @@ def test_tokens_not_in_repr():
 def test_hosted_settings_carries_slack():
     assert load_hosted_settings(HOSTED).slack.enabled is False
     assert load_hosted_settings({**HOSTED, **ON}).slack.bot_token == BOT
+
+
+def test_registry_defaults_from_env_and_fallback():
+    assert registry_defaults({}) == (4.0, 3)
+    assert registry_defaults({"SIDECAR_SLACK_DAILY_CAP_USD": "2.5", "SIDECAR_SLACK_MAX_CONCURRENT": "5"}) == (2.5, 5)
+    # The ops script runs without Slack tokens, so these never depend on the enabled flag or tokens.
+    assert registry_defaults({"SIDECAR_SLACK_ENABLED": "true"}) == (4.0, 3)
+
+
+@pytest.mark.parametrize("key,value", [
+    ("SIDECAR_SLACK_DAILY_CAP_USD", "-1"),
+    ("SIDECAR_SLACK_MAX_CONCURRENT", "0"),
+    ("SIDECAR_SLACK_MAX_CONCURRENT", "lots"),
+])
+def test_registry_defaults_validated(key, value):
+    with pytest.raises(ValueError, match=key):
+        registry_defaults({key: value})
