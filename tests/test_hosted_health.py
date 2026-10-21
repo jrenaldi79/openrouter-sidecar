@@ -52,6 +52,17 @@ async def test_health_gate_follows_the_lock_hooks(tmp_path):
     await health.stop()
 
 
+async def test_regain_during_shutdown_keeps_the_shutdown_reason(tmp_path):
+    from openrouter_image_mcp.hosted.workspaces import SHUTTING_DOWN
+
+    health = Health(tmp_path / "db.sqlite3", Gate())
+    await health.start()
+    health.gate.reason = SHUTTING_DOWN
+    await health.lock.on_lose[0]()
+    await health.lock.on_gain[0]()
+    assert health.gate.reason == SHUTTING_DOWN
+
+
 @pytest.mark.pg
 async def test_second_instance_is_unready_until_the_owner_stops(pg_target):
     import asyncio

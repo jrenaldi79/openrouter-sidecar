@@ -46,11 +46,15 @@ class WorkspaceServices:
         await self.advisors.client.aclose()
 
 
+STARTING = "Server is starting; retry shortly."
+SHUTTING_DOWN = "Server is shutting down."
+
+
 class Gate:
     """Admission switch: closed while starting, under maintenance or not the owner."""
 
     def __init__(self):
-        self.reason: str | None = "Server is starting; retry shortly."
+        self.reason: str | None = STARTING
 
     def check(self) -> None:
         if self.reason:

@@ -97,7 +97,7 @@ Tell the "MPD MCP Interview Coach tool" session before any tenant change. Each r
    
    Record the results under "M1 acceptance" in `docs/superpowers/specs/2026-10-18-hosted-spikes.md` (create it on first use).
 
-**One owner at a time.** `/ready` holds a Postgres advisory lock, so a second replica reports not ready. Advisor jobs run in-process. Replicas must stay at 1.
+**One owner at a time.** `/ready` holds a Postgres advisory lock, so a second replica reports not ready. Advisor jobs run in-process. Replicas must stay at 1. The owner checks its lock connection every 15 s and a waiting replica retries every 15 s, so after the owner's connection drops (network cut, Postgres restart) there is a window of up to about 15 s before it notices and stops its background work. Postgres frees the lock when it drops the session, and the owner reconnects and retakes the lock in the same check, so recovery needs no restart. Checks and connects are bounded by the same interval.
 
 **Database connections.** Store calls share one pool per `DATABASE_URL` (`storage.POOL_MAX` = 20 sessions; idle extras close after 5 minutes). The owner lock holds one more dedicated session, so the service needs at most 21 of Railway Postgres's 100. Each pooled session is pinged before reuse, so a Postgres restart costs a reconnect, not failed calls. If the pool is exhausted, a call waits up to 10 s and then fails as a database error. There is no environment knob; change `POOL_MAX` in code if replicas or load change. Advisor result polls take the write lock only when a job's heartbeat has lapsed.
 

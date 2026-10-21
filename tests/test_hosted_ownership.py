@@ -161,3 +161,61 @@ async def test_pg_unreachable_database_never_escapes_or_leaks_the_dsn(caplog):
     await asyncio.sleep(EVERY * 3)
     await lock.stop()
     assert not lock.held and "hunter2" not in caplog.text
+
+
+@pytest.mark.pg
+async def test_pg_unexpected_errors_keep_the_loop_running(pg_target):
+    calls = Calls()
+    lock = _lock(pg_target, calls)
+    await lock.start()
+    real, failures = lock._bounded, []
+
+    async def flaky(fn, *args):
+        if len(failures) < 2 and getattr(fn, "__name__", "") == "execute":
+            failures.append(1)
+            raise RuntimeError("secret detail")
+        return await real(fn, *args)
+
+    lock._bounded = flaky
+    try:
+        await eventually(lambda: calls.count("lose") == 2 and lock.held)
+        assert calls.log == ["gain", "lose", "gain", "lose", "gain"]  # retaken in the same tick
+        assert len(_owner_pids(pg_target)) == 1
+    finally:
+        await lock.stop()
+
+
+@pytest.mark.pg
+async def test_pg_stop_during_a_slow_check_does_not_leak(pg_target, monkeypatch):
+    lock = _lock(pg_target, Calls())
+    await lock.start()
+    assert len(_owner_pids(pg_target)) == 1
+    real = lock._conn.execute
+
+    def slow(*args):
+        import time
+        time.sleep(0.3)
+        return real(*args)
+
+    monkeypatch.setattr(lock._conn, "execute", slow)
+    await asyncio.sleep(EVERY * 2)  # a check is now in flight on the owner connection
+    await lock.stop()
+    await eventually(lambda: _owner_pids(pg_target) == [])
+
+
+async def test_cancelled_lose_still_runs_every_hook(tmp_path):
+    calls = Calls()
+    gate = asyncio.Event()
+
+    async def slow_first():
+        calls.log.append("l1")
+        await gate.wait()
+
+    lock = OwnerLock(tmp_path / "db.sqlite3", every_s=EVERY, on_lose=[slow_first, calls.hook("l2")])
+    await lock.start()
+    stopper = asyncio.ensure_future(lock.stop())
+    await asyncio.sleep(0.05)
+    stopper.cancel()  # cuts stop() short, not the hooks
+    gate.set()
+    await asyncio.gather(stopper, return_exceptions=True)
+    await eventually(lambda: calls.log == ["l1", "l2"])

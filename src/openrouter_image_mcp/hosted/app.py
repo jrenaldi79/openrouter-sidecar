@@ -47,7 +47,7 @@ from .sweeper import Sweeper
 from .uploads import TransferTokens, transfer_routes
 from .vault import Vault
 from .verifier import Auth0Verifier
-from .workspaces import ByWorkspace, Gate, build_workspaces
+from .workspaces import SHUTTING_DOWN, ByWorkspace, Gate, build_workspaces
 
 log = logging.getLogger(__name__)
 
@@ -131,7 +131,7 @@ def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transpor
         try:
             yield {}
         finally:
-            gate.reason = "Server is shutting down."
+            gate.reason = SHUTTING_DOWN
             if "sweeper" in images:
                 await images["sweeper"].stop()
             for item in workspaces.values():

@@ -16,12 +16,14 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from .. import storage
-from .ownership import OWNER_LOCK, OwnerLock  # noqa: F401 - OWNER_LOCK kept importable
-from .workspaces import Gate
+from .ownership import OwnerLock
+from .workspaces import STARTING, Gate
 
 log = logging.getLogger(__name__)
 NOT_OWNER = "Another Sidecar instance is active; this one is not serving."
 MAINTENANCE = "The Sidecar is under maintenance; retry in a few minutes."
+# Reasons Health itself sets; anything else (such as the shutdown notice) is left alone.
+_OWNED = (None, STARTING, MAINTENANCE, NOT_OWNER)
 
 
 class Health:
@@ -33,18 +35,19 @@ class Health:
         self.lock = OwnerLock(target, on_gain=[self._gained], on_lose=[self._lost])
 
     async def _gained(self) -> None:
-        self.gate.reason = MAINTENANCE if self.maintenance else None
+        if self.gate.reason in _OWNED:
+            self.gate.reason = MAINTENANCE if self.maintenance else None
 
     async def _lost(self) -> None:
-        # Keep a more specific reason, such as the shutdown notice.
-        if self.gate.reason in (None, MAINTENANCE):
+        if self.gate.reason in _OWNED:
             self.gate.reason = NOT_OWNER
 
     async def start(self) -> None:
         await self.lock.start()
         if not self.lock.held:
-            self.gate.reason = NOT_OWNER
-            log.error("single-owner lock is held by another instance")
+            if self.gate.reason in _OWNED:
+                self.gate.reason = NOT_OWNER
+            log.error("not the owner (lock held elsewhere or database unreachable)")
 
     async def stop(self) -> None:
         await self.lock.stop()
