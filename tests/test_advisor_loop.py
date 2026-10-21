@@ -14,6 +14,7 @@ from openrouter_image_mcp.advisor_loop import (
     LoopStopped,
     run_tool_loop,
 )
+from openrouter_image_mcp.errors import ProviderError
 
 KEY = "sk-or-v1-alice"
 SEARCH = {"type": "openrouter:web_search", "id": "ws_1", "status": "completed"}
@@ -42,7 +43,8 @@ class Script:
 
     def handle(self, request):
         self.requests.append(json.loads(request.content))
-        return httpx.Response(200, json=self.bodies.pop(0))
+        reply = self.bodies.pop(0)
+        return reply if isinstance(reply, httpx.Response) else httpx.Response(200, json=reply)
 
     def inputs(self):
         return [r["input"] for r in self.requests]
@@ -228,6 +230,13 @@ async def test_should_stop_carries_items_and_cost_so_far():
         await run_tool_loop(script.client, KEY, payload(), {"lookup": echo},
                             should_stop=lambda: next(stops))
     assert caught.value.items == [SEARCH, call()] and caught.value.cost_usd == 0.5
+
+
+async def test_provider_error_mid_loop_carries_items_and_cost_so_far():
+    script = Script(body(SEARCH, call(), cost=0.25), httpx.Response(500))
+    with pytest.raises(ProviderError) as caught:
+        await run_tool_loop(script.client, KEY, payload(), {"lookup": echo})
+    assert caught.value.items == [SEARCH, call()] and caught.value.cost_usd == pytest.approx(0.25)
 
 
 async def test_malformed_item_next_to_valid_call_is_dropped_from_replay():

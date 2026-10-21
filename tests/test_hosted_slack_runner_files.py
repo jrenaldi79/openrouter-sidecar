@@ -5,6 +5,7 @@ from slack_runner_rig import NEWEST, Rig, answer_item, body, call
 
 from openrouter_image_mcp.hosted.slack.context import CONTEXT_PATH, Context
 from openrouter_image_mcp.hosted.slack.payload import FUSION_CHOICE, fusion_tool
+from openrouter_image_mcp.hosted.slack.runner_steps import ChatFullError
 from openrouter_image_mcp.session_files import FilePacket
 
 
@@ -106,3 +107,13 @@ async def test_sandbox_rejects_foreign_container(slack_rig):
     await rig.run(rig.job(chat, mode="sandbox"))
     assert rig.job_rows()[0]["status"] == "failed"
     assert rig.history(chat) == []
+
+
+async def test_full_session_asks_for_restart(slack_rig):
+    """Stored files leave no room even for the context file: restart copy, not "try another model"."""
+    rig = slack_rig
+    chat = rig.chat()
+    rig.services.files.upsert(rig.scope, chat.id, [_file("a.txt", 100_000), _file("b.txt", 99_999)])
+    await rig.run(rig.job(chat, context=_context(_file("c.txt", 10))))
+    assert rig.slack.updates[-1]["text"] == ChatFullError("Gemini").message
+    assert rig.model.requests == [] and rig.job_rows()[0]["status"] == "failed"

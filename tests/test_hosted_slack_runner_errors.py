@@ -7,6 +7,7 @@ import pytest
 from slack_runner_rig import THREAD, Rig, answer_item, body
 
 from openrouter_image_mcp.hosted.slack.replies import budget_text, provider_error_text
+from openrouter_image_mcp.hosted.slack.runner_steps import MODERATED
 
 
 @pytest.fixture
@@ -98,3 +99,31 @@ async def test_unexpected_error_fails_job_without_details(slack_rig, monkeypatch
     assert "secret detail" not in text and "Gemini" in text
     (row,) = rig.job_rows()
     assert row["status"] == "failed" and "secret detail" not in (row["error"] or "")
+
+
+async def test_moderation_block_has_its_own_copy(slack_rig):
+    rig = slack_rig
+    flagged = {"error": {"code": 403, "message": "flagged", "metadata": {"reasons": ["violence"]}}}
+    rig.model.respond = lambda request: httpx.Response(403, json=flagged)
+    await rig.run(rig.job(rig.chat()))
+    assert rig.slack.updates[-1]["text"] == MODERATED != budget_text()
+    assert rig.job_rows()[0]["status"] == "failed"
+
+
+async def test_delivery_marks_posted_before_outputs_and_survives_bookkeeping(slack_rig, monkeypatch):
+    rig = slack_rig
+    seen = []
+
+    class Outputs:
+        async def post(self, turn):
+            seen.append(rig.job_rows()[0]["slack_posted_at"])
+
+    rig.runner.outputs = Outputs()
+
+    def broken(*args):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(rig.threads, "answered", broken)
+    await rig.run(rig.job(rig.chat(sandbox=True, mode="sandbox"), mode="sandbox"))
+    assert len(seen) == 1 and seen[0] is not None
+    assert rig.slack.updates[-1]["text"] == "Sidecar · Gemini answered below."

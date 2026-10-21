@@ -10,6 +10,7 @@ from ...errors import (
     AuthRequiredError,
     ForbiddenError,
     InsufficientCreditsError,
+    ModerationError,
     OpenRouterError,
 )
 from ...session_files import MAX_SESSION_CHARS, FilePacket
@@ -20,6 +21,7 @@ from .registry import ChannelRow
 from .replies import budget_text, key_text, limit_text, provider_error_text
 
 HISTORY_CHARS = 300_000  # the advisor's own cap on stored history plus the new brief
+MODERATED = "The provider flagged this request and didn't answer."
 _PANEL_LISTS = ("responses", "results", "analyses", "panel")
 _FAILED = frozenset({"failed", "error", "incomplete", "cancelled"})
 _MODEL_CHARS = 60
@@ -35,10 +37,11 @@ _STEPS = (
 
 
 class ChatFullError(OpenRouterError):
-    """The chat's stored history plus this brief is over HISTORY_CHARS; `message` is Slack copy."""
+    """The chat is full: its history plus this brief is over HISTORY_CHARS, or its session files can't
+    take the new context. `message` is Slack copy."""
 
     def __init__(self, label: str):
-        super().__init__(f"This thread's {label} chat is too long. Start over with @sidecar !restart.")
+        super().__init__(f"This thread's {label} chat is full. Start over with @sidecar !restart.")
 
 
 def step_label(item: dict) -> str | None:
@@ -105,6 +108,8 @@ def failure_text(error: BaseException | None, label: str, row: ChannelRow, alias
         return limit_text(error, daily_cap_usd=row.daily_cap_usd, max_concurrent=row.max_concurrent)
     if isinstance(error, (InsufficientCreditsError, ForbiddenError)):
         return budget_text()
+    if isinstance(error, ModerationError):
+        return MODERATED
     if isinstance(error, AuthRequiredError) or (isinstance(error, OpenRouterError)
                                                 and error.message == UNAVAILABLE):
         return key_text(error)

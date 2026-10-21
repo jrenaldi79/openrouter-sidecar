@@ -9,8 +9,11 @@ from openrouter_image_mcp.errors import (
     BadRequestError,
     ForbiddenError,
     InsufficientCreditsError,
+    ModerationError,
     ProviderError,
 )
+
+MODERATED = {"error": {"code": 403, "message": "flagged", "metadata": {"reasons": ["self-harm"]}}}
 
 KEY = "sk-or-v1-alice"
 
@@ -124,4 +127,18 @@ async def test_respond_budget_statuses_are_typed(status, error):
     client = make(lambda request: httpx.Response(status))
     with pytest.raises(error, match=f"HTTP {status}"):
         await client.respond(KEY, {"model": "m"})
+    await client.aclose()
+
+
+async def test_respond_moderation_403_is_moderation_error():
+    client = make(lambda request: httpx.Response(403, json=MODERATED))
+    with pytest.raises(ModerationError):
+        await client.respond(KEY, {"model": "m"})
+    await client.aclose()
+
+
+async def test_stream_moderation_403_is_moderation_error():
+    client = make(lambda request: httpx.Response(403, json=MODERATED))
+    with pytest.raises(ModerationError):
+        await client.respond_stream(KEY, {"model": "m"}, None, lambda event: None)
     await client.aclose()

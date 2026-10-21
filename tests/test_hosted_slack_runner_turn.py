@@ -1,9 +1,10 @@
-"""One admitted Slack job (runner_turn.Turn): heartbeat, lost lease, history cap, collected items."""
+"""One admitted Slack job (runner_turn.Turn): heartbeat races, lost lease, cost on failure, history cap."""
 
 import asyncio
 
+import httpx
 import pytest
-from slack_runner_rig import Rig, body, call, wait_until
+from slack_runner_rig import CHANNEL, THREAD, Rig, body, call, wait_until
 
 from openrouter_image_mcp.hosted.slack import runner as runner_module
 from openrouter_image_mcp.hosted.slack.runner_steps import HISTORY_CHARS, ChatFullError
@@ -40,9 +41,7 @@ async def test_lost_key_mid_job_interrupts(slack_rig, keys, monkeypatch):
         await never.wait()
 
     rig.model.respond = respond
-    task = asyncio.create_task(rig.run(rig.job(rig.chat())))
-    with pytest.raises(asyncio.CancelledError):
-        await task
+    await rig.run(rig.job(rig.chat()))  # returns: only the work was cancelled, not the runner
     (row,) = rig.job_rows()
     assert row["status"] == "interrupted" and row["answer"] == ""
     assert rig.slack.updates[-1]["text"] == runner_module.INTERRUPTED
@@ -68,3 +67,75 @@ async def test_tool_error_is_not_a_progress_step(slack_rig):
     assert [u["text"] for u in rig.slack.updates] == ["Sidecar · Gemini answered below."]
     replayed = rig.model.requests[1]["input"][-1]
     assert replayed["output"] == "Error: Slack said ratelimited"
+
+
+def _slow_finish(rig, texts=None):
+    """Hold each final edit long enough for many heartbeat ticks after the row has ended."""
+    real = rig.slack.update
+
+    async def update(channel, ts, text):
+        if texts is None or text in texts:
+            await asyncio.sleep(0.05)
+        await real(channel, ts, text)
+
+    rig.slack.update = update
+
+
+async def test_heartbeat_cannot_cancel_a_stopped_finish(slack_rig, monkeypatch):
+    rig = slack_rig
+    monkeypatch.setattr(runner_module, "HEARTBEAT_S", 0.005)
+    _slow_finish(rig, {"Stopped."})
+
+    def respond(request):
+        rig.runner.stop(rig.scope.owner, CHANNEL, THREAD)
+        return body(call(), cost=0.02)
+
+    rig.model.respond = respond
+    await rig.run(rig.job(rig.chat()))  # returns normally
+    assert rig.slack.updates[-1]["text"] == "Stopped."
+    assert rig.job_rows()[0]["status"] == "interrupted"
+
+
+async def test_heartbeat_cannot_cancel_a_failed_finish(slack_rig, monkeypatch):
+    rig = slack_rig
+    monkeypatch.setattr(runner_module, "HEARTBEAT_S", 0.005)
+    _slow_finish(rig)
+    rig.model.respond = lambda request: httpx.Response(500)
+    await rig.run(rig.job(rig.chat()))
+    assert "didn't answer" in rig.slack.updates[-1]["text"]
+    assert rig.job_rows()[0]["status"] == "failed"
+
+
+async def test_outer_cancel_still_propagates(slack_rig):
+    rig = slack_rig
+    never = asyncio.Event()
+
+    async def respond(request):
+        await never.wait()
+
+    rig.model.respond = respond
+    task = asyncio.create_task(rig.run(rig.job(rig.chat())))
+    await wait_until(lambda: len(rig.model.requests) == 1)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert rig.job_rows()[0]["status"] == "interrupted"
+    assert rig.slack.updates[-1]["text"] == runner_module.INTERRUPTED
+
+
+async def test_cost_kept_when_the_answer_fails_after_the_loop(slack_rig):
+    rig = slack_rig
+    shell = {"type": "openrouter:shell", "id": "sh_1", "status": "completed", "container_id": "someone-else"}
+    rig.model.respond = lambda request: body(shell, call()) if len(rig.model.requests) == 1 else body()
+    await rig.run(rig.job(rig.chat(sandbox=True, mode="sandbox"), mode="sandbox"))
+    (row,) = rig.job_rows()
+    assert row["status"] == "failed" and row["cost_usd"] == pytest.approx(0.02)
+
+
+async def test_cost_kept_when_a_later_round_fails(slack_rig):
+    rig = slack_rig
+    rig.model.respond = (lambda request: body(call(), cost=0.03) if len(rig.model.requests) == 1
+                         else httpx.Response(402))
+    await rig.run(rig.job(rig.chat()))
+    (row,) = rig.job_rows()
+    assert row["status"] == "failed" and row["cost_usd"] == pytest.approx(0.03)

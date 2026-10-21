@@ -9,12 +9,14 @@ import re
 import httpx
 
 from .config import ADVISOR_MAX_TIMEOUT_S, API_BASE, APP_TITLE, APP_URL
+from .error_bodies import error_info, moderation_error
 from .errors import (
     KEY_REJECTED,
     AuthRequiredError,
     BadRequestError,
     ForbiddenError,
     InsufficientCreditsError,
+    OpenRouterError,
     ProviderError,
 )
 from .logs import redact
@@ -25,14 +27,16 @@ MAX_STREAM_FRAME = 256_000
 MAX_STREAM_BYTES = 20_000_000
 
 
-def _status_error(status: int) -> ProviderError | InsufficientCreditsError | ForbiddenError:
-    """A failed advisor call. 402 and 403 (credits or the key's budget) are typed so callers can say so."""
+def _status_error(response: httpx.Response) -> OpenRouterError:
+    """A failed advisor call (body already read). 402 and 403 (credits or the key's budget) are typed so
+    callers can say so; a 403 that is a moderation block is a `ModerationError`, as for images."""
+    status = response.status_code
     message = (f"Advisor operation failed (HTTP {status}). "
                "Inference may have been billed; no automatic retry was made.")
     if status == 402:
         return InsufficientCreditsError(message)
     if status == 403:
-        return ForbiddenError(message)
+        return moderation_error(*error_info(response)) or ForbiddenError(message)
     return ProviderError(message)
 
 
@@ -68,7 +72,7 @@ class AdvisorClient:
             # Leave the stored key alone: account_status rechecks it with OpenRouter.
             raise AuthRequiredError(KEY_REJECTED)
         if not 200 <= response.status_code < 300:
-            raise _status_error(response.status_code)
+            raise _status_error(response)
         if response.status_code == 204 or missing_ok:
             return None
         try:
@@ -204,7 +208,9 @@ class AdvisorClient:
                     if response.status_code == 401:
                         raise AuthRequiredError(KEY_REJECTED)
                     if not 200 <= response.status_code < 300:
-                        raise _status_error(response.status_code)
+                        if response.status_code == 403:  # small JSON: read it for a moderation block
+                            await response.aread()
+                        raise _status_error(response)
                     if "text/event-stream" not in response.headers.get("content-type", "").lower():
                         raise ProviderError("Advisor returned an invalid stream content type.")
                     async for chunk in response.aiter_bytes():

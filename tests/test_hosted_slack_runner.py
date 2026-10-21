@@ -69,14 +69,13 @@ async def test_queue_waits_then_runs(slack_rig, monkeypatch):
         return body(answer_item(f"answer {number}"))
 
     rig.model.respond = respond
-    polls = []
-    real = rig.results.active_for_chat
-    rig.results.active_for_chat = lambda *args: polls.append(1) or real(*args)
     chat = rig.chat()
     first = asyncio.create_task(rig.run(rig.job(chat, brief="one")))
     await wait_until(lambda: len(rig.model.requests) == 1)
     second = asyncio.create_task(rig.run(rig.job(chat, brief="two")))
-    await wait_until(lambda: len(polls) >= 4)
+    await wait_until(lambda: rig.runner.running(rig.scope.owner, CHANNEL) == ["Gemini", "Gemini"])
+    for _ in range(20):
+        await asyncio.sleep(0)
     assert len(rig.model.requests) == 1
     gate.set()
     await asyncio.gather(first, second)
@@ -84,6 +83,23 @@ async def test_queue_waits_then_runs(slack_rig, monkeypatch):
     answers = [text for text in rig.texts() if text.startswith("answer")]
     assert [a.split("\n")[0] for a in answers] == ["answer 1", "answer 2"]
     assert [m["content"] for m in rig.history(chat) if m["role"] == "user"] == ["one", "two"]
+
+
+async def test_waits_for_another_process_job_on_the_chat(slack_rig, monkeypatch):
+    """The chat lock is per process; another replica's active job is seen through the job rows."""
+    rig = slack_rig
+    monkeypatch.setattr(runner_module, "IDLE_POLL_S", 0.001)
+    chat = rig.chat()
+    other = rig.results.create(rig.scope, chat, "elsewhere", "proc-other")
+    polls = []
+    real = rig.results.active_for_chat
+    rig.results.active_for_chat = lambda *args: polls.append(1) or real(*args)
+    task = asyncio.create_task(rig.run(rig.job(chat)))
+    await wait_until(lambda: len(polls) >= 3)
+    assert rig.model.requests == []
+    rig.results.update(rig.scope, other["id"], "proc-other", status="completed")
+    await task
+    assert rig.texts()[-1].startswith("The answer.")
 
 
 async def test_queue_timeout_posts_limit(slack_rig, monkeypatch):

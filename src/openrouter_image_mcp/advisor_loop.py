@@ -13,7 +13,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 
 from .advisor_client import AdvisorClient
-from .errors import ProviderError
+from .errors import OpenRouterError, ProviderError
 
 log = logging.getLogger(__name__)
 
@@ -112,9 +112,9 @@ async def run_tool_loop(
 
     The caller's payload is not modified. After `max_rounds` rounds that still called
     functions, one more request runs with `tool_choice: "none"` and `FINAL_NOTE`.
-    `LoopStopped` carries the items and cost of the requests made so far. A
-    `ProviderError` mid-loop discards the partial cost; callers see the items that
-    arrived through `on_items`.
+    `LoopStopped` carries the items and cost of the requests made so far. An
+    `OpenRouterError` mid-loop (a failed or invalid response) gets the same `items` and
+    `cost_usd` attributes before it propagates, so a caller can bill spend already made.
     """
     history = _starting_input(payload.get("input", []))
     items: list[dict] = []
@@ -151,4 +151,7 @@ async def run_tool_loop(
         return await drive()
     except LoopStopped as stop:
         stop.items, stop.cost_usd = list(items), total()
+        raise
+    except OpenRouterError as error:
+        error.items, error.cost_usd = list(items), total()
         raise

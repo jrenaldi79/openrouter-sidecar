@@ -7,6 +7,7 @@ from openrouter_image_mcp.errors import (
     BadRequestError,
     ForbiddenError,
     InsufficientCreditsError,
+    ModerationError,
     ProviderError,
 )
 from openrouter_image_mcp.hosted.limits import RateLimitedError
@@ -20,6 +21,7 @@ from openrouter_image_mcp.hosted.slack.replies import (
     provider_error_text,
 )
 from openrouter_image_mcp.hosted.slack.runner_steps import (
+    MODERATED,
     ChatFullError,
     failure_text,
     panel_failure,
@@ -105,6 +107,7 @@ def test_failure_text_maps_each_error():
     assert text(ProviderError("HTTP 500")) == provider_error_text("Gemini", others)
     assert text(BadRequestError("Advisor brief must contain")) == provider_error_text("Gemini", others)
     assert text(ChatFullError("Gemini")) == ChatFullError("Gemini").message
+    assert text(ModerationError(["violence"])) == MODERATED
     local = text(None)
     assert "Gemini" in local and "error" in local
 

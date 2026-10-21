@@ -13,6 +13,8 @@ import httpx
 
 from .config import API_BASE, APP_TITLE, APP_URL
 from .credentials import CredentialSource
+from .error_bodies import error_info as _error_info
+from .error_bodies import moderation_error as _moderation_error
 from .errors import (
     KEY_REJECTED,
     AuthRequiredError,
@@ -20,7 +22,6 @@ from .errors import (
     CatalogUnavailableError,
     ForbiddenError,
     InsufficientCreditsError,
-    ModerationError,
     NoImageError,
     ProviderError,
     RateLimitError,
@@ -35,13 +36,6 @@ _RATE_LIMIT_RETRIES = 2
 _RATE_LIMIT_BACKOFF = (1.0, 2.0)
 _SERVER_ERROR_DELAY = 1.0
 _MAX_RETRY_AFTER = 30.0
-_MAX_BODY_CHARS = 300  # raw (non-JSON) bodies quoted in error messages
-
-
-def _body_text(resp: httpx.Response) -> str:
-    """The response body for an error message, cut short: it may be a whole HTML page."""
-    text = resp.text.strip()
-    return text if len(text) <= _MAX_BODY_CHARS else text[:_MAX_BODY_CHARS] + "…"
 
 
 @dataclass
@@ -58,43 +52,6 @@ class GenerationResult:
     generation_id: str | None = None
     provider: str | None = None
     raw_text: str | None = None
-
-
-def _error_info(resp: httpx.Response) -> tuple[dict, str]:
-    """Return (error object, human message) from an error response."""
-    try:
-        body = resp.json()
-    except ValueError:
-        body = None
-    error = body.get("error") if isinstance(body, dict) else None
-    if isinstance(error, dict):
-        message = error.get("message")
-        if isinstance(message, str) and message:
-            return error, message
-        return error, _body_text(resp)
-    if isinstance(error, str) and error:
-        return {}, error
-    return {}, _body_text(resp)
-
-
-def _moderation_error(error: dict, message: str) -> ModerationError | None:
-    metadata = error.get("metadata")
-    metadata = metadata if isinstance(metadata, dict) else {}
-    reasons = metadata.get("reasons")
-    if isinstance(reasons, list) and reasons:
-        return ModerationError(
-            [str(r) for r in reasons],
-            metadata.get("flagged_input"),
-            metadata.get("provider_name"),
-        )
-    haystack = f"{error.get('code', '')} {message}".lower()
-    if "content_policy" in haystack or "moderation" in haystack:
-        return ModerationError(
-            [message or "content policy"],
-            metadata.get("flagged_input"),
-            metadata.get("provider_name"),
-        )
-    return None
 
 
 def _retry_after(resp: httpx.Response, attempt: int) -> float:
