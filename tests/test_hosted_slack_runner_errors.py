@@ -103,11 +103,13 @@ async def test_unexpected_error_fails_job_without_details(slack_rig, monkeypatch
 
 async def test_moderation_block_has_its_own_copy(slack_rig):
     rig = slack_rig
-    flagged = {"error": {"code": 403, "message": "flagged", "metadata": {"reasons": ["violence"]}}}
+    flagged = {"error": {"code": 403, "message": "flagged", "metadata": {
+        "reasons": ["violence"], "flagged_input": "the private brief text"}}}
     rig.model.respond = lambda request: httpx.Response(403, json=flagged)
     await rig.run(rig.job(rig.chat()))
     assert rig.slack.updates[-1]["text"] == MODERATED != budget_text()
-    assert rig.job_rows()[0]["status"] == "failed"
+    (row,) = rig.job_rows()
+    assert row["status"] == "failed" and row["error"] == "Blocked by provider moderation."
 
 
 async def test_delivery_marks_posted_before_outputs_and_survives_bookkeeping(slack_rig, monkeypatch):
@@ -127,3 +129,25 @@ async def test_delivery_marks_posted_before_outputs_and_survives_bookkeeping(sla
     await rig.run(rig.job(rig.chat(sandbox=True, mode="sandbox"), mode="sandbox"))
     assert len(seen) == 1 and seen[0] is not None
     assert rig.slack.updates[-1]["text"] == "Sidecar · Gemini answered below."
+
+
+async def test_mark_posted_failure_still_says_answered(slack_rig, monkeypatch, caplog):
+    rig = slack_rig
+
+    def broken(*args):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(rig.jobs, "mark_posted", broken)
+    with caplog.at_level("WARNING"):
+        await rig.run(rig.job(rig.chat()))
+    assert rig.slack.updates[-1]["text"] == "Sidecar · Gemini answered below."
+    assert "mark posted failed: RuntimeError" in caplog.text
+    assert rig.threads.last_answered(rig.scope, "C1", THREAD) is not None
+
+
+async def test_bad_concurrency_value_posts_limit_instead_of_raising(slack_rig):
+    rig = slack_rig
+    rig.set_row(max_concurrent=0)
+    await rig.run(rig.job(rig.chat()))
+    assert rig.texts()[-1] == "Your team already has 0 answers running. Try again in a minute."
+    assert rig.model.requests == [] and len(rig.runner._slots) == 0

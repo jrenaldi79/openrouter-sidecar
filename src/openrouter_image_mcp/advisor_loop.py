@@ -7,6 +7,7 @@ response's output items (server tool items, reasoning and messages included, ver
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import logging
 from collections.abc import Awaitable, Callable, Mapping
@@ -36,6 +37,10 @@ class LoopStopped(Exception):
         super().__init__("Tool loop stopped.")
         self.items = items if items is not None else []
         self.cost_usd = cost_usd
+
+
+# Ways out of the loop that carry the spend so far (`items`, `cost_usd`).
+_CARRIES_SPEND = (LoopStopped, OpenRouterError, asyncio.CancelledError)
 
 
 @dataclass
@@ -112,9 +117,9 @@ async def run_tool_loop(
 
     The caller's payload is not modified. After `max_rounds` rounds that still called
     functions, one more request runs with `tool_choice: "none"` and `FINAL_NOTE`.
-    `LoopStopped` carries the items and cost of the requests made so far. An
-    `OpenRouterError` mid-loop (a failed or invalid response) gets the same `items` and
-    `cost_usd` attributes before it propagates, so a caller can bill spend already made.
+    `LoopStopped`, an `OpenRouterError` mid-loop (a failed or invalid response) and a
+    cancellation all leave with `items` and `cost_usd` attributes for the requests made
+    so far, so a caller can bill spend already made.
     """
     history = _starting_input(payload.get("input", []))
     items: list[dict] = []
@@ -149,9 +154,6 @@ async def run_tool_loop(
 
     try:
         return await drive()
-    except LoopStopped as stop:
-        stop.items, stop.cost_usd = list(items), total()
-        raise
-    except OpenRouterError as error:
+    except _CARRIES_SPEND as error:
         error.items, error.cost_usd = list(items), total()
         raise

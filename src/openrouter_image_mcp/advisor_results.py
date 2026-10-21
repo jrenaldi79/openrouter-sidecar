@@ -163,19 +163,20 @@ class AdvisorResults:
                 self._release(db, scope, row)
 
     def interrupt(self, scope, job_id, process_id, *, error, suppress=False, cleanup_pending=False,
-                  answer=None):
+                  answer=None, cost_usd=None):
         """Shutdown/account-change bookkeeping uses captured ownership, no provider I/O.
 
-        ``answer`` is the newest streamed text when it is ahead of the saved row.
+        ``answer`` is the newest streamed text when it is ahead of the saved row; ``cost_usd`` is
+        spend already made, kept even though the lease or heartbeat may have lapsed.
         """
         with self.connection() as db:
             db.execute("BEGIN IMMEDIATE")
             row = self._row(db, scope, job_id)
             if row["process_id"] == process_id and row["status"] in ACTIVE:
                 db.execute("UPDATE advisor_jobs SET status='interrupted',error=?,answer=?,"
-                           "cleanup_pending=? WHERE id=?",
+                           "cleanup_pending=?,cost_usd=COALESCE(?,cost_usd) WHERE id=?",
                            (error, "" if suppress else row["answer"] if answer is None else answer,
-                            cleanup_pending, job_id))
+                            cleanup_pending, cost_usd, job_id))
                 self._release(db, scope, row)
 
     def delete_chat(self, scope, chat_id):

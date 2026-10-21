@@ -119,7 +119,7 @@ class SlackRunner:
             entry = Entry(job)
             self._entries[scope.owner].append(entry)
             chat_lock = self._chats.take(job.chat_id)
-            slots = self._slots.take(scope.owner, job.row.max_concurrent)
+            slots = self._slots.take(scope.owner, max(1, job.row.max_concurrent))  # never raises here
             try:
                 await self._queued(services, job, key, scope, entry, chat_lock, slots)
             finally:
@@ -233,3 +233,5 @@ class SlackRunner:
         except OpenRouterError as error:  # the job lost its lease or its key: stop the work, not the runner
             log.warning("slack job heartbeat stopped: %s", type(error).__name__)
             work.cancel()
+        except Exception as error:  # noqa: BLE001 - anything else ends the beat; the row lapses on its own
+            log.warning("slack job heartbeat failed: %s", type(error).__name__)

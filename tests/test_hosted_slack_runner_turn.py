@@ -6,7 +6,9 @@ import httpx
 import pytest
 from slack_runner_rig import CHANNEL, THREAD, Rig, body, call, wait_until
 
+from openrouter_image_mcp.errors import ProviderError
 from openrouter_image_mcp.hosted.slack import runner as runner_module
+from openrouter_image_mcp.hosted.slack import runner_turn
 from openrouter_image_mcp.hosted.slack.runner_steps import HISTORY_CHARS, ChatFullError
 
 
@@ -106,21 +108,79 @@ async def test_heartbeat_cannot_cancel_a_failed_finish(slack_rig, monkeypatch):
     assert rig.job_rows()[0]["status"] == "failed"
 
 
-async def test_outer_cancel_still_propagates(slack_rig):
-    rig = slack_rig
+def _round_then_hang(rig, before_hanging=lambda: None):
     never = asyncio.Event()
 
     async def respond(request):
+        if len(rig.model.requests) == 1:
+            return body(call(), cost=0.04)
+        before_hanging()
         await never.wait()
 
     rig.model.respond = respond
+
+
+async def test_outer_cancel_propagates_and_keeps_spend(slack_rig):
+    rig = slack_rig
+    _round_then_hang(rig)
     task = asyncio.create_task(rig.run(rig.job(rig.chat())))
-    await wait_until(lambda: len(rig.model.requests) == 1)
+    await wait_until(lambda: len(rig.model.requests) == 2)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
-    assert rig.job_rows()[0]["status"] == "interrupted"
+    (row,) = rig.job_rows()
+    assert row["status"] == "interrupted" and row["cost_usd"] == pytest.approx(0.04)
     assert rig.slack.updates[-1]["text"] == runner_module.INTERRUPTED
+
+
+async def test_lost_lease_keeps_spend(slack_rig, keys, monkeypatch):
+    rig = slack_rig
+    monkeypatch.setattr(runner_module, "HEARTBEAT_S", 0.001)
+    _round_then_hang(rig, keys.delete)
+    await rig.run(rig.job(rig.chat()))
+    (row,) = rig.job_rows()
+    assert row["status"] == "interrupted" and row["cost_usd"] == pytest.approx(0.04)
+
+
+async def test_cleanup_error_cannot_replace_a_cancel(slack_rig, keys, monkeypatch):
+    """A failing upload cleanup during the cancel must not turn "Interrupted" into a provider error."""
+    rig = slack_rig
+    monkeypatch.setattr(runner_module, "HEARTBEAT_S", 0.001)
+    real, calls = rig.advisors._cleanup, []
+
+    async def cleanup(*args):
+        calls.append(1)
+        if len(calls) > 1:
+            raise ProviderError("cleanup failed")
+        return await real(*args)
+
+    monkeypatch.setattr(rig.advisors, "_cleanup", cleanup)
+    _round_then_hang(rig, keys.delete)
+    await rig.run(rig.job(rig.chat()))
+    assert len(calls) == 2 and rig.slack.updates[-1]["text"] == runner_module.INTERRUPTED
+    assert rig.job_rows()[0]["status"] == "interrupted"
+
+
+async def test_heartbeat_logs_unexpected_errors(slack_rig, monkeypatch, caplog):
+    rig = slack_rig
+    monkeypatch.setattr(runner_module, "HEARTBEAT_S", 0.001)
+    beats = []
+
+    def boom(self):
+        beats.append(1)
+        raise RuntimeError("db hiccup")
+
+    monkeypatch.setattr(runner_turn.Turn, "beat", boom)
+
+    async def respond(request):
+        await wait_until(lambda: beats)
+        return body()
+
+    rig.model.respond = respond
+    with caplog.at_level("WARNING"):
+        await rig.run(rig.job(rig.chat()))
+    assert "heartbeat failed: RuntimeError" in caplog.text and "db hiccup" not in caplog.text
+    assert rig.texts()[-1].startswith("The answer.")
 
 
 async def test_cost_kept_when_the_answer_fails_after_the_loop(slack_rig):

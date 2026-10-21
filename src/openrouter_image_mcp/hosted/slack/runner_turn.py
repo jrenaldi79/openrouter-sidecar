@@ -8,14 +8,14 @@ goes through the methods here, so the process id and scope are always the job's 
 
 from __future__ import annotations
 
-import contextlib
+import asyncio
 import logging
 import time
 from typing import TYPE_CHECKING, Any
 
 from ...advisor_loop import FunctionRunner, LoopResult, LoopStopped, run_tool_loop
 from ...advisor_results import HEARTBEAT_S as ROW_HEARTBEAT_S
-from ...errors import BadRequestError, OpenRouterError, ProviderError
+from ...errors import BadRequestError, ModerationError, OpenRouterError, ProviderError
 from ...prompt_cache import configure_cache
 from ...session_files import FilePacket
 from .api import SlackCallError
@@ -45,6 +45,7 @@ STOPPED_ERROR = "Stopped from Slack"
 INTERRUPTED = "Interrupted. Ask again."
 INTERRUPTED_ERROR = "Slack job was interrupted; no automatic retry was made."
 LOCAL_FAILURE = "Slack job failed locally; no automatic retry was made."
+MODERATION_ERROR = "Blocked by provider moderation."
 
 
 class LeaseLost(Exception):
@@ -89,10 +90,11 @@ class Turn:
             self.interrupt(message)
 
     def interrupt(self, message: str) -> None:
-        """Interrupted with no answer kept (stop, shutdown, lost lease)."""
+        """Interrupted with no answer kept (stop, shutdown, lost lease), keeping spend already made."""
         try:
             self.services.results.interrupt(self.scope, self.row["id"], self.runner.process_id, error=message,
-                                            suppress=True, cleanup_pending=self._pending())
+                                            suppress=True, cleanup_pending=self._pending(),
+                                            cost_usd=self.spent)
         except OpenRouterError as error:
             log.warning("slack job interrupt not recorded: %s", type(error).__name__)
 
@@ -125,17 +127,28 @@ class Turn:
             raise ProviderError(CLEANUP_FAILED)
         try:
             result = await self._loop(chat, bundle, brief + ("\n\n" + note if note else ""), listed, token)
-        except OpenRouterError as error:  # the loop attaches the cost of the requests before the failure
+        except (OpenRouterError, asyncio.CancelledError) as error:  # the loop attaches the spend so far
             self.spent = getattr(error, "cost_usd", None)
             raise
         finally:
-            cleanup_ok = await s.advisors._cleanup(key, scope, chat.id, token)
+            cleanup_ok = await self._cleanup_after(chat.id, token)
         self.spent = result.cost_usd
         answer = self._final(chat, result)
         self.guard()
         s.store.append_turn(scope, chat.id, brief, answer, token)  # the plain brief, not the notes
         self.update(status="completed", answer=answer, cost_usd=result.cost_usd, cleanup_pending=not cleanup_ok)
         return answer, result.cost_usd
+
+    async def _cleanup_after(self, chat_id: str, token: str) -> bool:
+        """Upload cleanup after the loop; while the work is being cancelled a cleanup error is logged,
+        not raised, so it can't replace the cancellation (and read as a provider failure)."""
+        try:
+            return await self.services.advisors._cleanup(self.key, self.scope, chat_id, token)
+        except Exception as error:
+            if not asyncio.current_task().cancelling():
+                raise
+            log.warning("slack upload cleanup failed while cancelling: %s", type(error).__name__)
+            return False
 
     async def _loop(self, chat: Chat, bundle: str, asked: str, listed: list[str], token: str) -> LoopResult:
         s, job, scope = self.services, self.job, self.scope
@@ -197,15 +210,15 @@ class Turn:
 
     async def _stopped(self, stop: LoopStopped) -> None:
         """Spend already made is recorded; the answer is discarded and no turn is stored."""
-        if stop.cost_usd is not None:
-            with contextlib.suppress(OpenRouterError):
-                self.update(cost_usd=stop.cost_usd)
+        self.spent = stop.cost_usd
         self.interrupt(STOPPED_ERROR)
         await self.working.finish(STOPPED)
 
     async def _failed(self, error: BaseException | None) -> None:
         job = self.job
-        if isinstance(error, OpenRouterError):
+        if isinstance(error, ModerationError):
+            self.fail(MODERATION_ERROR)  # its message quotes the flagged input
+        elif isinstance(error, OpenRouterError):
             self.fail(error.message)
         else:
             # Never stringify an unexpected error: it could carry a key or a request body.
@@ -223,15 +236,20 @@ class Turn:
             log.warning("slack answer post failed twice: %s", error.code)
             await self.working.finish(f"Sidecar · {job.label} couldn't post its answer to Slack.")
             return
-        runner.jobs.mark_posted(self.scope, self.row["id"])  # first, so recovery never posts it twice
+        # The answer is posted: each step after it is logged on failure, and the job always says so.
+        self._logged("mark posted", runner.jobs.mark_posted, self.scope, self.row["id"])  # first: no repost
         if runner.outputs is not None and self.sandbox:
             try:
                 await runner.outputs.post(self)  # Task 15: sandbox outputs never fail the answer
             except Exception as error:  # noqa: BLE001
                 log.warning("slack outputs failed: %s", type(error).__name__)
-        try:
-            runner.threads.answered(self.scope, job.chat_id)
-            runner.threads.seen(self.scope, job.chat_id, job.context.newest_ts)
-        except Exception as error:  # noqa: BLE001 - the answer is posted; say so whatever the bookkeeping did
-            log.warning("slack thread bookkeeping failed: %s", type(error).__name__)
+        self._logged("thread answered", runner.threads.answered, self.scope, job.chat_id)
+        self._logged("thread seen", runner.threads.seen, self.scope, job.chat_id, job.context.newest_ts)
         await self.working.finish(f"Sidecar · {job.label} answered below.")
+
+    @staticmethod
+    def _logged(what: str, call, *args) -> None:
+        try:
+            call(*args)
+        except Exception as error:  # noqa: BLE001 - bookkeeping after the post must not undo the answer
+            log.warning("slack %s failed: %s", what, type(error).__name__)
