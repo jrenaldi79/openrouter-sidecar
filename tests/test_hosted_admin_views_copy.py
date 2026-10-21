@@ -44,7 +44,7 @@ def test_template_sentences_come_from_copy():
     html = "".join(pages)
     for name in PLAIN:
         assert str(escape(getattr(copy, name))) in html, name
-    sources = "".join(path.read_text() for path in TEMPLATES_DIR.glob("*.html"))
+    sources = "".join(path.read_text(encoding="utf-8") for path in TEMPLATES_DIR.glob("*.html"))
     for text in [getattr(copy, name) for name in PLAIN] + ["Sidecar stops answering there",
                                                           "Sidecar starts answering there", copy.SIGNED_IN_AS]:
         assert text not in sources, text  # the sentence lives in copy.py, not in a template
