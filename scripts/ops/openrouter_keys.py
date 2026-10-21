@@ -4,9 +4,9 @@ Reads OPENROUTER_MANAGEMENT_KEY from the environment and never prints it. Talks 
 real OpenRouter management API through the server's own seam (`hosted/openrouter_keys.py`).
 
     uv run python scripts/ops/openrouter_keys.py list [--cohort 2027]
-    uv run python scripts/ops/openrouter_keys.py show <email>
-    uv run python scripts/ops/openrouter_keys.py disable|enable <email> [--cohort 2027]
-    uv run python scripts/ops/openrouter_keys.py delete <email> [--cohort 2027] [--yes]
+    uv run python scripts/ops/openrouter_keys.py show <email-or-team-label>
+    uv run python scripts/ops/openrouter_keys.py disable|enable <email-or-team-label> [--cohort 2027]
+    uv run python scripts/ops/openrouter_keys.py delete <email-or-team-label> [--cohort 2027] [--yes]
     uv run python scripts/ops/openrouter_keys.py usage [--csv]
     uv run python scripts/ops/openrouter_keys.py guardrails
 
@@ -14,7 +14,10 @@ Students' keys live in their cohort's workspace; every Slack team's key lives in
 (`config.SLACK_WORKSPACE`, shown as `slack`; `--cohort slack` limits a command to it). A team's key is named
 after its label, which the commands take where a student's takes the email.
 
-`disable` blocks a student (their calls report "disabled by your instructor"). `delete`
+`usage` shows each key's class in the `cohort` column of its CSV (a team's is the last part of its key name) and
+the workspace group (a cohort year, or `slack`) in `group`.
+
+`disable` blocks a student or team (their calls report "disabled by your instructor"). `delete`
 resets them: the Sidecar issues a fresh key on their next call.
 """
 
@@ -39,8 +42,17 @@ SLACK = "slack"  # the group name of the Slack workspace, beside the cohort year
 
 
 def _email(key: dict) -> str:
+    """The email of a student's key, or the label of a team's (the middle part of `Sidecar · <who> · <class>`)."""
     parts = key.get("name", "").split(" · ")
     return parts[1] if len(parts) == 3 else "?"
+
+
+def _class_of(group: str, key: dict) -> str:
+    """The class a key belongs to: its cohort year for a student, the last part of its name for a team."""
+    if group != SLACK:
+        return group
+    parts = key.get("name", "").split(" · ")
+    return parts[2] if len(parts) == 3 else "?"
 
 
 def _money(value) -> str:
@@ -92,7 +104,7 @@ async def cmd_show(manager, args) -> int:
         print(f"    hash {key.get('hash')}  last used {key.get('last_used_at') or 'never'}  "
               f"total {_money(key.get('usage'))}  limit {_money(key.get('limit'))}")
     if not rows:
-        print("No Sidecar key for that email (it is created on the student's first use).")
+        print("No Sidecar key for that email or team label (it is created on first use).")
     return 0 if rows else 1
 
 
@@ -102,14 +114,14 @@ async def cmd_toggle(manager, args) -> int:
         updated = await manager.set_disabled(key["hash"], args.command == "disable")
         print(_row(year, key | updated))
     if not rows:
-        print("No Sidecar key for that email.")
+        print("No Sidecar key for that email or team label.")
     return 0 if rows else 1
 
 
 async def cmd_delete(manager, args) -> int:
     rows = await matching(manager, args.email, args.cohort)
     if not rows:
-        print("No Sidecar key for that email.")
+        print("No Sidecar key for that email or team label.")
         return 1
     for year, key in rows:
         if not args.yes:
@@ -118,7 +130,7 @@ async def cmd_delete(manager, args) -> int:
         await manager.delete(key["hash"])
         print("deleted: " + _row(year, key))
     if not args.yes:
-        print("Dry run. Add --yes to delete; the student gets a fresh key on their next call.")
+        print("Dry run. Add --yes to delete; the student or team gets a fresh key on their next call.")
     return 0
 
 
@@ -126,14 +138,18 @@ async def cmd_usage(manager, args) -> int:
     rows = await sidecar_keys(manager, args.cohort)
     if args.csv:
         out = csv.writer(sys.stdout)
-        out.writerow(["group", "email", "usage_monthly", "usage_total", "disabled", "created_at"])
-        for year, key in rows:
-            out.writerow([year, _email(key), key.get("usage_monthly"), key.get("usage"),
+        out.writerow(["cohort", "group", "email", "usage_monthly", "usage_total", "disabled", "created_at"])
+        for group, key in rows:
+            out.writerow([_class_of(group, key), group, _email(key), key.get("usage_monthly"), key.get("usage"),
                           bool(key.get("disabled")), key.get("created_at")])
         return 0
-    for year in sorted({year for year, _ in rows}):
-        spend = sum(key.get("usage_monthly") or 0 for y, key in rows if y == year)
-        print(f"{year}: {sum(1 for y, _ in rows if y == year)} keys, {_money(spend)} this month")
+    # Slack teams are summed per class, so a class label shows up on the summary too.
+    sections = sorted({(group, _class_of(group, key)) for group, key in rows})
+    for group, cohort in sections:
+        mine = [key for g, key in rows if (g, _class_of(g, key)) == (group, cohort)]
+        spend = sum(key.get("usage_monthly") or 0 for key in mine)
+        label = f"{group} ({cohort})" if group == SLACK else group
+        print(f"{label}: {len(mine)} keys, {_money(spend)} this month")
     return 0
 
 
@@ -167,13 +183,13 @@ COMMANDS = {"list": cmd_list, "show": cmd_show, "disable": cmd_toggle, "enable":
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Manage the Sidecar's student OpenRouter keys.")
+    parser = argparse.ArgumentParser(description="Manage the Sidecar's OpenRouter keys for students and Slack teams.")
     sub = parser.add_subparsers(dest="command", required=True)
     for name in COMMANDS:
         command = sub.add_parser(name)
         command.add_argument("--cohort", choices=[*sorted(COHORT_WORKSPACES), SLACK])
         if name in ("show", "disable", "enable", "delete"):
-            command.add_argument("email")
+            command.add_argument("email", metavar="email_or_team_label")
     sub.choices["delete"].add_argument("--yes", action="store_true", help="really delete")
     sub.choices["usage"].add_argument("--csv", action="store_true")
     return parser

@@ -71,6 +71,8 @@ class KeyProvisioner:
         """`workspaces` are the students' (cohort) workspaces; `team_workspaces` hold Slack team keys."""
         self.store, self.manager, self.workspaces = store, manager, set(workspaces)
         self.team_workspaces = frozenset(team_workspaces)
+        if self.team_workspaces & self.workspaces:
+            raise ValueError("A workspace can't be both a students' and a Slack teams' workspace.")
         self._locks: dict[tuple[str, str], asyncio.Lock] = {}
 
     def _lock(self, principal: Principal) -> asyncio.Lock:
@@ -89,7 +91,7 @@ class KeyProvisioner:
         """
         if (principal.issuer == SLACK_ISSUER) != (team is not None):
             raise BadRequestError("Team keys are only for Slack teams, and Slack teams need a team key.")
-        if principal.workspace_id not in (self.team_workspaces if team else self.workspaces):
+        if principal.workspace_id not in (self.team_workspaces if team is not None else self.workspaces):
             raise AuthRequiredError(NOT_SERVED)
         row = await self._row(principal)
         if row is not None and row.rejected_at is None:

@@ -56,7 +56,7 @@ def _current() -> Principal:
 
 
 class SlackCredentials:
-    """`CredentialSource` for the team in context; one instance per cohort workspace."""
+    """`CredentialSource` for the team in context; one instance, for the Slack workspace."""
 
     def __init__(self, workspace_id: str, keys: StudentKeyStore):
         self.workspace_id, self.keys = workspace_id, keys

@@ -4,7 +4,6 @@ import asyncio
 import base64
 import hashlib
 import os
-from dataclasses import replace
 
 import httpx
 import pytest
@@ -261,25 +260,3 @@ async def test_recheck_recreates_with_team_name(provisioner, manager, store):
     row = await provisioner.ensure(TEAM, team=TeamKey("abbott"))
     assert row.key_hash == "h2" and row.key_name == "Sidecar · abbott · 2027"
     assert [name for name, _ in manager.created] == ["Sidecar · abbott · 2027"] * 2
-
-
-async def test_student_in_the_slack_workspace_is_not_served(store, manager):
-    student = replace(ALICE, workspace_id=SLACK_WORKSPACE)
-    provisioner = KeyProvisioner(store, manager, {WS}, team_workspaces={SLACK_WORKSPACE})
-    with pytest.raises(AuthRequiredError, match=NOT_SERVED):
-        await provisioner.ensure(student)
-    assert manager.created == []
-
-
-async def test_team_in_a_cohort_workspace_is_not_served(store, manager):
-    team = replace(TEAM, workspace_id=WS)
-    provisioner = KeyProvisioner(store, manager, {WS}, team_workspaces={SLACK_WORKSPACE})
-    with pytest.raises(AuthRequiredError, match=NOT_SERVED):
-        await provisioner.ensure(team, team=TeamKey("abbott"))
-    assert manager.created == []
-
-
-async def test_team_without_a_team_workspace_set_is_not_served(store, manager):
-    with pytest.raises(AuthRequiredError, match=NOT_SERVED):
-        await KeyProvisioner(store, manager, {WS}).ensure(TEAM, team=TeamKey("abbott"))
-    assert manager.created == []

@@ -21,6 +21,8 @@ from ... import config, storage
 
 DEFAULT_ALIASES = {"gpt": "ChatGPT", "gemini": "Gemini", "grok": "Grok", "open": "open weight"}
 LABEL = re.compile(r"^[a-z0-9-]{1,40}$")
+# The name `provisioning.key_name` gives a student with no email, so a team label must not collide with it.
+STUDENT_KEY_NAME = re.compile(r"^user-[0-9a-f]{10}$")
 PANEL_SIZE = range(1, 9)
 _JSON = {"alias_map": dict, "fusion_panel": tuple, "fetch_allowlist": tuple, "invoker_allowlist": tuple}
 _KEYS = ("slack_team_id", "channel_id")
@@ -75,6 +77,8 @@ def new_row(team_id: str, channel_id: str, label: str, cohort: str, *, fusion_pa
 def _validate(row: ChannelRow) -> None:
     if not LABEL.match(row.team_label):
         raise ValueError("team_label must match ^[a-z0-9-]{1,40}$.")
+    if STUDENT_KEY_NAME.match(row.team_label):
+        raise ValueError("team_label can't look like a student key name (user- followed by 10 hex digits).")
     if row.cohort not in config.COHORT_WORKSPACES:
         raise ValueError(f"Unknown cohort {row.cohort!r}.")
     if row.workspace_id != config.SLACK_WORKSPACE:

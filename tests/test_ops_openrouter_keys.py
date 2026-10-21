@@ -1,6 +1,8 @@
 """The instructor's key tool covers the students' cohort workspaces and the one Slack workspace."""
 
 import argparse
+import csv
+import io
 
 import httpx
 import pytest
@@ -72,7 +74,8 @@ async def test_cohort_filter_picks_one_workspace(manager):
 async def test_usage_sums_each_group(manager, capsys):
     assert await tool.cmd_usage(manager, args()) == 0
     assert capsys.readouterr().out.splitlines() == [
-        "2027: 1 keys, $1.00 this month", "2028: 1 keys, $2.00 this month", "slack: 1 keys, $4.00 this month"]
+        "2027: 1 keys, $1.00 this month", "2028: 1 keys, $2.00 this month",
+        "slack (2027): 1 keys, $4.00 this month"]
 
 
 async def test_a_team_is_found_by_its_label(manager):
@@ -103,3 +106,42 @@ async def test_guardrails_flag_a_slack_workspace_without_the_team_guardrail(caps
 
 def test_cohort_option_accepts_slack():
     assert tool._parser().parse_args(["usage", "--cohort", "slack"]).cohort == "slack"
+
+
+def _two_classes_in_slack() -> Org:
+    org = Org()
+    org.keys[SLACK_WORKSPACE] += [{"hash": "h5", "name": "Sidecar · booth · 2028", "usage_monthly": 1.5},
+                                  {"hash": "h6", "name": "Sidecar · cole · 2027", "usage_monthly": 0.5}]
+    return org
+
+
+async def _with(org, run):
+    manager = KeyManager("m" * 20, transport=httpx.MockTransport(org.handle))
+    try:
+        return await run(manager)
+    finally:
+        await manager.aclose()
+
+
+async def test_usage_breaks_the_slack_workspace_down_by_class(capsys):
+    await _with(_two_classes_in_slack(), lambda manager: tool.cmd_usage(manager, args()))
+    assert capsys.readouterr().out.splitlines() == [
+        "2027: 1 keys, $1.00 this month", "2028: 1 keys, $2.00 this month",
+        "slack (2027): 2 keys, $4.50 this month", "slack (2028): 1 keys, $1.50 this month"]
+
+
+async def test_usage_csv_keeps_cohort_as_the_class_and_adds_the_group(capsys):
+    await _with(_two_classes_in_slack(), lambda manager: tool.cmd_usage(manager, args(csv=True)))
+    rows = list(csv.reader(io.StringIO(capsys.readouterr().out)))
+    assert rows[0] == ["cohort", "group", "email", "usage_monthly", "usage_total", "disabled", "created_at"]
+    assert [row[:3] for row in rows[1:]] == [
+        ["2027", "2027", "ana@u.edu"], ["2028", "2028", "bo@u.edu"], ["2027", "slack", "abbott"],
+        ["2028", "slack", "booth"], ["2027", "slack", "cole"]]
+
+
+def test_the_commands_talk_of_a_student_or_a_team(capsys):
+    assert "team" in tool._parser().description.lower()
+    assert tool._parser().parse_args(["show", "abbott"]).email == "abbott"
+    with pytest.raises(SystemExit):
+        tool._parser().parse_args(["show", "--help"])
+    assert "email_or_team_label" in capsys.readouterr().out

@@ -10,7 +10,7 @@ from slack_gateway_rig import FakeClient
 
 from openrouter_image_mcp.advisor_results import AdvisorResults
 from openrouter_image_mcp.advisor_store import AdvisorStore, Scope
-from openrouter_image_mcp.config import SLACK_WORKSPACE
+from openrouter_image_mcp.config import COHORT_WORKSPACES, SLACK_WORKSPACE
 from openrouter_image_mcp.hosted.app import build_hosted_server
 from openrouter_image_mcp.hosted.limits import Limits
 from openrouter_image_mcp.hosted.settings import load_hosted_settings
@@ -110,6 +110,13 @@ def test_not_built_when_disabled(db_target):
     server = build_hosted_server(settings_for(db_target), key_resolver=h.resolver)
     assert server.hosted.get("slack") is None
     assert len(server.hosted["health"].lock.on_gain) == 1  # only Health's own gate hook
+
+
+def test_the_built_provisioner_keeps_students_and_teams_apart(db_target):
+    provisioner = build_hosted_server(settings_for(db_target), key_resolver=h.resolver).hosted["provisioner"]
+    assert provisioner.workspaces == set(COHORT_WORKSPACES.values())
+    assert provisioner.team_workspaces == {SLACK_WORKSPACE}
+    assert provisioner.workspaces.isdisjoint(provisioner.team_workspaces)
 
 
 def test_built_when_enabled_and_hooked_to_the_lock(db_target):

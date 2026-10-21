@@ -188,10 +188,10 @@ OPENROUTER_MANAGEMENT_KEY=… uv run python scripts/ops/openrouter_keys.py guard
 | Command | Effect |
 |---|---|
 | `list [--cohort 2027]` | Every Sidecar key, students' and Slack teams': created date, spend this month, disabled flag (`--cohort slack` for the Slack workspace only) |
-| `show <email>` | One student's key details |
-| `disable <email>` / `enable <email>` | Block or unblock. A blocked student is told their key was disabled by the instructor |
-| `delete <email> --yes` | Remove the key (dry run without `--yes`). The student gets a fresh key on the next call, so use `disable` to block |
-| `usage [--csv]` | Spend per cohort and for the Slack workspace, or a CSV per key |
+| `show <email-or-team-label>` | One student's or team's key details |
+| `disable <email-or-team-label>` / `enable <email-or-team-label>` | Block or unblock. A blocked student or team is told the key was disabled by the instructor |
+| `delete <email-or-team-label> --yes` | Remove the key (dry run without `--yes`). The student or team gets a fresh key on the next call, so use `disable` to block |
+| `usage [--csv]` | Spend per cohort, and per class for the Slack workspace (lines like `slack (2027): 3 keys, $12.00 this month`), or a CSV per key: `cohort` is the class (a team key's is the last part of its name), `group` the workspace (a cohort year or `slack`), and `email` holds a team's label |
 | `guardrails` | Each cohort workspace's `Sidecar student budget` guardrail and the Slack workspace's `Sidecar team budget` one, and any Sidecar key not on it |
 
 **Removing a student** for good: remove them from the roster in Auth0 (§7), then `delete <email> --yes`. Without Auth0 access they can't get a new key.

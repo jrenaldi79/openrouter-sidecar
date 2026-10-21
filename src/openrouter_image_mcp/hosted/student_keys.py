@@ -1,4 +1,6 @@
-"""Provisioned student OpenRouter keys at rest: one row per principal and cohort workspace.
+"""Provisioned OpenRouter keys at rest: one row per principal and workspace.
+
+A student's row is in their cohort workspace; a Slack team's is in the Slack workspace.
 
 The key is sealed with the vault and bound to the principal; OpenRouter's key hash is
 kept in clear for management calls. A row marked `rejected_at` (OpenRouter answered 401)

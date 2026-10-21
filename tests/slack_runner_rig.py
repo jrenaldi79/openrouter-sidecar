@@ -1,6 +1,7 @@
 """A hand-built Slack runner rig: FakeSlack, real stores on `db_target`, a scripted OpenRouter.
 
-Task 21 builds the real `SlackServices` per cohort; this rig builds one by hand around a KeyBox key.
+`wiring.slack_services` builds the real `SlackServices` for the Slack workspace; this rig builds one by hand
+around a KeyBox key.
 """
 
 import asyncio
