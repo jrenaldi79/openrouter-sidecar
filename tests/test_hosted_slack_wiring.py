@@ -71,6 +71,34 @@ class World:
         return job["id"]
 
 
+async def gain(app):
+    """A lock gain, then wait for the start task it began (auth.test, recovery start, gateway start)."""
+    await app.on_gain()
+    if app.start_task is not None:
+        await app.start_task
+
+
+class Sleeps:
+    """Injected `SlackApp.sleep`: records each backoff, and can block until released."""
+
+    def __init__(self, block=False):
+        self.delays, self.block = [], block
+
+    async def __call__(self, delay):
+        self.delays.append(delay)
+        if self.block:
+            await asyncio.Event().wait()
+
+
+def recorder(calls, gate=None):
+    async def recover():
+        calls.append(1)
+        if gate is not None:
+            await gate.wait()
+        return {}
+    return recover
+
+
 @pytest.fixture
 async def world(db_target):
     made = World(db_target)
@@ -107,7 +135,8 @@ def test_one_service_set_per_cohort(world):
 
 async def test_built_and_started_on_gain(world):
     job_id = world.orphan()
-    await world.app.on_gain()
+    await world.app.on_gain()  # returns at once: the start runs in its own task
+    await world.app.start_task
     assert world.app.gateway.bot_user_id == world.app.dispatcher.bot_user_id == world.slack.bot_user
     await asyncio.sleep(0)
     assert [c.calls for c in world.clients] == [["connect"]]
@@ -118,60 +147,80 @@ async def test_built_and_started_on_gain(world):
         assert db.execute("SELECT slack_posted_at FROM advisor_jobs WHERE id=?", (job_id,)).fetchone()["slack_posted_at"]
 
 
-async def test_auth_test_failure_leaves_the_gateway_off_until_the_next_gain(world, caplog):
-    world.slack.fail_next("bot_user_id", "invalid_auth")
-    calls = []
-
-    async def recover():
-        calls.append(1)
-        return {}
-
-    world.app.recover_once = recover
+async def test_auth_test_failure_is_retried_with_backoff(world, caplog):
+    for _ in range(8):
+        world.slack.fail_next("bot_user_id", "invalid_auth")
+    calls, world.app.sleep = [], Sleeps()
+    world.app.recover_once = recorder(calls)
     with caplog.at_level(logging.ERROR):
-        await world.app.on_gain()
-    assert world.clients == [] and calls == [] and world.app.recovery_task is None
+        await gain(world.app)
+    assert world.app.sleep.delays == [5.0, 10.0, 20.0, 40.0, 80.0, 160.0, 300.0, 300.0]
     assert "SlackCallError" in caplog.text and "invalid_auth" not in caplog.text
-    await world.app.on_gain()
     await world.app.recovery_task
     assert len(world.clients) == 1 and calls == [1]
 
 
+async def test_a_second_gain_while_retrying_starts_no_second_task(world):
+    world.slack.fail_next("bot_user_id", "invalid_auth")
+    world.app.sleep = Sleeps(block=True)
+    await world.app.on_gain()
+    first = world.app.start_task
+    await asyncio.sleep(0)
+    await world.app.on_gain()
+    assert world.app.start_task is first and world.app.sleep.delays == [5.0]
+    await world.app.on_lose()  # cancels the waiting start
+    assert first.cancelled() and world.app.start_task is None and world.clients == []
+
+
 async def test_recover_is_not_doubled_while_running(world):
     gate, calls = asyncio.Event(), []
-
-    async def recover():
-        calls.append(1)
-        await gate.wait()
-        return {}
-
-    world.app.recover_once = recover
-    await world.app.on_gain()
+    world.app.recover_once = recorder(calls, gate)
+    await gain(world.app)
     first = world.app.recovery_task
     await asyncio.sleep(0)
-    await world.app.on_gain()  # a second gain while the first sweep runs
+    await gain(world.app)  # a second gain while the first sweep runs
     await asyncio.sleep(0)
     assert world.app.recovery_task is first and calls == [1]
     gate.set()
     await first
-    await world.app.on_gain()
+    await gain(world.app)
     await world.app.recovery_task
     assert calls == [1, 1]
 
 
 async def test_on_lose_stops_the_gateway_and_cancels_recovery(world):
-    async def recover():
-        await asyncio.Event().wait()
-
-    world.app.recover_once = recover
-    await world.app.on_gain()
+    world.app.recover_once = recorder([], asyncio.Event())
+    await gain(world.app)
     task = world.app.recovery_task
     await asyncio.sleep(0)
     await world.app.on_lose()
     assert task.cancelled() and world.app.recovery_task is None
     assert "close" in world.clients[0].calls
     await world.app.on_lose()  # idempotent
-    await world.app.on_gain()  # a regain starts it again
+    await gain(world.app)  # a regain starts it again
     assert len(world.clients) == 2
+
+
+async def test_a_gain_after_close_starts_nothing(world):
+    calls = []
+    world.app.recover_once = recorder(calls)
+    await world.app.close()
+    await world.app.on_gain()
+    assert world.app.start_task is None and world.app.recovery_task is None
+    assert world.clients == [] and calls == []
+
+
+async def test_close_during_auth_test_starts_nothing_after_it(world):
+    calls = []
+    world.app.recover_once = recorder(calls)
+
+    async def closes_meanwhile():
+        world.app._closed = True  # close() began while auth.test was in flight
+        return "UBOT"
+
+    world.slack.bot_user_id = closes_meanwhile
+    await gain(world.app)
+    assert world.clients == [] and calls == [] and world.app.recovery_task is None
 
 
 async def test_close_drains_jobs_then_cancels_the_rest(world):
@@ -191,7 +240,7 @@ async def test_close_drains_jobs_then_cancels_the_rest(world):
         task = asyncio.create_task(job)
         world.app.dispatcher._tasks.add(task)
         task.add_done_callback(world.app.dispatcher._tasks.discard)
-    await world.app.on_gain()
+    await gain(world.app)
     await world.app.close()
     assert quick_done.is_set() and slow_cancelled.is_set()
     assert not world.app.dispatcher._tasks

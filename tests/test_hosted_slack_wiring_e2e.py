@@ -106,3 +106,8 @@ async def test_end_to_end_mention_to_answer(running):
         [row] = [dict(r) for r in db.execute("SELECT * FROM advisor_jobs")]
     assert row["owner"] == "slack|T1:C1" and row["slack_user_id"] == "U1" and row["status"] == "completed"
     assert row["slack_posted_at"] is not None
+    # The model ran on the team's own key. Compared as one boolean so a failure never prints a key.
+    team_key = server.keys.key_for(team_principal("T1", "C1", app.dispatcher.deps.registry.get("T1", "C1")))
+    calls = [r for r in server.fake.requests if r.url.path.endswith("/responses")]
+    on_team_key = bool(team_key) and all(r.headers.get("Authorization") == "Bearer " + team_key for r in calls)
+    assert calls and on_team_key

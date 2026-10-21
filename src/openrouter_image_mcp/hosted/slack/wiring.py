@@ -40,29 +40,60 @@ from .threads import ThreadMap
 
 log = logging.getLogger(__name__)
 
-AUTH_TEST_S = 10.0  # bounds auth.test inside the lock hook, so a Slack outage can't stall the lock loop
+AUTH_TEST_S = 10.0  # cap on one auth.test attempt
+START_RETRY_S = 5.0  # first wait after a failed auth.test; doubles each time
+START_RETRY_MAX_S = 300.0  # the longest wait between attempts
 DRAIN_S = 10.0  # how long shutdown waits for running answers before cancelling them
 
 Closer = Callable[[], Awaitable[None]]
 
 
+async def _cancel(task: asyncio.Task | None) -> None:
+    if task is not None and not task.done():
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
 class SlackApp:
-    """The running bot: `gateway`, `dispatcher` and `services` (by cohort), started and stopped by the lock."""
+    """The running bot: `gateway`, `dispatcher` and `services` (by cohort), started and stopped by the lock.
+
+    `on_gain` only starts one held start task, so the lock hook returns at once. That task retries
+    `auth.test` with backoff until it learns the bot's user id, then starts restart recovery (one task at a
+    time) and the gateway. After `close()` nothing starts again.
+    """
 
     def __init__(self, gateway: Gateway, dispatcher: Dispatcher, services: dict[str, SlackServices],
                  api: SlackApi, recover_once: Callable[[], Awaitable[dict]], closers: list[Closer]):
         self.gateway, self.dispatcher, self.services, self.api = gateway, dispatcher, services, api
         self.recover_once, self.closers = recover_once, closers
         self.drain_s = DRAIN_S
+        self.sleep: Callable[[float], Awaitable[None]] = asyncio.sleep  # tests inject a fake
+        self.start_task: asyncio.Task | None = None
         self.recovery_task: asyncio.Task | None = None
+        self._closed = False
 
     async def on_gain(self) -> None:
-        """Learn the bot's user id, start restart recovery once, then open the socket (returns promptly)."""
-        try:
-            bot = await asyncio.wait_for(self.api.bot_user_id(), AUTH_TEST_S)
-        except Exception as error:  # noqa: BLE001 - a lock hook must not raise; the next gain retries
-            log.error("Slack auth.test failed (%s); the Slack gateway stays off until the next lock gain",
-                      type(error).__name__)
+        """Start the start task unless one is running or the app is closed; returns promptly."""
+        if self._closed:
+            return
+        if self.start_task is None or self.start_task.done():
+            self.start_task = asyncio.create_task(self._start())
+
+    async def _bot_user_id(self) -> str | None:
+        """auth.test until it answers (None once closed); failures are logged by type only."""
+        delay = START_RETRY_S
+        while not self._closed:
+            try:
+                return await asyncio.wait_for(self.api.bot_user_id(), AUTH_TEST_S)
+            except Exception as error:  # noqa: BLE001 - retried; the message could carry Slack detail
+                log.error("Slack auth.test failed (%s); retrying in %gs", type(error).__name__, delay)
+            await self.sleep(delay)
+            delay = min(delay * 2, START_RETRY_MAX_S)
+        return None
+
+    async def _start(self) -> None:
+        bot = await self._bot_user_id()
+        if bot is None or self._closed:
             return
         self.gateway.bot_user_id = self.dispatcher.bot_user_id = bot
         if self.recovery_task is None or self.recovery_task.done():
@@ -75,15 +106,17 @@ class SlackApp:
         return counts
 
     async def on_lose(self) -> None:
-        """Close the socket and stop recovery; idempotent (the lock also calls it at shutdown)."""
+        """Stop the start task, close the socket and stop recovery; idempotent (the lock also calls it at
+        shutdown)."""
+        task, self.start_task = self.start_task, None
+        await _cancel(task)
         await self.gateway.stop()
         task, self.recovery_task = self.recovery_task, None
-        if task is not None and not task.done():
-            task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
+        await _cancel(task)
 
     async def close(self) -> None:
         """Shutdown: stop taking events, let running answers finish within `drain_s`, then close clients."""
+        self._closed = True  # first: a gain from here on starts nothing
         await self.on_lose()
         await self.dispatcher.shutdown(self.drain_s)
         for closer in self.closers:
