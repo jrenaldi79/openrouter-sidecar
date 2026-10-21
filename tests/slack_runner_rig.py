@@ -58,6 +58,7 @@ class Model:
         self.uploads: list[str] = []
         self.deletes: list[str] = []
         self.container_files: dict[str, bytes] = {}  # file id -> content served from the sandbox
+        self.catalog: list[dict] = []  # GET /models rows (AdvisorService.start checks the model is listed)
         self.respond = lambda request: body()
 
     async def handle(self, request: httpx.Request) -> httpx.Response:
@@ -65,6 +66,8 @@ class Model:
             file_id = "or_file_" + secrets.token_hex(4)
             self.uploads.append(file_id)
             return httpx.Response(200, json={"id": file_id})
+        if request.method == "GET" and request.url.path.endswith("/models"):
+            return httpx.Response(200, json={"data": self.catalog})
         if request.method == "GET" and "/containers/" in request.url.path:
             content = self.container_files.get(request.url.path.split("/files/")[1].split("/")[0])
             return httpx.Response(404) if content is None else httpx.Response(200, content=content)

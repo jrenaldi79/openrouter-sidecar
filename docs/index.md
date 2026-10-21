@@ -170,12 +170,15 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/hosted/skills/architectural-render-polish.prompt-template.md](../src/openrouter_image_mcp/hosted/skills/architectural-render-polish.prompt-template.md)
 - [src/openrouter&#95;image&#95;mcp/hosted/skills/openrouter-image.md](../src/openrouter_image_mcp/hosted/skills/openrouter-image.md)
 
-### [src/openrouter&#95;image&#95;mcp/hosted/slack](../src/openrouter_image_mcp/hosted/slack/CLAUDE.md): Slack Sidecar: the @sidecar bot inside the hosted server (Socket Mode): settings, Slack I/O, registry, team identity, parsing, context, channel tools, payload, the job runner, sandbox outputs and the usage report.
+### [src/openrouter&#95;image&#95;mcp/hosted/slack](../src/openrouter_image_mcp/hosted/slack/CLAUDE.md): Slack Sidecar: the @sidecar bot inside the hosted server (Socket Mode): settings, Slack I/O, registry, team identity, parsing, context, channel tools, payload, the job runner, sandbox outputs, the usage report and the request flow.
 
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/&#95;&#95;init&#95;&#95;.py](../src/openrouter_image_mcp/hosted/slack/__init__.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/api.py](../src/openrouter_image_mcp/hosted/slack/api.py)
+- [src/openrouter&#95;image&#95;mcp/hosted/slack/asks.py](../src/openrouter_image_mcp/hosted/slack/asks.py)
+- [src/openrouter&#95;image&#95;mcp/hosted/slack/commands.py](../src/openrouter_image_mcp/hosted/slack/commands.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/context.py](../src/openrouter_image_mcp/hosted/slack/context.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/context&#95;files.py](../src/openrouter_image_mcp/hosted/slack/context_files.py)
+- [src/openrouter&#95;image&#95;mcp/hosted/slack/dispatch.py](../src/openrouter_image_mcp/hosted/slack/dispatch.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/guests.py](../src/openrouter_image_mcp/hosted/slack/guests.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/jobs.py](../src/openrouter_image_mcp/hosted/slack/jobs.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/memory.py](../src/openrouter_image_mcp/hosted/slack/memory.py)
