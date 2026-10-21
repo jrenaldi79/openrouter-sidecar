@@ -85,7 +85,7 @@ def parse_family_defaults(items: list[str]) -> dict[str, str]:
 
 @asynccontextmanager
 async def model_seeder(transport=None):
-    """`seed(row, general_default, family_defaults)`: save the team's model preferences.
+    """`seed(row, family_defaults)`: save the team's per-family model defaults.
 
     The PreferenceService is the server's own (`cohort_services`), acting as the team principal, so the
     catalog check is the one the bot applies. It checks against the catalog with the team's key, so the
@@ -99,14 +99,13 @@ async def model_seeder(transport=None):
     provisioner = KeyProvisioner(keys, manager, set(COHORT_WORKSPACES.values()))
     services = cohort_services(db_target, keys, sandbox_allowed=False, transport=transport)
 
-    async def seed(row: ChannelRow, general_default: str | None, family_defaults: dict[str, str]) -> None:
+    async def seed(row: ChannelRow, family_defaults: dict[str, str]) -> None:
         principal = team_principal(row.slack_team_id, row.channel_id, row)
         await provisioner.ensure(principal, team=TeamKey(row.team_label))
         preferences = services[row.cohort].preferences
         with acting_as(principal):
             saved = preferences.get()
-            await preferences.update(saved["settings_id"], saved["revision"], general_default=general_default,
-                                     family_defaults=family_defaults or None)
+            await preferences.update(saved["settings_id"], saved["revision"], family_defaults=family_defaults)
 
     try:
         yield seed

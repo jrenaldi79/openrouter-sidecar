@@ -1,22 +1,25 @@
 """Instructor tool for the Slack channels Sidecar answers in (one registry row, one team key per label).
 
 Reads DATABASE_URL from the environment, plus SLACK_BOT_TOKEN for `add` and `update --active` (the guest and
-sharing check), and VAULT_KEYS and OPENROUTER_MANAGEMENT_KEY when model defaults are given (the team key is
-created if needed so the catalog check can run). Prints no tokens or keys.
+sharing check), and VAULT_KEYS and OPENROUTER_MANAGEMENT_KEY when `--family-default` is given (the team key
+is created if needed so the catalog check can run). Prints no tokens or keys.
 
     uv run python scripts/ops/slack_channels.py add --team-id T0 --channel C0 --label abbott --cohort 2027 \\
         --fusion-panel a/one,b/two,c/three --fusion-analyst a/one --subagent-model c/three \\
-        [--default-model a/one] [--family-default openai=a/one ...] [--default-alias gemini] \\
+        [--default-model gemini] [--family-default openai=a/one ...] \\
         [--alias k=Brand ...] [--fetch-allow example.com ...] [--daily-cap 4] [--max-concurrent 3] \\
         [--invoker U0 ...]
     uv run python scripts/ops/slack_channels.py update <label> [the same options] [--active]
     uv run python scripts/ops/slack_channels.py deactivate <label> --reason "..."
     uv run python scripts/ops/slack_channels.py list
 
-`--default-model` and `--family-default family=model-id` are the team's model preferences, checked against the
-OpenRouter catalog and saved for the team; they are what an alias like `gemini` resolves to. `--alias` adds to
-the channel's aliases (an alias maps to a brand such as ChatGPT or to an exact model id). `--default-alias` is
-the alias Sidecar uses when a mention names none.
+`--default-model` is the channel's default alias, the one Sidecar uses when a mention names none; it must be
+one of the channel's aliases. `--family-default family=model-id` sets the team's model for a family (what an
+alias like `gemini` resolves to), checked against the OpenRouter catalog. `--alias` adds or replaces aliases
+and cannot remove one (an alias maps to a brand such as ChatGPT or to an exact model id).
+
+In `update`, put the label first, before the multi-value flags (`--alias`, `--family-default`,
+`--fetch-allow`, `--invoker` take one or more values and would swallow it).
 """
 
 from __future__ import annotations
@@ -66,7 +69,7 @@ def _options(args, base_aliases: dict[str, str]) -> dict:
     given = {"fusion_panel": tuple(p.strip() for p in args.fusion_panel.split(",") if p.strip())
              if args.fusion_panel else None,
              "fusion_analyst": args.fusion_analyst, "subagent_model": args.subagent_model,
-             "default_model": args.default_alias, "daily_cap_usd": args.daily_cap,
+             "default_model": args.default_model, "daily_cap_usd": args.daily_cap,
              "max_concurrent": args.max_concurrent,
              "fetch_allowlist": tuple(args.fetch_allow) if args.fetch_allow else None,
              "invoker_allowlist": tuple(args.invoker) if args.invoker else None}
@@ -75,7 +78,8 @@ def _options(args, base_aliases: dict[str, str]) -> dict:
         options["alias_map"] = _aliases(args.alias, base_aliases)
     default = options.get("default_model")
     if default and default not in options.get("alias_map", base_aliases):
-        raise Refusal(f"--default-alias '{default}' is not one of this channel's aliases.")
+        valid = ", ".join(sorted(options.get("alias_map", base_aliases)))
+        raise Refusal(f"--default-model '{default}' is not one of this channel's aliases ({valid}).")
     return options
 
 
@@ -87,13 +91,13 @@ async def _check_channel(channel_id: str) -> None:
 
 
 async def _seed(row, args) -> None:
-    """Save `--default-model` and `--family-default` for the team; a no-op when neither was given."""
+    """Save `--family-default` for the team; a no-op (and no key is created) without it."""
     families = parse_family_defaults(args.family_default or [])
-    if not (args.default_model or families):
+    if not families:
         return
     async with model_seeder() as seed:
         try:
-            await seed(row, args.default_model, families)
+            await seed(row, families)
         except BadRequestError:
             raise Refusal(MODEL_REFUSED) from None
         except AuthRequiredError as error:
@@ -125,7 +129,7 @@ async def cmd_update(registry: ChannelRegistry, args) -> int:
     if args.active:
         await _check_channel(current.channel_id)
         changes |= {"active": True, "inactive_reason": None}
-    if not (changes or args.default_model or args.family_default):
+    if not (changes or args.family_default):
         raise Refusal("Nothing to update: give at least one option.")
     await _seed(replace(current, active=True), args)
     if changes:
@@ -164,11 +168,12 @@ def _shared_options(command: argparse.ArgumentParser, *, required: bool) -> None
     command.add_argument("--fusion-panel", required=required, help="comma-separated model ids, 1 to 8")
     command.add_argument("--fusion-analyst", required=required)
     command.add_argument("--subagent-model", required=required)
-    command.add_argument("--default-model", help="the team's general default model id")
+    command.add_argument("--default-model", help="the channel's default alias, used when a mention names none")
     command.add_argument("--family-default", nargs="+", metavar="family=model-id",
-                         help="per-family default model ids (google, openai, x-ai, open_weight)")
-    command.add_argument("--default-alias", help="the alias used when a mention names none")
-    command.add_argument("--alias", nargs="+", metavar="k=v", help="alias=brand or alias=model-id")
+                         help="the team's model per family (google, openai, x-ai, open_weight), checked "
+                              "against the catalog")
+    command.add_argument("--alias", nargs="+", metavar="k=v",
+                         help="alias=brand or alias=model-id; adds or replaces aliases, cannot remove one")
     command.add_argument("--fetch-allow", nargs="+", metavar="domain")
     command.add_argument("--daily-cap", type=float, help="USD per day for the team")
     command.add_argument("--max-concurrent", type=int)
@@ -185,7 +190,7 @@ def _parser() -> argparse.ArgumentParser:
     add.add_argument("--cohort", required=True, choices=sorted(COHORT_WORKSPACES))
     _shared_options(add, required=True)
     update = sub.add_parser("update", help="change a registered channel")
-    update.add_argument("label")
+    update.add_argument("label", help="the team label; give it before the multi-value flags")
     update.add_argument("--active", action="store_true", help="turn a deactivated channel back on")
     _shared_options(update, required=False)
     off = sub.add_parser("deactivate", help="turn a channel off")

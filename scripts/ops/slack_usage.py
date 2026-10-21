@@ -10,6 +10,7 @@ keys; the report itself never contains one.
 from __future__ import annotations
 
 import argparse
+import html
 import os
 import sys
 from contextlib import asynccontextmanager
@@ -58,7 +59,8 @@ async def run(args) -> int:
     async with _names() as names:
         report = await usage_report(info, SlackJobs(db_target), Scope(principal.key, principal.workspace_id),
                                     row, names, datetime.now(UTC))
-    print(usage_text(report))
+    # usage_text is entity-escaped for Slack; a terminal wants the plain names (R&D, not R&amp;D).
+    print(html.unescape(usage_text(report)))
     return 0
 
 
