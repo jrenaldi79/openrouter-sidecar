@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import ipaddress
 import re
+from collections.abc import Sequence
 from dataclasses import replace
 from urllib.parse import urlparse
 
-from ...advisor_payload import build_payload
+from ...advisor_payload import SANDBOX_SAFETY, build_payload, upload_notes
 from .context import TZ
 from .registry import ChannelRow
 from .slack_tools import FUNCTION_NAMES, TOOL_SPECS
@@ -33,7 +34,17 @@ FUSION_FORCED = True
 FUSION_CHOICE = {"type": "allowed_tools", "mode": "required", "tools": [{"type": "openrouter:fusion"}]}
 
 _LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
+_SCHEME_LIKE = re.compile(r"^[a-z][a-z0-9+.-]*:(?!\d+(?:[/?#]|$))", re.IGNORECASE)
 _FILES_HEADING = "Files in the thread, not attached:"
+
+# Hosts where anyone can publish a subdomain: allowing the suffix itself would allow every site under it.
+# A subdomain such as alice.github.io stays allowed.
+SHARED_SUFFIXES = frozenset({
+    "github.io", "gitlab.io", "vercel.app", "netlify.app", "pages.dev", "workers.dev", "web.app",
+    "firebaseapp.com", "herokuapp.com", "onrender.com", "fly.dev", "glitch.me", "repl.co", "ngrok.io",
+    "ngrok-free.app", "blogspot.com", "azurewebsites.net", "cloudfront.net", "s3.amazonaws.com",
+    "appspot.com", "wordpress.com", "substack.com", "notion.site", "readthedocs.io"})
+_SECOND_LEVEL = frozenset({"co", "com", "ac", "gov", "edu", "org", "net", "ne", "or", "go"})
 
 _OPENING = """You are Sidecar, an assistant in a team's Slack channel. Several people on the team may ask you
 things, and you answer the person who mentioned you.
@@ -47,22 +58,32 @@ _THREAD_TOOLS = (
     "channel's. Web search, a clock (the team's time zone is " + TZ + ") and a helper sub-agent for "
     "side tasks are also available.")
 
-_FETCH_ON = ("The web_fetch tool reads pages, but only on the listed domains: {domains}. You cannot open "
-             "any other site.")
+# No domain, host or file name from Slack goes into the instructions: they are the model's rules, and
+# Slack text is data. The allowed domains travel only in the web_fetch tool's own parameters.
+_FETCH_ON = ("The web_fetch tool opens only pages on domains linked in this thread or allowed for this "
+             "channel; other domains are refused.")
 _FETCH_OFF = "You cannot open web pages directly; use web search for outside information."
+_PANEL_FETCH_ON = ("The panel can search the web, and it can open pages only on domains linked in this "
+                   "thread or allowed for this channel.")
+_PANEL_FETCH_OFF = "The panel can search the web but cannot open pages directly."
 
-_SANDBOX_TOOLS = ("You can also run code with the shell tool, in a sandbox with no internet access. Write files meant for "
-                  "the team to `/workspace/project/outputs/`; only that folder is posted.")
+_SANDBOX_TOOLS = ("You can also run code with the shell tool. Write files meant for the team to "
+                  "`/workspace/project/outputs/`; only that folder is posted.")
 
 _FILES_RULE = ("Files the thread lists as not attached are not available to you. The team can attach one "
                "again with their ask.")
 
 _COMPARE = """Answer by asking a panel of models through the Fusion tool, then give one combined answer. Say
-where the models agreed and where they did not."""
+where the models agreed and where they did not. You have no other tools in this request."""
 
 SLACK_INLINE = _OPENING + "\n" + _THREAD_TOOLS + "\n{fetch}\n" + _FILES_RULE
-SLACK_SANDBOX = _OPENING + "\n" + _THREAD_TOOLS + "\n{fetch}\n" + _SANDBOX_TOOLS + "\n" + _FILES_RULE
+# The container rules and the upload pointers come from the advisor module, so a Slack sandbox chat
+# gets what every sandbox chat gets; the outputs rule is added.
+SLACK_SANDBOX = (_OPENING + "\n" + _THREAD_TOOLS + "\n{fetch}\n" + _SANDBOX_TOOLS + "\n"
+                 + SANDBOX_SAFETY.rstrip("\n") + "{uploads}\n" + _FILES_RULE)
 SLACK_COMPARE = _OPENING + "\n" + _COMPARE + "\n{fetch}\n" + _FILES_RULE
+_FETCH_LINES = {SLACK_INLINE: (_FETCH_ON, _FETCH_OFF), SLACK_SANDBOX: (_FETCH_ON, _FETCH_OFF),
+                SLACK_COMPARE: (_PANEL_FETCH_ON, _PANEL_FETCH_OFF)}
 
 
 # ---- web_fetch domains ----
@@ -73,10 +94,9 @@ def _host(value: object, *, bare: bool) -> str | None:
         return None
     text = value.strip()
     try:
-        if "://" not in text and bare:
-            text = "//" + text
-        parts = urlparse(text)
-        if "://" in text and parts.scheme.lower() not in ("http", "https"):
+        schemeless = "://" not in text and bare and not _SCHEME_LIKE.match(text)
+        parts = urlparse("//" + text if schemeless else text)
+        if not schemeless and parts.scheme.lower() not in ("http", "https"):
             return None
         if "\\" in parts.netloc or not parts.hostname:
             return None
@@ -87,7 +107,7 @@ def _host(value: object, *, bare: bool) -> str | None:
 
 
 def _public_host(host: str) -> bool:
-    if not host or host == "localhost" or "." not in host:
+    if not host or host == "localhost" or "." not in host or host in SHARED_SUFFIXES:
         return False
     try:
         ipaddress.ip_address(host)
@@ -95,16 +115,20 @@ def _public_host(host: str) -> bool:
     except ValueError:
         pass
     labels = host.split(".")
+    # co.uk, com.au, ac.jp: a registry suffix, so allowing it would allow the whole registry.
+    if len(labels) == 2 and labels[0] in _SECOND_LEVEL and len(labels[1]) == 2:
+        return False
     # An all-digit last label is an IP in shorthand (127.1), never a real top-level domain.
     return all(_LABEL.match(label) for label in labels) and not labels[-1].isdigit()
 
 
-def fetch_domains(urls: list[str], allowlist: tuple[str, ...]) -> list[str]:
-    """Hostnames web_fetch may read: public http(s) hosts from `urls` plus the channel's allowlist."""
-    found = {_host(url, bare=False) for url in urls}
-    found |= {_host(entry, bare=True) for entry in allowlist}
-    found.discard(None)
-    return sorted(found)[:MAX_FETCH_DOMAINS]
+def fetch_domains(urls: Sequence[str], allowlist: Sequence[str]) -> list[str]:
+    """Hostnames web_fetch may read: the channel's allowlist first, then public http(s) hosts from
+    `urls` in the slots left under `MAX_FETCH_DOMAINS`. Sorted."""
+    allowed = sorted({host for host in (_host(entry, bare=True) for entry in allowlist) if host})
+    allowed = allowed[:MAX_FETCH_DOMAINS]
+    linked = sorted({host for host in (_host(url, bare=False) for url in urls) if host} - set(allowed))
+    return sorted(allowed + linked[:MAX_FETCH_DOMAINS - len(allowed)])
 
 
 # ---- tools ----
@@ -155,9 +179,9 @@ def files_note(listed: list[str]) -> str:
     return "\n".join([_FILES_HEADING, *names]) if names else ""
 
 
-def _instructions(template: str, domains: list[str], memory_text: str) -> str:
-    fetch = _FETCH_ON.format(domains=", ".join(domains)) if domains else _FETCH_OFF
-    text = template.replace("{fetch}", fetch)
+def _instructions(template: str, domains: list[str], memory_text: str, uploads: str = "") -> str:
+    fetch_on, fetch_off = _FETCH_LINES[template]
+    text = template.replace("{fetch}", fetch_on if domains else fetch_off).replace("{uploads}", uploads)
     return text + "\n\n" + memory_text if memory_text else text
 
 
@@ -172,7 +196,7 @@ def _compare_fields(payload: dict, row: ChannelRow, domains: list[str]) -> None:
 
 def build_slack_payload(chat, brief: str, files: list[dict], uploads: list[dict], *, row: ChannelRow,
                         domains: list[str], memory_text: str, compare: bool,
-                        listed: list[str] = ()) -> dict:
+                        listed: Sequence[str] = ()) -> dict:
     """The request for one Slack job.
 
     `memory_text` is `ChannelMemory.instructions(...)` (already formatted, or ""). `listed` names thread
@@ -191,7 +215,8 @@ def build_slack_payload(chat, brief: str, files: list[dict], uploads: list[dict]
         _compare_fields(payload, row, domains)
         return payload
     shell = payload.get("tools", [])
-    payload["instructions"] = _instructions(SLACK_SANDBOX if chat.sandbox else SLACK_INLINE, domains, memory_text)
+    template = SLACK_SANDBOX if chat.sandbox else SLACK_INLINE
+    payload["instructions"] = _instructions(template, domains, memory_text, upload_notes(uploads))
     payload["tools"] = [*TOOL_SPECS, *server_tools(row, domains), *shell]
     payload["max_tool_calls"] = MAX_TOOL_CALLS_SANDBOX if chat.sandbox else MAX_TOOL_CALLS_INLINE
     return payload

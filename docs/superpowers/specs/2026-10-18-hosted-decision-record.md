@@ -50,12 +50,14 @@
 
 ## Slack Sidecar: API facts (pending live run)
 
-The `@sidecar` Slack bot depends on four OpenRouter Responses API facts that the docs state but nobody here has confirmed. `tests/live/test_slack_spikes.py` holds one opt-in live test for each (marker `live`, deselected by default). The tests print what they find and assert only that the requests succeeded.
+The `@sidecar` Slack bot depends on these OpenRouter Responses API facts that the docs state but nobody here has confirmed. `tests/live/test_slack_spikes.py` holds an opt-in live test for each one that needs a request (marker `live`, deselected by default). The tests print what they find and assert only that the requests succeeded.
 
 1. **Replay of output items.** A second request whose `input` replays every output item exactly as returned, followed by a `function_call_output`, returns an assistant message. If it fails, stop and re-plan Task 13.
 2. **Shell files.** Whether `files[].filename` on shell result items is absolute or relative, and whether `GET containers/{container_id}/files/{file_id}/content` needs `?workspace_id=`.
 3. **Forcing Fusion.** Whether the `allowed_tools` tool choice (`mode: required`, tool `openrouter:fusion`) makes the model run Fusion, and whether the Fusion `tools` list reaches the panelists. If forcing fails, Task 12 uses the `openrouter/fusion` fallback.
-4. **Cancellation.** Cancelling a request mid-inference is out of scope, so `!stop` takes effect at round boundaries. No test is needed.
+4. **Subdomain matching.** Whether `web_fetch` with `allowed_domains: ["example.com"]` can fetch `www.example.com`. If it can, a registered domain allows its subdomains, which is why `fetch_domains` drops shared suffixes (`github.io`, `co.uk`). `test_fetch_subdomain_matching` prints it.
+5. **Fusion plugin fallback.** Whether the `openrouter/fusion` model with a `plugins` entry accepts `tools` inside the plugin. If not, the fallback cannot carry the web_fetch domain rule to the panel, and `compare` needs another route. `test_fusion_plugin_accepts_tools` prints it.
+6. **Cancellation.** Cancelling a request mid-inference is out of scope, so `!stop` takes effect at round boundaries. No test is needed.
 
 To run: `OPENROUTER_LIVE_KEY=... uv run pytest -m live tests/live/test_slack_spikes.py -s`
 

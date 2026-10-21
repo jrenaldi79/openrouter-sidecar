@@ -15,6 +15,7 @@ import pytest
 
 from openrouter_image_mcp.advisor_client import AdvisorClient
 from openrouter_image_mcp.config import API_BASE, COHORT_WORKSPACES
+from openrouter_image_mcp.errors import OpenRouterError
 
 pytestmark = pytest.mark.live
 
@@ -134,3 +135,36 @@ async def test_fusion_forced(live, advisor):
     print(f"[spike] analysis anywhere in response: "
           f"{any('analysis' in node for node in _walk(body))}")
     assert body.get("status", "completed") != "failed"
+
+
+async def test_fetch_subdomain_matching(live, advisor):
+    key, _ = live
+    fetch = {"type": "openrouter:web_fetch",
+             "parameters": {"allowed_domains": ["example.com"], "max_uses": 2}}
+    prompt = ("Use the web_fetch tool to open https://www.example.com/ and quote its heading. "
+              "If the tool refuses, say exactly: REFUSED.")
+    body = await advisor.respond(key, _payload(prompt, [fetch], max_tool_calls=3))
+    _show("output types", _types(body))
+    text = " ".join(str(node.get("text", "")) for node in _walk(body)
+                    if node.get("type") == "output_text")
+    fetched = any("fetch" in item.get("type", "") for item in body["output"])
+    print(f"[spike] web_fetch ran for www.example.com with allowed_domains=['example.com']: {fetched}")
+    print(f"[spike] subdomain matching: {'refused' if 'REFUSED' in text else 'allowed or unclear'}; "
+          f"answer: {text[:200]!r}")
+
+
+async def test_fusion_plugin_accepts_tools(live, advisor):
+    key, _ = live
+    plugin = {"id": "fusion", "analysis_models": PANEL, "model": MODEL, "max_tool_calls": 2,
+              "tools": [{"type": "openrouter:web_search"}]}
+    payload = _payload("Which is older, the Eiffel Tower or the Brooklyn Bridge? One sentence.", [])
+    payload.pop("tools")
+    payload.update(model="openrouter/fusion", plugins=[plugin])
+    try:
+        body = await advisor.respond(key, payload)
+    except OpenRouterError as error:  # the fact we want is whether `tools` inside the plugin is accepted
+        print(f"[spike] fusion plugin with tools REJECTED: {type(error).__name__}: {str(error)[:300]}")
+        return
+    _show("output types", _types(body))
+    print("[spike] fusion plugin with tools accepted; "
+          f"analysis anywhere in response: {any('analysis' in node for node in _walk(body))}")
