@@ -172,7 +172,7 @@ def _urls(messages: list[SlackMessage]) -> list[str]:
     return list(found)
 
 
-def _is_channel_message(message: SlackMessage) -> bool:
+def is_channel_message(message: SlackMessage) -> bool:
     in_a_thread = message.thread_ts is not None and message.thread_ts != message.ts
     return message.subtype not in DROPPED_SUBTYPES and not in_a_thread
 
@@ -249,7 +249,7 @@ class ContextBuilder:
             page = await _best_effort(
                 lambda at=cursor: self._api.history(channel, latest=thread_ts, cursor=at, limit=HISTORY_PAGE),
                 "history", Page([], None))
-            found += [m for m in page.messages if _is_channel_message(m) and ts_key(m.ts) < ts_key(thread_ts)]
+            found += [m for m in page.messages if is_channel_message(m) and ts_key(m.ts) < ts_key(thread_ts)]
             cursor = page.next_cursor
             if len(found) >= CHANNEL_MESSAGES or not cursor:
                 break
