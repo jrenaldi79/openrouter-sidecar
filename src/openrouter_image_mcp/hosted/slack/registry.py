@@ -63,7 +63,7 @@ def new_row(team_id: str, channel_id: str, label: str, cohort: str, *, fusion_pa
             subagent_model: str, **optional) -> ChannelRow:
     if cohort not in config.COHORT_WORKSPACES:
         raise ValueError(f"Unknown cohort {cohort!r}.")
-    optional.setdefault("default_model", "gpt")
+    optional.setdefault("default_model", "gemini")
     optional["alias_map"] = dict(optional.get("alias_map", DEFAULT_ALIASES))
     return ChannelRow(team_id, channel_id, label, cohort, config.COHORT_WORKSPACES[cohort],
                       fusion_panel=tuple(fusion_panel), fusion_analyst=fusion_analyst,

@@ -188,3 +188,33 @@ async def test_fake_slack_fail_next_and_records():
     assert fake.posts[0]["ts"] == ts and fake.posts[0]["username"] == "Gem"
     fake.members["C1"] = ["U1"]
     assert await fake.members("C1") == ["U1"]
+
+
+@pytest.mark.parametrize("url", [
+    "http://files.slack.com/a",
+    "https://evil.example/a",
+    "https://files.slack.com.evil.example/a",
+    "https://evil.example/files.slack.com/a",
+    "not a url",
+])
+async def test_download_refuses_untrusted_host(url):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(200, content=b"x")
+    with pytest.raises(SlackCallError) as caught:
+        await _api(handler).download(url, 100)
+    assert (caught.value.method, caught.value.code) == ("download", "untrusted_host")
+    assert requests == []
+
+
+async def test_download_does_not_follow_redirects():
+    requests = []
+
+    def handler(request):
+        requests.append(str(request.url))
+        return httpx.Response(302, headers={"Location": "https://evil.example/a"})
+    with pytest.raises(SlackCallError) as caught:
+        await _api(handler).download("https://FILES.slack.com./a", 100)
+    assert caught.value.code == "http_302" and requests == ["https://files.slack.com./a"]

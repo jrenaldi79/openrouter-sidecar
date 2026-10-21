@@ -14,6 +14,7 @@ from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 
 DOWNLOAD_TIMEOUT_S = 30.0
+DOWNLOAD_HOST = "files.slack.com"  # the bot token is only ever sent here
 
 
 class SlackCallError(Exception):
@@ -80,6 +81,14 @@ def _page(response) -> Page:
     return Page([SlackMessage.from_raw(m) for m in response.get("messages") or ()], cursor)
 
 
+def _trusted_download(url: str) -> bool:
+    try:
+        parsed = httpx.URL(url)
+    except httpx.InvalidURL:
+        return False
+    return parsed.scheme == "https" and parsed.host.lower().rstrip(".") == DOWNLOAD_HOST
+
+
 def _retry_after(headers) -> float | None:
     try:
         return float(headers.get("Retry-After") or headers.get("retry-after"))
@@ -144,10 +153,13 @@ class SdkSlackApi:
         await self._call("upload", "files_upload_v2", **args)  # username is not supported by uploads
 
     async def download(self, url: str, max_bytes: int) -> bytes:
+        if not _trusted_download(url):
+            raise SlackCallError("download", "untrusted_host")
         http = self._http or httpx.AsyncClient(timeout=DOWNLOAD_TIMEOUT_S)
         try:
-            async with http.stream("GET", url, headers={"Authorization": f"Bearer {self.client.token}"}) as response:
-                if response.status_code != 200:
+            async with http.stream("GET", url, headers={"Authorization": f"Bearer {self.client.token}"},
+                                   follow_redirects=False) as response:
+                if not 200 <= response.status_code < 300:
                     raise SlackCallError("download", f"http_{response.status_code}")
                 body = bytearray()
                 async for chunk in response.aiter_bytes():

@@ -19,6 +19,7 @@ def row(label="abbott", channel="C1", team="T1", cohort="2027", panel=PANEL, **o
 
 def test_new_row_defaults():
     r = row()
+    assert r.default_model == "gemini"
     assert r.workspace_id == config.COHORT_WORKSPACES["2027"]
     assert r.alias_map == DEFAULT_ALIASES and r.alias_map is not DEFAULT_ALIASES
     assert (r.daily_cap_usd, r.max_concurrent, r.active) == (4.0, 3, True)
