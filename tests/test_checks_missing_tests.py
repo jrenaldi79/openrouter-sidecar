@@ -55,3 +55,8 @@ def test_slack_subpackage_needs_test():
     assert find_missing([f"{PKG}/hosted/slack/parser.py"], ["tests/test_hosted_parser.py"]) == [
         (f"{PKG}/hosted/slack/parser.py", "tests/test_hosted_slack_parser*.py")
     ]
+
+
+def test_admin_subpackage_needs_test():
+    assert expected_tests(f"{PKG}/hosted/admin/oidc.py") == "tests/test_hosted_admin_oidc*.py"
+    assert expected_tests(f"{PKG}/hosted/admin/__init__.py") is None

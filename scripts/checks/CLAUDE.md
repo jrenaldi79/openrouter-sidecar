@@ -9,7 +9,7 @@ read_when: "Changing or adding files in scripts/checks/."
 **Owns:**
 
 - `secret_scan.py`: provider keys, JWTs, Auth0, Railway, vault and link-signing values, non-local Postgres passwords, and signed `lnk_`/`upl_`/`img_` tokens. Tests are scanned too.
-- `missing_tests.py`: a newly added module needs its flat pytest file or Playwright spec.
+- `missing_tests.py`: a newly added module needs its flat pytest file or Playwright spec (`hosted/slack` and `hosted/admin` map to `test_hosted_slack_*` and `test_hosted_admin_*`).
 - `file_sizes.py`: the ratchet. A new file may not exceed 300 lines, and a file already over may not grow.
 - `ui_build.py`: rebuilds bundles when ui files are staged and blocks stale or unstaged output.
 - `git.py`: staged, HEAD and tracked readers. It is the only module that shells out to git.

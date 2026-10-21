@@ -2,7 +2,7 @@
 
 Flat pytest layout: src/openrouter_image_mcp/<m>.py -> tests/test_<m>*.py and
 hosted/<m>.py -> tests/test_hosted_<m>*.py, hosted/slack/<m>.py ->
-tests/test_hosted_slack_<m>*.py. An MCP App (ui/src/<app>.js with a
+tests/test_hosted_slack_<m>*.py, hosted/admin/<m>.py -> tests/test_hosted_admin_<m>*.py. An MCP App (ui/src/<app>.js with a
 sibling <app>.html) -> ui/tests/<app>*.spec.js. Helpers, scripts and dunder
 modules are exempt; app specs cover ui helpers.
 """
@@ -29,6 +29,8 @@ def expected_tests(path: str, known: Iterable[str] = ()) -> str | None:
         return f"tests/test_hosted_{p.stem}*.py"
     if p.suffix == ".py" and str(p.parent) == f"{PKG}/hosted/slack":
         return f"tests/test_hosted_slack_{p.stem}*.py"
+    if p.suffix == ".py" and str(p.parent) == f"{PKG}/hosted/admin":
+        return f"tests/test_hosted_admin_{p.stem}*.py"
     if p.suffix == ".js" and str(p.parent) == "ui/src" and f"ui/src/{p.stem}.html" in set(known):
         return f"ui/tests/{p.stem}*.spec.js"
     return None
