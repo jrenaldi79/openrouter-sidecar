@@ -64,7 +64,7 @@ async def test_slack_off_lists_rows_read_only(db_target):
     async with running_server(db_target, env=CONFIGURED) as running:
         pieces = running.server.hosted["admin"]
         assert running.server.hosted["slack"] is None
-        pieces["channels"].registry.add(new_row("T1", "C1", "team-a", "2027", fusion_panel=("a/one",),
+        pieces["channels"].registry.add(new_row("T0ADMIN01", "C0ADMIN01", "team-a", "2027", fusion_panel=("a/one",),
                                                 fusion_analyst="d/an", subagent_model="e/sub"))
         raw_id, _ = pieces["sessions"].create("email|admin", "admin@example.edu")
         async with _http(running) as http:
@@ -73,11 +73,11 @@ async def test_slack_off_lists_rows_read_only(db_target):
             assert page.status_code == 200
             assert "team-a" in page.text and escape(copy.SLACK_OFF) in page.text
             # With no team models to read, the edit page is a plain refusal, never an error page.
-            assert (await http.get("/admin/channels/T1/C1")).status_code in (200, 422)
+            assert (await http.get("/admin/channels/T0ADMIN01/C0ADMIN01")).status_code == 422
             # Nothing can be registered without a Slack client: the form is refused, no row appears.
-            form = await http.get("/admin/channels/new?channel=C2")
+            form = await http.get("/admin/channels/new?channel=C0ADMIN02")
             assert form.status_code == 422 and escape(copy.SLACK_OFF) in form.text
-        assert [row.channel_id for row in pieces["channels"].registry.all()] == ["C1"]
+        assert [row.channel_id for row in pieces["channels"].registry.all()] == ["C0ADMIN01"]
 
 
 async def test_admin_uses_the_slack_apps_registry_when_slack_is_on(db_target):

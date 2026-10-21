@@ -26,12 +26,18 @@ read_when: "Changing or adding files in src/openrouter_image_mcp/hosted/admin/."
   cookie to equal `state`, checks the RS256 ID token, then the access token through `Auth0Verifier(profile_claim=None)`
   for both permissions and a profile email. A failed exchange logs the HTTP status only.
 - `forms.py`: parses the register and edit forms and compares the submitted values with the values the form was
-  rendered from (carried in hidden fields), so only changed fields are saved.
-- `routes.py`: the Starlette routes (login, callback, logout, channels, register, edit, finish setup, turn off and on,
-  change log, static files). One guard checks the session for every page and the CSRF token (`_csrf` field or
-  `x-csrf-token` header) for every POST. The login route is limited per client address. Without an `Auth0Login`
-  (client values unset) every page except the static files shows `NOT_CONFIGURED`. Every response carries
-  `security_headers`. A `ChannelRefused` shows the form again with the entered values and its message.
+  rendered from (carried in hidden fields), so only changed fields are saved. A blank family model is never a
+  change. It parses numbers at the boundary: `daily_cap_usd` in (0, 1000], `max_concurrent` a whole number from 1 to
+  20, each checked only when the admin changed it.
+- `routes.py`: `admin_routes`, the route table (login, callback, logout, channels, register, edit, finish setup, turn
+  off and on, change log, static files, and a last `/admin/{rest:path}` catch-all so unknown paths still carry the
+  headers). `routes_base.py` holds the one guard every route goes through: it checks the session, the Slack id format
+  and the CSRF token (`_csrf` field or `x-csrf-token` header) for every POST, reads urlencoded bodies with a byte and
+  field cap, adds `security_headers` to every response and answers unexpected errors with a generic page.
+  `routes_auth.py` has sign-in and sign-out (the login route is limited per client address; the not-admin page links
+  to Auth0 sign-out), `routes_channels.py` the pages and register and edit, `routes_actions.py` finish setup and
+  turn off and on. Without an `Auth0Login` (client values unset) every page except the static files shows
+  `NOT_CONFIGURED`. A `ChannelRefused` shows the form again with the entered values and its message.
 - `wiring.py`: `register_admin`, called from `build_hosted_server` when the page is on. It builds the sessions, audit,
   `Auth0Login` and `ChannelAdmin` (over the Slack app, or over a fresh registry with no Slack api when Slack is off)
   and registers the routes with `server.custom_route`. It logs one warning naming the missing client variables.
