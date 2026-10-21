@@ -32,7 +32,7 @@ that is known and accepted (see "Accepted exposure").
 | Item | Who | Notes |
 | --- | --- | --- |
 | Account A: `jrenaldi@northwestern.edu`, Class of 2027 | Ready | Already provisioned; key on the $25 budget |
-| Account B: a second rostered Class of 2027 identity | You, with the mpd-auth session | Needs `sidecar:use`, a verified email, active roster status, cohort 2027 and the 2027 `workspace_id` in the profile claim. Your Gmail account works if it's added to the roster. It must not be an Auth0 admin or instructor account |
+| Account B: `jrenaldi79@gmail.com`, Class of 2027 | Ready (on the 2027 roster, 2026-10-21) | Gets its own key on first use. It must not be an Auth0 admin or instructor account |
 | Approval to set `SIDECAR_SANDBOX_ENABLED=true` for the test window | You | Production only has instructor keys today, so a short window is safe. Unset straight afterwards |
 | Spend | You | Under $0.10: about ten short advisor turns on `openai/gpt-6-luna` |
 | Time | Both | About 45 minutes. Account A runs in claude.ai; account B runs through `scripts/ops/real_login.py --prompt-login` and a small MCP client, so you don't need a second claude.ai account |
