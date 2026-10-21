@@ -113,6 +113,15 @@ class ThreadMap:
                 (scope.owner, scope.workspace, channel_id, thread_ts)).fetchone()
         return _chat(found) if found else None
 
+    def thread_for(self, scope: Scope, chat_id: str) -> str | None:
+        """The Slack thread a chat answers (an unarchived row first), for restart recovery."""
+        with self._db() as db:
+            found = db.execute(
+                f"SELECT thread_ts FROM slack_threads WHERE {_SCOPED} AND chat_id=? "
+                "ORDER BY (archived_at IS NOT NULL), created_at DESC, rowid DESC LIMIT 1",
+                (scope.owner, scope.workspace, chat_id)).fetchone()
+        return found["thread_ts"] if found else None
+
     def archive(self, scope: Scope, channel_id: str, thread_ts: str) -> int:
         with self._db() as db:
             cursor = db.execute(

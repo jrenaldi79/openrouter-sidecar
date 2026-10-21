@@ -171,7 +171,7 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/hosted/skills/architectural-render-polish.prompt-template.md](../src/openrouter_image_mcp/hosted/skills/architectural-render-polish.prompt-template.md)
 - [src/openrouter&#95;image&#95;mcp/hosted/skills/openrouter-image.md](../src/openrouter_image_mcp/hosted/skills/openrouter-image.md)
 
-### [src/openrouter&#95;image&#95;mcp/hosted/slack](../src/openrouter_image_mcp/hosted/slack/CLAUDE.md): Slack Sidecar: the @sidecar bot inside the hosted server (Socket Mode): settings, Slack I/O, registry, team identity, parsing, context, channel tools, payload, the job runner, sandbox outputs, the usage report, the request flow and the Socket Mode gateway.
+### [src/openrouter&#95;image&#95;mcp/hosted/slack](../src/openrouter_image_mcp/hosted/slack/CLAUDE.md): Slack Sidecar: the @sidecar bot inside the hosted server (Socket Mode): settings, Slack I/O, registry, team identity, parsing, context, channel tools, payload, the job runner, sandbox outputs, the usage report, the request flow, the Socket Mode gateway and restart recovery.
 
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/&#95;&#95;init&#95;&#95;.py](../src/openrouter_image_mcp/hosted/slack/__init__.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/api.py](../src/openrouter_image_mcp/hosted/slack/api.py)
@@ -188,6 +188,7 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/parser.py](../src/openrouter_image_mcp/hosted/slack/parser.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/payload.py](../src/openrouter_image_mcp/hosted/slack/payload.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/principal.py](../src/openrouter_image_mcp/hosted/slack/principal.py)
+- [src/openrouter&#95;image&#95;mcp/hosted/slack/recovery.py](../src/openrouter_image_mcp/hosted/slack/recovery.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/registry.py](../src/openrouter_image_mcp/hosted/slack/registry.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/replies.py](../src/openrouter_image_mcp/hosted/slack/replies.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/runner.py](../src/openrouter_image_mcp/hosted/slack/runner.py)

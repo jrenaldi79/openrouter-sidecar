@@ -104,3 +104,20 @@ def test_workspace_alone_does_not_scope(db_target):
     tm.put(A, "C1", "1.0", "gemini", "inline", "chat-a")
     other_workspace = Scope(A.owner, "other-ws")
     assert tm.get(other_workspace, "C1", "1.0", "gemini", "inline") is None
+
+
+def test_thread_for_finds_the_thread_of_a_chat_within_the_scope(db_target):
+    tm = threads(db_target)
+    tm.put(A, "C1", "1.1", "gemini", "inline", "chat-a")
+    tm.put(A, "C1", "2.2", "gpt", "inline", "chat-b")
+    assert tm.thread_for(A, "chat-a") == "1.1"
+    assert tm.thread_for(A, "chat-b") == "2.2"
+    assert tm.thread_for(A, "chat-none") is None
+    assert tm.thread_for(B, "chat-a") is None
+
+
+def test_thread_for_still_finds_an_archived_thread(db_target):
+    tm = threads(db_target)
+    tm.put(A, "C1", "1.1", "gemini", "inline", "chat-a")
+    tm.archive(A, "C1", "1.1")
+    assert tm.thread_for(A, "chat-a") == "1.1"
