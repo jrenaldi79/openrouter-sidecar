@@ -221,6 +221,8 @@ The `@Sidecar` bot answers in each capstone team's Slack channel with models oth
    railway variables set SLACK_BOT_TOKEN=… SLACK_APP_TOKEN=… SIDECAR_SLACK_ENABLED=true
    ```
 
+   A malformed `SIDECAR_SLACK_*` number (not a number, zero or negative) stops the server from starting even while `SIDECAR_SLACK_ENABLED` is unset, so fix or remove it before deploying.
+
    The bot also needs `DATABASE_URL`, `VAULT_KEYS` and `OPENROUTER_MANAGEMENT_KEY` (§1), because team keys are created and sealed the way student keys are. A missing token, or one without its `xoxb-` or `xapp-` prefix, stops the server from starting. A well-formed token that Slack rejects or has revoked, or a Slack outage, doesn't: the owning replica starts Slack in the background, the server keeps serving `/health` and `/ready`, and the bot retries `auth.test` every 5 seconds, backing off to 5 minutes. Check the logs for the failure type. Once `auth.test` works, the bot posts any answers a restart left unposted and opens the connection.
 
 4. **Register each channel.** Invite `@Sidecar` to the channel first (the guest check reads its members). Then register it with `scripts/ops/slack_channels.py`. It prints no tokens or keys.
@@ -257,7 +259,7 @@ The `@Sidecar` bot answers in each capstone team's Slack channel with models oth
    - `add` refuses a channel that is shared outside the organization or has a guest member, and says why.
    - **`--default-model`** is the channel's default alias, the one used when a mention names no model. It must be one of the channel's aliases (the defaults, plus any added with `--alias`). It is not a model id.
    - **`--family-default family=model-id`** (repeatable) sets which model each brand alias means for this team: `google`, `openai`, `x-ai` or `open_weight`. Each id is checked against the OpenRouter catalog, and the result is saved as the team's model preference. This creates the team's OpenRouter key if it doesn't exist yet. A brand alias whose family has no default answers "This alias has no model set yet. Ask your instructor.", so set every family the team's aliases use. If `add` fails after the key was created, the key stays with no channel row; a retry reuses it.
-   - Other options: `--alias name=Brand` or `name=model-id` (adds or replaces, never removes), `--fetch-allow domain` (domains `web_fetch` may always reach), `--daily-cap` (USD) and `--max-concurrent`, which default to the two environment variables above (4 and 3), and `--invoker U…` (limit who can ask).
+   - Other options: `--alias name=Brand` or `name=model-id` (adds or replaces, never removes), `--fetch-allow domain` (domains `web_fetch` may always reach), `--daily-cap` (USD) and `--max-concurrent`, which default to the two environment variables above (4 and 3), and `--invoker U…` (limit who can ask). The registry refuses a daily cap that isn't a positive, finite number of dollars and a `--max-concurrent` below 1.
 
    Change a channel later with `update`, which takes the label first and then only the options to change:
 

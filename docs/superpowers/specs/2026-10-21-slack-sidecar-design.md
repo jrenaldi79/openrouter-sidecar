@@ -166,7 +166,7 @@ Every command starts with `@Sidecar`. Messages without the mention are ignored, 
 | --- | --- |
 | `@Sidecar <question>` | Ask the channel default model. In a thread where Sidecar already answered, continue with the last model that answered |
 | `@Sidecar ask <alias> <question>` | Ask one model. An exact OpenRouter id also works |
-| `@Sidecar ask <a> and <b> <question>` | Separate answers from each model |
+| `@Sidecar ask <a> and <b> <question>` | Separate answers from each model, up to 4 models per ask ("I can ask up to 4 models at once.") |
 | `@Sidecar compare <question>` | Fusion: a panel of models plus an analyst, one combined answer |
 | `@Sidecar models` | Aliases, what each maps to now, the default, the Fusion panel |
 | `@Sidecar set default <alias>` | Change the channel default |
@@ -234,7 +234,7 @@ on OpenRouter.
 | `search_channel(query, limit?)` | Server | Pages this channel's history (at most 5 pages, 1,000 messages, per call) and filters locally. No `search.messages` (it needs a user token and searches the whole workspace) |
 | `openrouter:web_search` | OpenRouter | Engine `auto`; see Data notice |
 | `openrouter:datetime` | OpenRouter | |
-| `openrouter:web_fetch` | OpenRouter | Included only when the allowed-domain set is non-empty: domains of URLs in the thread and triggering message, plus `fetch_allowlist`, passed as `allowed_domains`. With an empty set the tool is left out of the request entirely, so it can never fetch an arbitrary site. `max_uses` 5 |
+| `openrouter:web_fetch` | OpenRouter | Included only when the allowed-domain set is non-empty: domains of URLs people posted in the thread and triggering message (bot and model posts don't count), plus `fetch_allowlist`, passed as `allowed_domains`. With an empty set the tool is left out of the request entirely, so it can never fetch an arbitrary site. `max_uses` 5 |
 | `openrouter:shell` | OpenRouter | Sandbox chats only, as today |
 | `openrouter:subagent` | OpenRouter | Worker `subagent_model` with `web_search`, plus `web_fetch` under the same rule. `max_tool_calls` 8 |
 | `openrouter:fusion` | OpenRouter | `compare` only. Sent as the only tool, with `tool_choice` `{"type":"allowed_tools","mode":"required","tools":[{"type":"openrouter:fusion"}]}`, because `tool_choice` can't name a server tool directly. Panel and analyst from the registry, panelists given `web_search` (plus `web_fetch` under the same domain rule), `max_tool_calls` 4. **Pending the live check:** `FUSION_FORCED` in `hosted/slack/payload.py` selects this path. If the live spike (`tests/live/test_slack_spikes.py`) shows OpenRouter rejects it, the constant is set to False and `compare` uses the `openrouter/fusion` model with a `plugins` entry carrying the same panel, analyst and tools |
@@ -301,8 +301,9 @@ inline chats (which now carry server tools) and 24 for sandbox chats.
 
 Posted in the thread before the first answer in a channel, once (`welcomed_at`). Short and in
 the first person, like Claude Tag's join message: what it is, what it reads, a few first
-messages to try, and where to find the rest. Composed from the registry (default model,
-aliases, budget):
+messages to try, and where to find the rest. Composed from the registry (default model and
+aliases). It names no budget figure: the amount lives in the OpenRouter guardrail and can change,
+so the welcome points at `@Sidecar usage` instead (controller ruling, final review):
 
 > Hi, I'm Sidecar. I answer with models other than Claude, so you can compare views with
 > @Claude in the same thread. I read this thread and recent messages in this channel,
@@ -314,7 +315,7 @@ aliases, budget):
 > • `@Sidecar compare should we price per seat or per site?`
 > • `@Sidecar chart this by month` with a CSV attached
 >
-> Your team's budget is $75 a month (`@Sidecar usage`). What I send to model and search
+> Your team has a monthly budget (`@Sidecar usage`). What I send to model and search
 > providers, and how long files are kept, is in `@Sidecar help`, along with every command.
 
 `@Sidecar help` is the full reference: aliases and what they map to, `ask`, `compare`,
@@ -346,7 +347,15 @@ line instead: "Sidecar isn't set up for this channel. Ask your instructor to add
   per-request domain setting. **Pending the live check:** acceptance step 5 confirms OpenRouter
   honours the Fusion `tools` and allowed domains; if it doesn't, the old path returns and is
   accepted with the workspace blocklist from step 5. The other path stays accepted: web search
-  queries can carry words from the conversation.
+  queries can carry words from the conversation. The allowed domains come from links people
+  posted in the thread (plus the channel's `fetch_allowlist`), never from Sidecar's own answers,
+  Claude Tag's replies or any other bot post, so model output can't widen the next turn's fetches.
+- **Residual risk: multi-tenant hosts.** Allowlisting is per host. A thread link to a host that
+  serves many owners, such as `docs.google.com`, lets `web_fetch` GET any URL on that host,
+  including a Google Form's `formResponse` URL, which records a submission for whoever owns the
+  form. Path filtering isn't available, so this route stays open whenever such a host is linked.
+  It is recorded at live acceptance step 5; the control is the team's `fetch_allowlist` and the
+  instructor's review of which hosts a team links.
 
 ## Data notice (student-facing)
 
@@ -375,7 +384,15 @@ Part of `help`, finalized with the pending student notice wording:
   delivery is at least once and a crash between the two can post an answer twice. A job still
   running whose heartbeat has lapsed is marked interrupted, and its working message (from
   `slack_working_ts`) is edited to "Interrupted by a server restart. Ask again." No automatic
-  retry. A completed row older than 24 hours is marked posted without posting.
+  retry. A completed row older than 24 hours is marked posted without posting. A crashed
+  owner's rows keep a live-looking heartbeat for up to a minute, so when the first sweep skips
+  any, recovery sweeps once more after the heartbeat window (75 seconds) and closes those that
+  lapsed; losing the lock or shutting down cancels that wait.
+- **Long jobs:** each job's work has a 30-minute deadline, below the 40-minute chat lease. Past
+  it the job fails with "Sidecar · <label> ran for 30 minutes and stopped. Try a smaller
+  question.", keeping the spend already made.
+- **Purged chats:** a thread whose chat the retention purge deleted starts a fresh chat on the
+  next mention.
 - **Provider errors:** the working message names the model and suggests another alias. Other
   models in the same request still answer.
 - **Fusion degradation:** if the analyst fails, the outer model answers from the panel
@@ -439,6 +456,8 @@ In a test Slack workspace with two registered channels (A and B):
    channel text in it, for a plain ask (no links posted) and for `compare`. Check OpenRouter
    activity for the fetch. Also check whether the cohort workspace's Server Tools settings for
    `web_fetch` apply to Fusion panel calls; if they do, set a workspace blocklist and record it.
+   Record the multi-tenant host risk (Isolation and security) in the decision record as accepted,
+   with the team's `fetch_allowlist` as its control.
 6. Add a guest to channel B and confirm it deactivates.
 
 Record results in the decision record.
