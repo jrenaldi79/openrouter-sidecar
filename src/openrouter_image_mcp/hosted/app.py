@@ -32,6 +32,7 @@ from ..preference_tools import register_preference_tools
 from ..tool_annotations import annotate
 from ..tool_support import SERVER_NAME, tool_errors
 from .account import register_account_tools
+from .admin.wiring import register_admin
 from .guidance import INSTRUCTIONS, register_guidance
 from .health import MAINTENANCE, Health
 from .image_tools import register_image_tools
@@ -118,8 +119,10 @@ def _build_slack(settings: HostedSettings, target, keys, provisioner, admission:
 
 
 def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transport=None,
-                        limits: dict | None = None, slack: dict | None = None) -> MCPServer:
-    """`slack` passes test doubles to `build_slack` (`api`, `client_factory`)."""
+                        limits: dict | None = None, slack: dict | None = None,
+                        admin: dict | None = None) -> MCPServer:
+    """`slack` passes test doubles to `build_slack` (`api`, `client_factory`); `admin` to `Auth0Login`
+    (`key_resolver`, `transport`)."""
     target = storage_target(settings.database_url)
     keys = StudentKeyStore(target, Vault(settings.vault_keys))
     # Without a management key the server still runs; only new student keys are refused.
@@ -186,6 +189,8 @@ def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transpor
     if settings.asset_dir:
         images.update(_register_images(server, settings, target, services, gate, admission))
     health.register(server)
+    # Served by every replica: the admin page doesn't depend on the owner lock.
+    admin_app = register_admin(server, settings, target, slack_app, provisioner, admission, options=admin)
     server.hosted = {"keys": keys, "provisioner": provisioner, "workspaces": workspaces, "gate": gate, "health": health,
-                     "slack": slack_app, **images}
+                     "slack": slack_app, "admin": admin_app, **images}
     return annotate(server)

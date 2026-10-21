@@ -144,13 +144,14 @@ class Running:
 
 
 @asynccontextmanager
-async def running_server(database_url_or_path, *, fake=None, limits=None, env=None, slack=None):
+async def running_server(database_url_or_path, *, fake=None, limits=None, env=None, slack=None, admin=None):
     port = free_port()
     target = str(database_url_or_path)
     settings = load_hosted_settings(hosted_env(port, target) | (env or {}))
     fake = fake or FakeOpenRouter()
     server = build_hosted_server(settings, key_resolver=h.resolver,
-                                 transport=httpx.MockTransport(fake.handle), limits=limits, slack=slack)
+                                 transport=httpx.MockTransport(fake.handle), limits=limits, slack=slack,
+                                 admin=admin)
     from openrouter_image_mcp.hosted.app import transport_security
 
     app = server.streamable_http_app(transport_security=transport_security(settings),

@@ -77,6 +77,11 @@ class SlackApp:
         self.recovery_task: asyncio.Task | None = None
         self._closed = False
 
+    @property
+    def registry(self) -> ChannelRegistry:
+        """The channel registry the dispatcher reads; the admin page edits the same rows."""
+        return self.dispatcher.deps.registry
+
     async def on_gain(self) -> None:
         """Start the start task unless one is running or the app is closed; returns promptly."""
         if self._closed:

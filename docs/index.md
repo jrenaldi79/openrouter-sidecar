@@ -185,6 +185,7 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/hosted/admin/sessions.py](../src/openrouter_image_mcp/hosted/admin/sessions.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/admin/settings.py](../src/openrouter_image_mcp/hosted/admin/settings.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/admin/views.py](../src/openrouter_image_mcp/hosted/admin/views.py)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/wiring.py](../src/openrouter_image_mcp/hosted/admin/wiring.py)
 
 ### [src/openrouter&#95;image&#95;mcp/hosted/admin/public](../src/openrouter_image_mcp/hosted/admin/public/CLAUDE.md): Static assets for the /admin page: the Interview Coach admin design system (fonts.css, tokens.css, shell.css, admin.css, theme-instrument&#42;.css, admin.js), copied from mpd-class-mcp and served without a session at /admin/public.
 
