@@ -123,3 +123,18 @@ async def test_members_cap_50_and_concurrency(rig):
     slack.fail_next("members", "boom")
     assert await rig.admin.members("C1") is None
     assert await ChannelAdmin(rig.registry, None, None, rig.provisioner, rig.audit).members("C1") is None
+
+
+async def test_channel_returns_row_and_saved_models(rig):
+    assert await rig.admin.channel("T1", "C1") is None
+    await rig.register()
+    row, saved = await rig.admin.channel("T1", "C1")
+    assert row == rig.registry.get("T1", "C1")
+    assert saved["google"] == "google/gemini-x" and saved["openai"] == "openai/gpt-x"
+
+
+async def test_channel_without_readable_models_has_none_saved(rig):
+    rig.registry.add(registered_row())
+    admin = ChannelAdmin(rig.registry, rig.slack, None, rig.provisioner, rig.audit)  # no advisor services
+    row, saved = await admin.channel("T1", "C1")
+    assert row.team_label == "abbott" and saved == {}

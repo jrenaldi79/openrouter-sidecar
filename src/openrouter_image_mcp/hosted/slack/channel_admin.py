@@ -129,6 +129,20 @@ class ChannelAdmin:
         found = list(zip(ids, await _limited(self.names.name(i) for i in ids), strict=True))
         return sorted(found, key=lambda pair: (pair[1].casefold(), pair[0]))
 
+    async def channel(self, team_id: str, channel_id: str) -> tuple[ChannelRow, dict[str, str | None]] | None:
+        """The registered row and the team's saved per-family models, for the edit page; None when unregistered.
+
+        The models are `{}` when they can't be read (no services for the cohort, or the preferences failed), so
+        the page still opens and Finish setup can be used."""
+        row = self.registry.get(team_id, channel_id)
+        if row is None:
+            return None
+        try:
+            return row, self._models.saved(row)
+        except Exception as error:  # noqa: BLE001 - an unreadable model list must not hide the channel
+            log.warning("slack admin: reading %s's models failed (%s)", row.team_label, type(error).__name__)
+            return row, {}
+
     def _slack(self) -> SlackApi:
         if self.api is None:
             raise ChannelRefused(copy.SLACK_OFF)
