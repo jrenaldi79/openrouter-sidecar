@@ -4,7 +4,10 @@ import asyncio
 
 from slack_fakes import FakeSlack
 
+from openrouter_image_mcp.errors import AuthRequiredError, ProviderError
 from openrouter_image_mcp.hosted.limits import RateLimitedError
+from openrouter_image_mcp.hosted.provisioning import DISABLED, NOT_READY, UNAVAILABLE
+from openrouter_image_mcp.hosted.slack.api import SlackCallError
 from openrouter_image_mcp.hosted.slack.replies import (
     MAX_PARTS,
     SPLIT_AT,
@@ -13,7 +16,9 @@ from openrouter_image_mcp.hosted.slack.replies import (
     clean,
     escape,
     footer,
+    key_text,
     limit_text,
+    post_answer,
     provider_error_text,
     split_answer,
 )
@@ -183,3 +188,62 @@ def test_working_message_escapes_every_text_it_posts():
 
     texts = [u["text"] for u in asyncio.run(run())]
     assert texts == ["Searched the channel for '&lt;!channel&gt; &amp; &lt;@U1&gt;'", "&lt;!here&gt;"]
+
+
+# ---- post_answer and key_text ----
+
+def _post(slack, text, foot="Gemini · $0.0100", secrets=()):
+    asyncio.run(post_answer(slack, "C1", "1.1", "Gemini", text, foot, secrets=secrets))
+
+
+def test_post_answer_parts_with_footer_on_last():
+    slack = FakeSlack()
+    text = "a" * 3000 + "\n\n" + "b" * 3000
+    _post(slack, text)
+    assert [p["text"] for p in slack.posts] == ["a" * 3000 + "\n\n", "b" * 3000 + "\n\nGemini · $0.0100"]
+    assert {(p["username"], p["thread_ts"]) for p in slack.posts} == {("Sidecar · Gemini", "1.1")}
+
+
+def test_post_answer_cleans_text_and_footer():
+    slack = FakeSlack()
+    _post(slack, "<!here> sk-or-v1-abc team-secret", foot="<x> · $1", secrets=["team-secret"])
+    assert slack.posts[0]["text"] == "&lt;!here&gt; sk-or-*** ***\n\n&lt;x&gt; · $1"
+
+
+def test_post_answer_over_max_parts_uploads_markdown():
+    slack = FakeSlack()
+    text = "\n\n".join(["p" * 3400] * (MAX_PARTS + 1)) + " <!here> team-secret"
+    _post(slack, text, secrets=["team-secret"])
+    (upload,) = slack.uploads
+    assert upload["filename"] == "answer.md" and upload["thread_ts"] == "1.1"
+    assert upload["content"].decode().endswith(" <!here> ***")  # a file is not parsed for mentions
+    assert [p["text"] for p in slack.posts] == ["Gemini · $0.0100"]
+
+
+def test_post_answer_retries_each_call_once():
+    slack = FakeSlack()
+    slack.fail_next("post", "internal_error")
+    _post(slack, "hello")
+    assert [p["text"] for p in slack.posts] == ["hello\n\nGemini · $0.0100"]
+
+
+def test_post_answer_raises_after_second_failure():
+    slack = FakeSlack()
+    slack.fail_next("upload", "internal_error")
+    slack.fail_next("upload", "internal_error")
+    try:
+        _post(slack, "\n\n".join(["p" * 3400] * 4))
+    except SlackCallError:
+        pass
+    else:
+        raise AssertionError("expected SlackCallError")
+    assert slack.uploads == [] and slack.posts == []
+
+
+def test_key_text_is_team_wording():
+    texts = [key_text(AuthRequiredError(m)) for m in (NOT_READY, DISABLED, "OpenRouter rejected your key")]
+    texts.append(key_text(ProviderError(UNAVAILABLE)))
+    assert len(set(texts)) == 4
+    for text in texts:
+        assert "this channel's Sidecar key" in text or "This channel's Sidecar key" in text
+        assert "student" not in text.lower() and "Your" not in text and "account_status" not in text

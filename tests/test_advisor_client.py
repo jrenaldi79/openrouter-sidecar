@@ -7,6 +7,8 @@ from openrouter_image_mcp.advisor_client import AdvisorClient
 from openrouter_image_mcp.errors import (
     AuthRequiredError,
     BadRequestError,
+    ForbiddenError,
+    InsufficientCreditsError,
     ProviderError,
 )
 
@@ -114,4 +116,12 @@ async def test_container_file_rejects_bad_ids(container, file):
     with pytest.raises(BadRequestError):
         await client.container_file(KEY, container, file, max_bytes=10)
     assert not called
+    await client.aclose()
+
+
+@pytest.mark.parametrize("status,error", [(402, InsufficientCreditsError), (403, ForbiddenError)])
+async def test_respond_budget_statuses_are_typed(status, error):
+    client = make(lambda request: httpx.Response(status))
+    with pytest.raises(error, match=f"HTTP {status}"):
+        await client.respond(KEY, {"model": "m"})
     await client.aclose()

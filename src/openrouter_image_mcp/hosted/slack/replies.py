@@ -2,20 +2,25 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 import re
 import time
-from collections.abc import Callable, Collection
+from collections.abc import Awaitable, Callable, Collection
 
+from ...errors import OpenRouterError
 from ...logs import redact
 from ..limits import RateLimitedError
+from ..provisioning import DISABLED, NOT_READY, UNAVAILABLE
 from .api import SlackApi, SlackCallError
 
 log = logging.getLogger(__name__)
 
 SPLIT_AT = 3500
 MAX_PARTS = 3
+ANSWER_FILE = "answer.md"
+RETRY_WAIT_CAP_S = 5.0  # a 429's Retry-After is honoured up to this long before the one retry
 _CUT_WINDOW = 500  # a hard cut looks for a newline or space this far back from the limit
 _PARAGRAPH = re.compile(r"(?<=\n\n)")
 
@@ -25,13 +30,17 @@ def escape(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def clean(text: str, secrets: Collection[str]) -> str:
-    """Redact known token shapes, mask the caller's own secrets, then escape for Slack."""
+def _mask(text: str, secrets: Collection[str]) -> str:
     text = redact(text)
     for secret in secrets:
         if secret:
             text = text.replace(secret, "***")
-    return escape(text)
+    return text
+
+
+def clean(text: str, secrets: Collection[str]) -> str:
+    """Redact known token shapes, mask the caller's own secrets, then escape for Slack."""
+    return escape(_mask(text, secrets))
 
 
 def _hard_cut(chunk: str) -> int:
@@ -94,6 +103,52 @@ def provider_error_text(label: str, others: list[str]) -> str:
     if others:
         return f"{text} Try another model, for example {others[0]}."
     return f"{text} Try another model."
+
+
+# Team-facing copy for key problems: the provisioning messages are written for one student ("Your key").
+_KEY_TEXT = {
+    NOT_READY: "This channel's Sidecar key isn't ready yet. Try again in a moment.",
+    DISABLED: "This channel's Sidecar key was disabled by your instructor. Ask them to re-enable it.",
+    UNAVAILABLE: ("Couldn't create this channel's Sidecar key right now. Try again in a minute, and tell "
+                  "your instructor if it keeps happening."),
+}
+_KEY_OTHER = "OpenRouter didn't accept this channel's Sidecar key. Ask your instructor."
+
+
+def key_text(error: OpenRouterError) -> str:
+    return _KEY_TEXT.get(error.message, _KEY_OTHER)
+
+
+async def _twice(call: Callable[[], Awaitable[object]]) -> None:
+    """One Slack call, retried once; a second failure propagates."""
+    try:
+        await call()
+    except SlackCallError as error:
+        log.warning("slack post failed, retrying once: %s", error.code)
+        await asyncio.sleep(min(error.retry_after_s or 0.0, RETRY_WAIT_CAP_S))
+        await call()
+
+
+async def post_answer(api: SlackApi, channel: str, thread_ts: str, label: str, text: str, footer: str, *,
+                      secrets: Collection[str] = ()) -> None:
+    """Post an answer as `Sidecar · <label>` (the adapter turns unfurling off), the footer on the last part.
+
+    Up to MAX_PARTS parts go up as messages; more go up as one `answer.md` (redacted and masked, not
+    escaped: Slack doesn't parse a file for mentions) followed by the footer. Each Slack call is retried
+    once, so a part never posts twice; a second `SlackCallError` propagates and the caller leaves the
+    job unposted for restart recovery.
+    """
+    username, tail = f"Sidecar · {label}", escape(footer)
+    parts = split_answer(clean(text, secrets))
+    if len(parts) > MAX_PARTS:
+        content = _mask(text, secrets).encode()
+        await _twice(lambda: api.upload(channel, thread_ts, ANSWER_FILE, content,
+                                        title=f"{username} answer", username=username))
+        parts = []
+    parts = parts or [""]
+    parts[-1] = parts[-1] + "\n\n" + tail if parts[-1] else tail
+    for part in parts:
+        await _twice(lambda part=part: api.post(channel, thread_ts, part, username=username))
 
 
 class WorkingMessage:
