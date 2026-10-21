@@ -2,7 +2,8 @@
 
 Deselected by default; run with
 `OPENROUTER_LIVE_KEY=... uv run pytest -m live tests/live/test_slack_spikes.py -s`
-(cohort from `OPENROUTER_LIVE_COHORT`, default 2027). Each spike prints the facts later
+(workspace id from `OPENROUTER_LIVE_WORKSPACE`, else the cohort's from `OPENROUTER_LIVE_COHORT`,
+default 2027). Each spike prints the facts later
 tasks depend on and asserts only that the requests succeeded. They spend small amounts
 of real money; run each once. Change MODEL or PANEL below to pick other models.
 """
@@ -35,7 +36,9 @@ def live():
     key = os.environ.get("OPENROUTER_LIVE_KEY")
     if not key:
         pytest.skip("set OPENROUTER_LIVE_KEY to a class workspace key to run live tests")
-    return key, COHORT_WORKSPACES[os.environ.get("OPENROUTER_LIVE_COHORT", "2027")]
+    # A workspace id of its own (e.g. a scratch workspace for spikes) wins over the cohort's.
+    workspace = os.environ.get("OPENROUTER_LIVE_WORKSPACE")
+    return key, workspace or COHORT_WORKSPACES[os.environ.get("OPENROUTER_LIVE_COHORT", "2027")]
 
 
 @pytest.fixture
