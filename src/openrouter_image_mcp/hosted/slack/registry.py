@@ -11,6 +11,7 @@ import math
 import re
 import sqlite3
 import time
+from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, fields, replace
 
@@ -35,6 +36,11 @@ _SCHEMA = """CREATE TABLE IF NOT EXISTS slack_channels (
     max_concurrent INTEGER NOT NULL, invoker_allowlist TEXT NOT NULL, active INTEGER NOT NULL,
     inactive_reason TEXT, welcomed_at REAL, warned_month TEXT, created_at REAL NOT NULL,
     PRIMARY KEY (slack_team_id, channel_id))"""
+
+
+# DDL for the admin audit table, set by the hosted wiring (hosted/admin/audit.py). When set, it runs on the same
+# connection just before an `audit` callback, so a callback can write its row without owning the schema.
+AUDIT_SCHEMA: str | None = None
 
 
 @dataclass(frozen=True)
@@ -106,6 +112,22 @@ def _row(found) -> ChannelRow:
     return ChannelRow(**data)
 
 
+# Called on the write's own connection, after the write and before the commit; raising rolls the write back.
+Audit = Callable[[object, "ChannelRow | None", "ChannelRow"], None]
+
+
+def _read(db, team_id: str, channel_id: str) -> ChannelRow | None:
+    found = db.execute("SELECT * FROM slack_channels WHERE slack_team_id=? AND channel_id=?",
+                       (team_id, channel_id)).fetchone()
+    return _row(found) if found else None
+
+
+def _audit(db, audit: Audit, before: ChannelRow | None, after: ChannelRow | None) -> None:
+    if AUDIT_SCHEMA:
+        db.execute(AUDIT_SCHEMA)
+    audit(db, before, after)
+
+
 class ChannelRegistry:
     def __init__(self, target):
         self.target = target
@@ -134,7 +156,7 @@ class ChannelRegistry:
             found = db.execute("SELECT * FROM slack_channels ORDER BY team_label").fetchall()
         return [_row(r) for r in found]
 
-    def add(self, row: ChannelRow) -> None:
+    def add(self, row: ChannelRow, *, audit: Audit | None = None) -> None:
         _validate(row)
         stored = replace(row, created_at=self.clock())
         marks = ",".join("?" * len(_COLUMNS))
@@ -143,8 +165,10 @@ class ChannelRegistry:
                                 "ON CONFLICT DO NOTHING", _values(stored))
             if cursor.rowcount != 1:
                 raise ValueError("That channel or team label is already registered.")
+            if audit:
+                _audit(db, audit, None, stored)
 
-    def update(self, team_id: str, channel_id: str, **changes) -> ChannelRow:
+    def update(self, team_id: str, channel_id: str, *, audit: Audit | None = None, **changes) -> ChannelRow:
         current = self.get(team_id, channel_id)
         if current is None:
             raise ValueError("That channel is not registered.")
@@ -166,11 +190,14 @@ class ChannelRegistry:
         if names:
             sets = ",".join(f"{c}=?" for c in names)
             with self._db() as db:
+                before = _read(db, team_id, channel_id) if audit else None
                 try:
                     db.execute(f"UPDATE slack_channels SET {sets} WHERE slack_team_id=? AND channel_id=?",
                                (*(values[c] for c in names), team_id, channel_id))
                 except (sqlite3.IntegrityError, psycopg.errors.IntegrityError) as error:
                     raise ValueError("That team label is already registered.") from error
+                if audit:  # a call that changes no column writes nothing, so it leaves no audit entry
+                    _audit(db, audit, before, _read(db, team_id, channel_id))
         return self.get(team_id, channel_id) or updated
 
     def _claim(self, assignment: str, guard: str, args: tuple) -> bool:
@@ -180,8 +207,17 @@ class ChannelRegistry:
                                 f"AND channel_id=? AND {guard}", args)
             return cursor.rowcount == 1
 
-    def deactivate(self, team_id: str, channel_id: str, reason: str) -> bool:
-        return self._claim("active=0, inactive_reason=?", "active=1", (reason, team_id, channel_id))
+    def deactivate(self, team_id: str, channel_id: str, reason: str, *, audit: Audit | None = None) -> bool:
+        if audit is None:
+            return self._claim("active=0, inactive_reason=?", "active=1", (reason, team_id, channel_id))
+        with self._db() as db:
+            before = _read(db, team_id, channel_id)
+            cursor = db.execute("UPDATE slack_channels SET active=0, inactive_reason=? WHERE slack_team_id=? "
+                                "AND channel_id=? AND active=1", (reason, team_id, channel_id))
+            if cursor.rowcount != 1:
+                return False
+            _audit(db, audit, before, _read(db, team_id, channel_id))
+            return True
 
     def mark_welcomed(self, team_id: str, channel_id: str) -> bool:
         return self._claim("welcomed_at=?", "welcomed_at IS NULL", (self.clock(), team_id, channel_id))

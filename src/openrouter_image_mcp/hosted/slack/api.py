@@ -15,6 +15,7 @@ from slack_sdk.errors import SlackApiError, SlackClientError
 from slack_sdk.web.async_client import AsyncWebClient
 
 DOWNLOAD_TIMEOUT_S = 30.0
+MAX_CHANNEL_PAGES = 10  # of 200 channels each
 DOWNLOAD_HOST = "files.slack.com"  # the bot token is only ever sent here
 # What the async SDK raises for a timeout or a dropped connection (asyncio.TimeoutError is TimeoutError).
 _NETWORK_ERRORS = (aiohttp.ClientError, httpx.HTTPError, TimeoutError, OSError)
@@ -65,6 +66,8 @@ class Page:
 
 class SlackApi(Protocol):
     async def bot_user_id(self) -> str: ...
+    async def team_id(self) -> str: ...
+    async def bot_channels(self) -> list[dict]: ...
     async def replies(self, channel: str, thread_ts: str, *, cursor: str | None = None,
                       limit: int = 200) -> Page: ...
     async def history(self, channel: str, *, latest: str | None = None, cursor: str | None = None,
@@ -130,6 +133,29 @@ class SdkSlackApi:
         if not isinstance(user, str) or not user:
             raise SlackCallError("bot_user_id", "no_user_id")
         return user
+
+    async def team_id(self) -> str:
+        """The Slack workspace the bot token belongs to (`auth.test`)."""
+        team = (await self._call("team_id", "auth_test")).get("team_id")
+        if not isinstance(team, str) or not team:
+            raise SlackCallError("team_id", "no_team_id")
+        return team
+
+    async def bot_channels(self) -> list[dict]:
+        """Channels the bot is in, as `{id, name, is_private}` (`users.conversations`; archived ones left out).
+        Stops after `MAX_CHANNEL_PAGES` pages so a huge workspace can't hold a request open."""
+        found: list[dict] = []
+        cursor = None
+        for _ in range(MAX_CHANNEL_PAGES):
+            args = {"types": "public_channel,private_channel", "exclude_archived": True, "limit": 200,
+                    **({"cursor": cursor} if cursor else {})}
+            response = await self._call("bot_channels", "users_conversations", **args)
+            found += [{"id": c["id"], "name": c.get("name") or c["id"], "is_private": bool(c.get("is_private"))}
+                      for c in response.get("channels") or () if c.get("id")]
+            cursor = (response.get("response_metadata") or {}).get("next_cursor") or None
+            if not cursor:
+                break
+        return found
 
     async def replies(self, channel, thread_ts, *, cursor=None, limit=200) -> Page:
         args = {"channel": channel, "ts": thread_ts, "limit": limit, **({"cursor": cursor} if cursor else {})}

@@ -59,6 +59,72 @@ def six_month_cutoff(now):
                        day=min(now.day, monthrange(year, month)[1]))
 
 
+def _valid_id(value, secrets):
+    return (isinstance(value, str) and 1 <= len(value) <= 200
+            and _MODEL_ID.fullmatch(value) is not None
+            and not any(secret in value for secret in secrets) and redact(value) == value)
+
+
+def _text(value, secrets, default):
+    if not isinstance(value, str):
+        return default
+    # Credential fingerprints are private too, even in hostile provider fields.
+    for secret in secrets:
+        value = value.replace(secret, "[redacted]")
+    return redact(value)[:200]
+
+
+def _pricing(value, secrets):
+    if not isinstance(value, dict):
+        return {}
+    result = {}
+    for field in _PRICE_FIELDS:
+        price = value.get(field)
+        if (type(price) not in (str, int, float) or len(str(price)) > 64
+                or any(secret in str(price) for secret in secrets)):
+            continue
+        try:
+            number = Decimal(str(price))
+        except InvalidOperation:
+            continue
+        if number.is_finite() and number >= 0:
+            result[field] = str(price)
+    return result
+
+
+def filter_catalog(rows, now, *, secrets=()):
+    """The advisor models a person may pick: approved families, no batch variants, created in the last six
+    months, deduplicated and capped. A row whose id holds a secret is dropped and a secret in a name or price
+    is redacted; empty secrets are ignored (they would match everything). Students pass their key and owner."""
+    secrets = tuple(secret for secret in secrets if secret)
+    now = now.astimezone(UTC)
+    oldest, newest = six_month_cutoff(now).timestamp(), now.timestamp()
+    result, ids = [], set()
+    for row in rows:
+        if not isinstance(row, dict) or not _valid_id(row.get("id"), secrets):
+            continue
+        model_id = row["id"]
+        if any(re.search(r"(?:^|[^a-z0-9])batch(?:$|[^a-z0-9])", value, re.IGNORECASE)
+               for value in (model_id, row.get("name", "")) if isinstance(value, str)):
+            continue
+        family = model_family(model_id)
+        created = row.get("created")
+        if family is None or type(created) is not int or not oldest <= created <= newest:
+            continue
+        if model_id in ids:
+            continue
+        ids.add(model_id)
+        context = row.get("context_length")
+        if type(context) is not int or not 0 < context <= 2**31 - 1:
+            context = None
+        result.append({"id": model_id, "name": _text(row.get("name"), secrets, model_id),
+                       "pricing": _pricing(row.get("pricing"), secrets), "context_length": context,
+                       "created": created, "family": family})
+        if len(result) >= MAX_MODELS:
+            break
+    return result
+
+
 def ensure_table(db) -> None:
     db.execute("""CREATE TABLE IF NOT EXISTS sidecar_preferences (
         settings_id TEXT PRIMARY KEY, owner TEXT NOT NULL, workspace TEXT NOT NULL,
@@ -125,74 +191,14 @@ class PreferenceService:
         with self._connection() as db:
             self._check(self._row(db, scope), settings_id)
 
-    @staticmethod
-    def _valid_id(value, key, scope):
-        return (isinstance(value, str) and 1 <= len(value) <= 200
-                and _MODEL_ID.fullmatch(value) is not None
-                and key not in value and scope.owner not in value and redact(value) == value)
-
-    @staticmethod
-    def _text(value, key, scope, default):
-        if not isinstance(value, str):
-            return default
-        # Credential fingerprints are private too, even in hostile provider fields.
-        return redact(value.replace(key, "[redacted]").replace(scope.owner, "[redacted]"))[:200]
-
-    @staticmethod
-    def _pricing(value, key, scope):
-        if not isinstance(value, dict):
-            return {}
-        result = {}
-        for field in _PRICE_FIELDS:
-            price = value.get(field)
-            if (type(price) not in (str, int, float) or len(str(price)) > 64
-                    or key in str(price) or scope.owner in str(price)):
-                continue
-            try:
-                number = Decimal(str(price))
-            except InvalidOperation:
-                continue
-            if number.is_finite() and number >= 0:
-                result[field] = str(price)
-        return result
-
     async def _catalog(self, key, scope):
         try:
             rows = await self.advisors.models()
         finally:
             self.advisors._current(scope)
-        result = []
-        ids = set()
         if not isinstance(rows, list):
             raise BadRequestError("Advisor catalog is unavailable; refresh sidecar settings.")
-        now = self._utcnow().astimezone(UTC)
-        oldest, newest = six_month_cutoff(now).timestamp(), now.timestamp()
-        for row in rows:
-            if not isinstance(row, dict) or not self._valid_id(row.get("id"), key, scope):
-                continue
-            model_id = row["id"]
-            if any(re.search(r"(?:^|[^a-z0-9])batch(?:$|[^a-z0-9])", value, re.IGNORECASE)
-                   for value in (model_id, row.get("name", "")) if isinstance(value, str)):
-                continue
-            family = model_family(model_id)
-            created = row.get("created")
-            if family is None or type(created) is not int or not oldest <= created <= newest:
-                continue
-            if model_id in ids:
-                continue
-            ids.add(model_id)
-            context = row.get("context_length")
-            if type(context) is not int or not 0 < context <= 2**31 - 1:
-                context = None
-            result.append({"id": model_id,
-                           "name": self._text(row.get("name"), key, scope, model_id),
-                           "pricing": self._pricing(row.get("pricing"), key, scope),
-                           "context_length": context,
-                           "created": created,
-                           "family": family})
-            if len(result) >= MAX_MODELS:
-                break
-        return result
+        return filter_catalog(rows, self._utcnow(), secrets=(key, scope.owner))
 
     async def view(self):
         key, scope = self.advisors._credentials()

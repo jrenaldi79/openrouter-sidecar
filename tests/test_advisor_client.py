@@ -143,3 +143,28 @@ async def test_stream_moderation_403_is_moderation_error():
     with pytest.raises(ModerationError):
         await client.respond_stream(KEY, {"model": "m"}, None, lambda event: None)
     await client.aclose()
+
+
+async def test_public_models_sends_no_auth_header():
+    seen = []
+
+    async def handle(request):
+        seen.append(request)
+        rows = [{"id": "a/text-tools", "architecture": {"output_modalities": ["text"]},
+                 "supported_parameters": ["tools"]},
+                {"id": "a/image", "architecture": {"output_modalities": ["image"]},
+                 "supported_parameters": ["tools"]},
+                {"id": "a/no-tools", "architecture": {"output_modalities": ["text"]}, "supported_parameters": []}]
+        return httpx.Response(200, json={"data": rows})
+
+    client = make(handle)
+    assert [m["id"] for m in await client.public_models()] == ["a/text-tools"]
+    assert seen[0].url.path.endswith("/models") and "authorization" not in seen[0].headers
+    await client.aclose()
+
+
+async def test_public_models_bad_catalog_is_provider_error():
+    client = make(lambda request: httpx.Response(200, json={"data": "nope"}))
+    with pytest.raises(ProviderError):
+        await client.public_models()
+    await client.aclose()

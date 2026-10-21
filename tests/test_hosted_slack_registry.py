@@ -1,6 +1,7 @@
 import pytest
 
-from openrouter_image_mcp import config
+from openrouter_image_mcp import config, storage
+from openrouter_image_mcp.hosted.slack import registry as registry_module
 from openrouter_image_mcp.hosted.slack.registry import (
     DEFAULT_ALIASES,
     ChannelRegistry,
@@ -143,3 +144,80 @@ def test_update_does_not_undo_a_racing_guarded_write(db_target):
     assert saved.welcomed_at is not None and saved.warned_month == "2026-10"
     assert saved.active is False and saved.inactive_reason == "guest"
     assert updated == saved
+
+
+AUDIT_DDL = "CREATE TABLE IF NOT EXISTS test_audit (kind TEXT NOT NULL, before_label TEXT, after_label TEXT)"
+
+
+@pytest.fixture
+def audit_table(db_target, monkeypatch):
+    """Registers the test audit DDL the way the hosted wiring registers `audit.SCHEMA`."""
+    monkeypatch.setattr(registry_module, "AUDIT_SCHEMA", AUDIT_DDL)
+    with storage.connect(db_target) as db:  # created up front so the rollback tests can read it afterwards
+        db.execute(AUDIT_DDL)
+    yield
+    with storage.connect(db_target) as db:
+        db.execute("DROP TABLE IF EXISTS test_audit")
+
+
+def _recorder(kind):
+    def audit(db, before, after):
+        db.execute("INSERT INTO test_audit (kind, before_label, after_label) VALUES (?, ?, ?)",
+                   (kind, before and before.team_label, after.team_label))
+    return audit
+
+
+def _entries(db_target):
+    with storage.connect(db_target) as db:
+        found = db.execute("SELECT kind, before_label, after_label FROM test_audit").fetchall()
+    return [(r["kind"], r["before_label"], r["after_label"]) for r in found]
+
+
+def _boom(db, before, after):
+    db.execute("INSERT INTO test_audit (kind) VALUES ('lost')")
+    raise RuntimeError("audit failed")
+
+
+def test_audit_callback_commits_with_row(db_target, audit_table):
+    reg = ChannelRegistry(db_target)
+    reg.add(row(), audit=_recorder("add"))
+    reg.update("T1", "C1", daily_cap_usd=9.0, audit=_recorder("update"))
+    assert reg.deactivate("T1", "C1", "guest", audit=_recorder("deactivate")) is True
+    assert reg.deactivate("T1", "C1", "again", audit=_recorder("deactivate")) is False  # no write, no entry
+    assert _entries(db_target) == [("add", None, "abbott"), ("update", "abbott", "abbott"),
+                                   ("deactivate", "abbott", "abbott")]
+    assert reg.get("T1", "C1").inactive_reason == "guest"
+
+
+def test_audit_callback_sees_before_and_after_rows(db_target):
+    reg = ChannelRegistry(db_target)
+    seen = []
+    reg.add(row(), audit=lambda db, before, after: seen.append((before, after.daily_cap_usd)))
+    reg.update("T1", "C1", daily_cap_usd=9.0, audit=lambda db, before, after: seen.append(
+        (before.daily_cap_usd, after.daily_cap_usd)))
+    reg.deactivate("T1", "C1", "guest", audit=lambda db, before, after: seen.append(
+        (before.active, after.active, after.inactive_reason)))
+    assert seen == [(None, 4.0), (4.0, 9.0), (True, False, "guest")]
+
+
+def test_update_without_changes_writes_nothing_and_skips_audit(db_target):
+    reg = ChannelRegistry(db_target)
+    reg.add(row())
+    calls = []
+    reg.update("T1", "C1", audit=lambda *args: calls.append(args))
+    assert calls == []
+
+
+def test_audit_callback_failure_rolls_back(db_target, audit_table):
+    reg = ChannelRegistry(db_target)
+    with pytest.raises(RuntimeError):
+        reg.add(row(), audit=_boom)
+    assert reg.get("T1", "C1") is None
+    reg.add(row())
+    with pytest.raises(RuntimeError):
+        reg.update("T1", "C1", daily_cap_usd=9.0, audit=_boom)
+    assert reg.get("T1", "C1").daily_cap_usd == 4.0
+    with pytest.raises(RuntimeError):
+        reg.deactivate("T1", "C1", "guest", audit=_boom)
+    assert reg.get("T1", "C1").active is True
+    assert _entries(db_target) == []

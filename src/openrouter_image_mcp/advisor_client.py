@@ -54,13 +54,15 @@ class AdvisorClient:
         await self._http.aclose()
 
     async def _request(self, method, path, key, *, json=None, files=None, missing_ok=False):
+        """`key=None` sends no Authorization header and no workspace (only for the public model list)."""
+        headers = {"Authorization": "Bearer " + key} if key is not None else {}
+        params = {"workspace_id": self.workspace_id} if key is not None else None
         try:
             deadline = self._timeout_s if path == "responses" else 30
             async with asyncio.timeout(deadline):
                 response = await self._http.request(
-                    method, path, headers={"Authorization": "Bearer " + key}, json=json,
-                    files=files, params={"workspace_id": self.workspace_id},
-                    timeout=deadline,
+                    method, path, headers=headers, json=json,
+                    files=files, params=params, timeout=deadline,
                 )
         except (httpx.TransportError, TimeoutError):
             raise ProviderError(
@@ -85,7 +87,14 @@ class AdvisorClient:
         return body
 
     async def models(self, key: str) -> list[dict]:
-        body = await self._request("GET", "models", key)
+        return self._text_tool_models(await self._request("GET", "models", key))
+
+    async def public_models(self) -> list[dict]:
+        """The same catalog as `models`, fetched without any credential (the admin page has no student key)."""
+        return self._text_tool_models(await self._request("GET", "models", None))
+
+    @staticmethod
+    def _text_tool_models(body: dict) -> list[dict]:
         models = body.get("data")
         if not isinstance(models, list):
             raise ProviderError("Advisor model catalog is unavailable.")

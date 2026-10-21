@@ -34,6 +34,8 @@ class FakeSlack:
         self._failures: dict[str, list[tuple[str, float | None]]] = {}
         self._clock = 0
         self.bot_user = "UBOT"  # what auth.test reports
+        self.team = "T0"  # the team_id auth.test reports
+        self.bot_in: list[str] = []  # channel ids the bot is a member of (users.conversations)
 
     def fail_next(self, method: str, code: str, retry_after_s: float | None = None) -> None:
         self._failures.setdefault(method, []).append((code, retry_after_s))
@@ -58,6 +60,15 @@ class FakeSlack:
     async def bot_user_id(self) -> str:
         self._check("bot_user_id")
         return self.bot_user
+
+    async def team_id(self) -> str:
+        self._check("team_id")
+        return self.team
+
+    async def bot_channels(self) -> list[dict]:
+        self._check("bot_channels")
+        return [{"id": c, "name": self.channels.get(c, {}).get("name", c),
+                 "is_private": self.channels.get(c, {}).get("is_private", False)} for c in self.bot_in]
 
     async def replies(self, channel, thread_ts, *, cursor=None, limit=200) -> Page:
         self._check("replies")
