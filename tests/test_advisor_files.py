@@ -124,12 +124,13 @@ async def test_files_containing_the_credential_are_refused(make):
     assert payloads(seen) == []
 
 
-async def test_sandbox_session_uploads_file_tar_each_turn(make):
+async def test_sandbox_session_uploads_a_text_file_bundle_each_turn(make):
     service, seen = make(sandbox_default=False, sandbox_allowed=True)
     chat = await service.start(MODEL, "Box", sandbox=True)
     await service.send(chat["chat_id"], "Run it", files=[FilePacket(path="a.py", content="print(1)")])
     uploads = [r for r in seen if r.method == "POST" and r.url.path.endswith("/files")]
-    assert len(uploads) == 1 and b"nu_files/" in uploads[0].content and b"a.py" in uploads[0].content
+    assert len(uploads) == 1 and b"nu_files/" in uploads[0].content and b".json" in uploads[0].content
+    assert b'{"a.py": "print(1)"}' in uploads[0].content  # UTF-8 text: OpenRouter rejects archives
     payload = payloads(seen)[-1]
     assert payload["tools"][0]["parameters"]["environment"]["file_ids"]
     assert payload["max_tool_calls"] == 24

@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from . import storage
 from .advisor_client import AdvisorClient
-from .advisor_payload import INSTRUCTIONS, SANDBOX_DISABLED, build_payload, files_tar
+from .advisor_payload import INSTRUCTIONS, SANDBOX_DISABLED, build_payload, files_bundle
 from .advisor_store import AdvisorAccessError, AdvisorStore, Scope
 from .credentials import CHANGED, CredentialSource
 from .errors import BadRequestError, OpenRouterError, ProviderError
@@ -205,7 +205,7 @@ class AdvisorService:
         return {"id": file_id, "filename": filename}
 
     async def _sandbox_uploads(self, key, scope, chat, token, skills, bundle, files, guard):
-        """Sandbox chats only: skills JSON and a tar of the session files, each turn."""
+        """Sandbox chats only: skills JSON and a JSON bundle of the session files, each turn."""
         uploads = []
         stem = chat.id + "-" + secrets.token_hex(8)
         if skills:
@@ -214,8 +214,8 @@ class AdvisorService:
                            | {"kind": "skills"})
             guard()
         if files:
-            uploads.append(await self._upload(key, scope, chat.id, token, "nu_files/" + stem + ".tar",
-                                              files_tar(files), "application/x-tar")
+            uploads.append(await self._upload(key, scope, chat.id, token, "nu_files/" + stem + ".json",
+                                              files_bundle(files), "application/json")
                            | {"kind": "files"})
         return uploads
 

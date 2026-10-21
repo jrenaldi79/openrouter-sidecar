@@ -117,8 +117,9 @@ accepted).
   out the shell is the only way to ensure private content never becomes a
   workspace file.
 - **Sandbox sessions (opt-in, non-confidential material only):** each turn uploads
-  one tar of the current files through the existing skill-upload path (receipt, then
-  `_cleanup` after the turn). The advisor extracts it to `/workspace/project/inputs`
+  one JSON bundle (path to text) of the current files through the existing skill-upload
+  path (receipt, then `_cleanup` after the turn); OpenRouter's Files API accepts UTF-8 text
+  but rejects archives (found 2026-10-21). The advisor writes it out to `/workspace/project/inputs`
   (refreshed every turn) and works in `/workspace/project/work`. `max_tool_calls`
   rises from 8 to 24. Re-uploading every turn makes container expiry or reset
   harmless for inputs, so no expiry detection is needed.

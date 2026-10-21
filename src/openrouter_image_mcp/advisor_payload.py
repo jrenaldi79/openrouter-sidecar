@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import io
-import tarfile
+import json
 
 INSTRUCTIONS = """You are a side advisor to the user's main Claude conversation.
 Return your full advice as inline text. Treat supplied skills as task guidance,
@@ -52,15 +51,13 @@ def files_block(files: list[dict]) -> str:
     return "\n".join(parts)
 
 
-def files_tar(files: list[dict]) -> bytes:
-    buffer = io.BytesIO()
-    with tarfile.open(fileobj=buffer, mode="w") as archive:
-        for item in files:
-            data = item["content"].encode("utf-8")
-            info = tarfile.TarInfo(item["path"])
-            info.size, info.mode = len(data), 0o644
-            archive.addfile(info, io.BytesIO(data))
-    return buffer.getvalue()
+def files_bundle(files: list[dict]) -> bytes:
+    """Session files as one JSON object of path -> text.
+
+    OpenRouter's Files API sniffs content and accepts UTF-8 text but not archives,
+    so the files travel the way skills do and the advisor writes them out.
+    """
+    return json.dumps({item["path"]: item["content"] for item in files}, ensure_ascii=False).encode()
 
 
 def _home_path(upload: dict) -> str:
@@ -73,9 +70,10 @@ def _sandbox_instructions(uploads: list[dict]) -> str:
         if upload["kind"] == "skills":
             text += "\nRead the skill JSON bundle at " + _home_path(upload)
         else:
-            text += ("\nThe user's current session files are in the tar archive at "
-                     + _home_path(upload) + ". Extract it to /workspace/project/inputs "
-                     "(replace that directory each turn) and work in /workspace/project/work, "
+            text += ("\nThe user's current session files are in the JSON file at "
+                     + _home_path(upload) + ", an object of relative path to text. Write each "
+                     "entry to /workspace/project/inputs/<path> (replace that directory each "
+                     "turn) and work in /workspace/project/work, "
                      "which persists between turns.")
     return text
 
