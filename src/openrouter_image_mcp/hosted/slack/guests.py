@@ -81,9 +81,10 @@ class GuestGuard:
             return
         try:
             guest = is_guest(await self.api.user(user_id))
-        except SlackCallError as error:
+        except Exception as error:  # noqa: BLE001 - any failed lookup is an unknown member
             # Unknown member: deny until a full check of the channel succeeds.
-            log.warning("Guest lookup in %s failed: %s", channel_id, redact(str(error)))
+            detail = redact(str(error)) if isinstance(error, SlackCallError) else type(error).__name__
+            log.warning("Guest lookup in %s failed: %s", channel_id, detail)
             self._recheck.add((team_id, channel_id))
             return
         if guest:

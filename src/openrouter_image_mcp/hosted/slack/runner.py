@@ -197,8 +197,9 @@ class SlackRunner:
     async def _execute(self, turn: Turn) -> None:
         try:
             ts = await turn.working.start()
-        except SlackCallError as error:
-            log.warning("working message failed: %s", error.code)
+        except Exception as error:  # noqa: BLE001 - any failed start ends the row; nothing was spent yet
+            log.warning("working message failed: %s",
+                        error.code if isinstance(error, SlackCallError) else type(error).__name__)
             turn.fail(START_FAILED)
             return
         except asyncio.CancelledError:

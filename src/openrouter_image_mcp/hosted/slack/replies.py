@@ -187,9 +187,13 @@ class WorkingMessage:
         await self._edit(escape(text))
 
     async def _edit(self, text: str) -> None:
+        """Best effort: a progress edit must never decide a paid job's fate, whatever it raises."""
         try:
             await self._api.update(self._channel, self._ts, text)
         except SlackCallError as exc:
             log.warning("working message edit failed: %s", redact(str(exc)))
+            return
+        except Exception as exc:  # noqa: BLE001 - the type only: an unknown error's text is not ours to log
+            log.warning("working message edit failed: %s", type(exc).__name__)
             return
         self._text = text

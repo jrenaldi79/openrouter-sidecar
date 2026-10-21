@@ -130,7 +130,7 @@ class Turn:
             raise ProviderError(CLEANUP_FAILED)
         try:
             result = await self._loop(chat, bundle, brief + ("\n\n" + note if note else ""), listed, token)
-        except (OpenRouterError, asyncio.CancelledError) as error:  # the loop attaches the spend so far
+        except (Exception, asyncio.CancelledError) as error:  # the loop attaches the spend so far
             self.spent = getattr(error, "cost_usd", None)
             raise
         finally:

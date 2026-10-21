@@ -54,3 +54,17 @@ async def test_cancellation_carries_items_and_cost():
     with pytest.raises(asyncio.CancelledError) as caught:
         await task
     assert caught.value.items == [CALL] and caught.value.cost_usd == pytest.approx(0.25)
+
+
+async def test_any_unexpected_error_carries_items_and_cost():
+    async def answer():
+        return httpx.Response(200, json={"status": "completed", "output": [], "usage": {"cost": 0.5}})
+
+    async def broken(output):
+        if not output:
+            raise RuntimeError("callback failed")
+
+    advisor, _ = client(answer)
+    with pytest.raises(RuntimeError) as caught:
+        await run_tool_loop(advisor, KEY, PAYLOAD, {"lookup": echo}, on_items=broken)
+    assert caught.value.items == [CALL] and caught.value.cost_usd == pytest.approx(0.75)

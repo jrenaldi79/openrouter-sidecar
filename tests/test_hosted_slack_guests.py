@@ -113,6 +113,19 @@ async def test_failed_join_lookup_then_clean_check_clears_mark(guard, registry, 
     assert slack._failures["channel_info"]
 
 
+@pytest.mark.parametrize("error", [TimeoutError(), RuntimeError("socket gone")])
+async def test_any_join_lookup_failure_sets_the_mark(guard, registry, slack, error):
+    row = registry.get("T1", "C1")
+    assert await guard.allowed(row)
+
+    async def broken(user_id):
+        raise error
+
+    slack.user = broken
+    await guard.on_member_joined("T1", "C1", "UG")  # never raises
+    assert not await guard.allowed(row)  # the cache is bypassed and the failing check denies
+
+
 async def test_failed_join_lookup_then_guest_found_deactivates(guard, registry, slack):
     slack.fail_next("user", "ratelimited")
     await guard.on_member_joined("T1", "C1", "UG")

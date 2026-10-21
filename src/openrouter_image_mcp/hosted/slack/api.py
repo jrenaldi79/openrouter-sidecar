@@ -9,12 +9,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+import aiohttp
 import httpx
-from slack_sdk.errors import SlackApiError
+from slack_sdk.errors import SlackApiError, SlackClientError
 from slack_sdk.web.async_client import AsyncWebClient
 
 DOWNLOAD_TIMEOUT_S = 30.0
 DOWNLOAD_HOST = "files.slack.com"  # the bot token is only ever sent here
+# What the async SDK raises for a timeout or a dropped connection (asyncio.TimeoutError is TimeoutError).
+_NETWORK_ERRORS = (aiohttp.ClientError, httpx.HTTPError, TimeoutError, OSError)
 
 
 class SlackCallError(Exception):
@@ -102,12 +105,18 @@ class SdkSlackApi:
         self.client, self._http = client, http
 
     async def _call(self, method: str, sdk_method: str, **kwargs) -> Any:
+        """Every SDK failure leaves as `SlackCallError`. The SDK re-raises raw aiohttp errors and timeouts
+        after its retries; those get a fixed code and no context, since their text can hold a request URL."""
         try:
             return await getattr(self.client, sdk_method)(**kwargs)
         except SlackApiError as error:
             response = error.response
             code = str(response.get("error") or "unknown") if response is not None else "unknown"
             raise SlackCallError(method, code, _retry_after(getattr(response, "headers", None))) from error
+        except _NETWORK_ERRORS:
+            raise SlackCallError(method, "network") from None
+        except SlackClientError:
+            raise SlackCallError(method, "client_error") from None
 
     async def aclose(self) -> None:
         """Close the download client this API was given (the web client opens a session per call)."""
