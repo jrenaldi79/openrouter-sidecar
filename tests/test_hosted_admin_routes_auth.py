@@ -81,6 +81,9 @@ async def test_not_admin_page(rig):
     assert response.status_code == 403 and str(escape(copy.NOT_ADMIN)) in response.text
     assert _cookie(response, "sidecar_admin") is None
     assert "max-age=0" in _cookie(response, "sidecar_admin_login")
+    # Signed in at Auth0 with the wrong account and no session here: a plain link to sign out there.
+    assert f'<a href="{escape(LOGOUT)}">Sign out</a>' in response.text
+    assert "<form" not in response.text
 
 
 @pytest.mark.parametrize("reason", ["state", "exchange", "id_token"])
@@ -135,3 +138,19 @@ async def test_logout_clears_session(rig):
     assert rig.sessions.get(rig.session_id) is None
     rig.client.cookies.clear()
     assert (await rig.client.get("/admin")).status_code == 302
+
+
+async def test_callback_ends_the_session_the_browser_held(rig):
+    first = rig.sign_in()
+    assert first and rig.sessions.get(rig.session_id) is not None
+    old = rig.session_id
+    response = await rig.client.get("/admin/callback?code=c&state=state-1")
+    assert response.status_code == 302
+    assert rig.sessions.get(old) is None  # replaced, not left to expire
+    assert (await rig.client.get("/admin")).status_code == 200  # the new session works
+
+
+async def test_other_failures_have_no_sign_out_link(rig):
+    rig.login.identity, rig.login.reason = None, "exchange"
+    response = await rig.client.get("/admin/callback?code=c&state=s")
+    assert "Sign out" not in response.text

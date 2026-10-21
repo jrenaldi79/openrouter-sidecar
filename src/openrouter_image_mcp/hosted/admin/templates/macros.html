@@ -3,10 +3,11 @@
 {% macro status(row) %}{% if row.active %}On{% elif row.inactive_reason %}Off: {{ row.inactive_reason }}{% else %}Off{% endif %}{% endmacro %}
 {% macro logout(token, button_class="link", icon=false) %}<form method="post" action="/admin/logout" class="logout">{{ csrf(token) }}<button type="submit" class="{{ button_class }}">{% if icon %}<svg class="ic ic-sm" aria-hidden="true"><use href="#i-logout"/></svg>{% endif %}Sign out</button></form>{% endmacro %}
 {# A model choice. With `family` only that family's models are listed; otherwise they are grouped by family. A saved
-   model that is no longer on the list stays selectable, so saving the form can't drop it silently. #}
+   model that is no longer on the list stays selectable, so saving the form can't drop it silently. `blank` adds a
+   "None" choice, selected when nothing is: a blank is never a change. A `disabled` select is not submitted. #}
 {% macro option(model, selected) %}<option value="{{ model.id }}"{% if model.id == selected %} selected{% endif %}>{{ model.name }}</option>{% endmacro %}
-{% macro model_select(name, models, selected, label, family=none, blank=false) %}
-<select name="{{ name }}" aria-label="{{ label }}">
+{% macro model_select(name, models, selected, label, family=none, blank=false, disabled=false) %}
+<select name="{{ name }}" aria-label="{{ label }}"{% if disabled %} disabled{% endif %}>
   {% if blank %}
   <option value=""{% if not selected %} selected{% endif %}>None</option>
   {% endif %}

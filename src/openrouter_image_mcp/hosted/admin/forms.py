@@ -2,8 +2,8 @@
 
 Field names are the contract in `templates/CLAUDE.md`. The edit page carries a hidden JSON copy of every value as
 rendered (`orig_<field>`), so a save sends only what differs from it and two admins editing different fields of
-one channel don't overwrite each other. Parsing never refuses: text that is not a number passes through as text
-and the registry's own validation says so in a sentence.
+one channel don't overwrite each other. Numbers are checked here, at the boundary, in plain sentences; a model
+left blank never counts as a change.
 """
 
 from __future__ import annotations
@@ -12,13 +12,19 @@ import json
 import re
 
 from ..slack.channel_admin import EDITABLE
+from ..slack.channel_setup import ChannelRefused
 from ..slack.registry import DEFAULT_ALIASES
+from . import copy
 
 DEFAULT_ALIAS = "gemini"
 # The `orig_*` fields the edit form renders; `family_models` is the saved per-family model of the team.
 ORIG_FIELDS = (*sorted(EDITABLE), "family_models")
 _MODEL_FIELD = re.compile(r"^model_([\w-]+)$", re.ASCII)
 _ORDER_FREE = {"invoker_allowlist"}  # checkboxes come back in name order, not the stored order
+MAX_CAP_USD = 1000
+MAX_CONCURRENT = 20
+_DECIMAL = re.compile(r"(?:\d+\.?\d*|\.\d+)\Z", re.ASCII)
+_INTEGER = re.compile(r"\d+\Z", re.ASCII)
 
 
 def _strings(form, name: str) -> list[str]:
@@ -91,26 +97,44 @@ def row_values(row, saved: dict, families) -> dict:
     }
 
 
-def _number(value, kind):
+def _cap(text: str) -> float:
+    if not _DECIMAL.match(text) or not 0 < (cap := float(text)) <= MAX_CAP_USD:
+        raise ValueError(text)
+    return cap
+
+
+def _concurrent(text: str) -> int:
+    if not _INTEGER.match(text) or not 1 <= (limit := int(text)) <= MAX_CONCURRENT:
+        raise ValueError(text)
+    return limit
+
+
+_NUMBERS = {"daily_cap_usd": (_cap, copy.CAP_INVALID), "max_concurrent": (_concurrent, copy.CONCURRENT_INVALID)}
+
+
+def _number(name: str, value, *, strict: bool):
+    parse, sentence = _NUMBERS[name]
     try:
-        return kind(str(value).strip())
-    except (TypeError, ValueError):
-        return value  # the registry refuses it with its own sentence
+        return parse(str(value).strip())
+    except ValueError:
+        if strict:
+            raise ChannelRefused(sentence) from None
+        return value  # for comparing only: it differs from any number, so it counts as changed and is checked
 
 
-def typed(values: dict) -> dict:
-    """The editable fields as the registry takes them: numbers parsed, everything else as shown."""
+def typed(values: dict, *, strict: bool = False) -> dict:
+    """The editable fields as the registry takes them. Numbers are parsed; with `strict` a bad one is refused
+    with its sentence, otherwise it stays as typed (to compare against the rendered snapshot)."""
     found = {name: values[name] for name in EDITABLE if name in values}
-    if "daily_cap_usd" in found:
-        found["daily_cap_usd"] = _number(found["daily_cap_usd"], float)
-    if "max_concurrent" in found:
-        found["max_concurrent"] = _number(found["max_concurrent"], int)
+    for name in _NUMBERS:
+        if name in found:
+            found[name] = _number(name, found[name], strict=strict)
     return found
 
 
 def new_row_fields(values: dict) -> dict:
     """What `ChannelAdmin.register` takes: the label and cohort with the typed fields (rows hold tuples)."""
-    fields = {**typed(values), "label": values["label"], "cohort": values["cohort"]}
+    fields = {**typed(values, strict=True), "label": values["label"], "cohort": values["cohort"]}
     for name in ("fetch_allowlist", "invoker_allowlist"):
         fields[name] = tuple(fields[name])
     return fields
@@ -148,26 +172,14 @@ def changed(shown: dict, orig: dict | None) -> tuple[dict, dict[str, str]]:
     changes = {name: now[name] for name in EDITABLE
                if name in now and (name not in before or _differs(name, now[name], before[name]))}
     rendered = orig.get("family_models") if isinstance(orig.get("family_models"), dict) else {}
+    for name in _NUMBERS:
+        if name in changes:
+            changes[name] = _number(name, shown[name], strict=True)
     models = {family: model for family, model in selected_models(shown).items()
               if model != (rendered.get(family) or "")}
     return changes, models
 
 
-class FormValues:
-    """`values` for a form shown again after a refusal.
-
-    The inputs show what was submitted, but the hidden `orig_*` copies must stay the snapshot the form was first
-    rendered from, or a retry would see the unsaved edits as unchanged and drop them. The template reads inputs
-    as attributes (`values.label`) and the snapshot by key (`values[field]`), which this keeps apart."""
-
-    def __init__(self, shown: dict, orig: dict | None):
-        self._shown, self._orig = shown, {**shown, **(orig or {})}
-
-    def __getattr__(self, name: str):
-        try:
-            return self._shown[name]
-        except KeyError:
-            raise AttributeError(name) from None
-
-    def __getitem__(self, name: str):
-        return self._orig[name]
+def snapshot(rendered: dict, orig: dict | None) -> dict:
+    """The originals to carry in the page: the posted ones where there are any, else the page's own values."""
+    return {**rendered, **(orig or {})}

@@ -22,6 +22,10 @@
       <p>You are signed in as <strong>{{ session.email }}</strong>.</p>
       {{ m.logout(session.csrf_token) }}
       {% endif %}
+      {% if logout_url is defined and logout_url %}
+      {# Signed in at Auth0 with the wrong account and no session here: a plain link, no token to check. #}
+      <p><a href="{{ logout_url }}">Sign out</a></p>
+      {% endif %}
       <p><a href="/admin">Back to admin</a></p>
     </article>
   </main>

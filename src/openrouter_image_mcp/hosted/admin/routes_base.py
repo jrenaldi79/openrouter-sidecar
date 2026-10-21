@@ -9,12 +9,20 @@ from __future__ import annotations
 
 import hmac
 import logging
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from urllib.parse import parse_qsl
 
+from starlette.datastructures import FormData
 from starlette.exceptions import HTTPException
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse, RedirectResponse, Response
+from starlette.responses import (
+    HTMLResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 
 from ...logs import redact
 from ..slack.channel_admin import ChannelAdmin
@@ -33,12 +41,10 @@ COOKIE_PATH = "/admin"
 LOGIN_LIMIT = 20
 LOGIN_SPAN_S = 600
 MAX_FORM_BYTES = 100_000
-# Sentences for HTTP-level problems; everything about channels comes from copy.py.
-BAD_TOKEN = "Your session token didn't match. Reload the page and try again."
-BAD_REQUEST = "That request couldn't be read."
-TOO_BIG = "That form is too large."
-NOT_FOUND = "That page doesn't exist."
-FAILED = copy.UNEXPECTED[:1].upper() + copy.UNEXPECTED[1:] + "."
+MAX_FORM_FIELDS = 200
+FORM_TYPE = "application/x-www-form-urlencoded"
+# Slack's team and channel ids; anything else in a URL is not one of ours.
+SLACK_ID = re.compile(r"[A-Z0-9]{8,12}\Z", re.ASCII)
 
 Handler = Callable[["AdminContext", Request, "Session | None", "object | None"], Awaitable[Response]]
 
@@ -75,10 +81,16 @@ class AdminContext:
         response.delete_cookie(name, path=COOKIE_PATH, httponly=True, samesite="lax",
                                secure=self.settings.secure_cookies)
 
-    def dead_end(self, request: Request, text: str, status: int, session: Session | None = None) -> Response:
-        """A problem page; htmx requests get the plain text its error banner shows instead."""
+    def dead_end(self, request: Request, text: str, status: int, session: Session | None = None, *,
+                 logout_url: str | None = None) -> Response:
+        """A problem page; htmx requests get the plain text its error banner shows instead.
+
+        `logout_url` adds a plain Sign out link for someone signed in at Auth0 but with no session here."""
         if is_htmx(request):
             return PlainTextResponse(text, status_code=status)
+        if logout_url:
+            page = self.views.env.get_template("message.html").render(text=text, session=None, logout_url=logout_url)
+            return HTMLResponse(page, status_code=status)
         return self.views.message(text, session=session, status=status)
 
 
@@ -97,35 +109,59 @@ def _token_matches(request: Request, form, expected: str) -> bool:
     return hmac.compare_digest(sent.encode(), expected.encode())
 
 
-async def _read_form(request: Request):
-    try:
-        if int(request.headers.get("content-length") or 0) > MAX_FORM_BYTES:
+async def read_form(request: Request) -> FormData:
+    """The urlencoded form (all ours are), read at most `MAX_FORM_BYTES`, however the body is framed."""
+    kind = request.headers.get("content-type", FORM_TYPE).split(";")[0].strip().lower()
+    if kind != FORM_TYPE:
+        raise HTTPException(415)
+    chunks, size = [], 0
+    async for chunk in request.stream():  # counted as it arrives: a chunked body has no Content-Length
+        size += len(chunk)
+        if size > MAX_FORM_BYTES:
             raise HTTPException(413)
-    except ValueError:
+        chunks.append(chunk)
+    try:
+        pairs = parse_qsl(b"".join(chunks).decode(), keep_blank_values=True, max_num_fields=MAX_FORM_FIELDS)
+    except ValueError:  # not UTF-8, or too many fields
         raise HTTPException(400) from None
-    return await request.form()
+    return FormData(pairs)
+
+
+def ids_look_right(request: Request) -> bool:
+    """True when every Slack id in the path and the `channel` query is shaped like one."""
+    found = [request.path_params.get(name) for name in ("team", "channel")] + [request.query_params.get("channel")]
+    return all(value is None or SLACK_ID.match(value) for value in found)
+
+
+def _signed_in(ctx: AdminContext, request: Request) -> Session | None:
+    raw = request.cookies.get(SESSION_COOKIE)
+    return ctx.sessions.get(raw) if raw else None
 
 
 def endpoint(ctx: AdminContext, handler: Handler, *, public: bool = False, post: bool = False):
-    """A Starlette endpoint that runs `handler(ctx, request, session, form)` behind the guard."""
+    """A Starlette endpoint that runs `handler(ctx, request, session, form)` behind the guard.
+
+    A page that isn't `public` needs a session (else redirect to sign-in). A POST with a session must carry its
+    CSRF token; a public POST without one (sign-out) has nothing to protect and passes."""
     async def run(request: Request) -> Response:
         session = None
         try:
-            if not public:
-                raw = request.cookies.get(SESSION_COOKIE)
-                session = ctx.sessions.get(raw) if raw else None
-                if session is None:
-                    return ctx.finish(redirect("/admin/login", 302))
+            if post or not public:
+                session = _signed_in(ctx, request)
+            if session is None and not public:
+                return ctx.finish(redirect("/admin/login", 302))
+            if not public and not ids_look_right(request):
+                return ctx.finish(ctx.dead_end(request, copy.NOT_FOUND, 404, session))
             form = None
             if post:
-                form = await _read_form(request)
-                if not _token_matches(request, form, session.csrf_token):
-                    return ctx.finish(ctx.dead_end(request, BAD_TOKEN, 403, session))
+                form = await read_form(request)
+                if session is not None and not _token_matches(request, form, session.csrf_token):
+                    return ctx.finish(ctx.dead_end(request, copy.BAD_TOKEN, 403, session))
             return ctx.finish(await handler(ctx, request, session, form))
         except HTTPException as error:
-            text = TOO_BIG if error.status_code == 413 else BAD_REQUEST
+            text = copy.TOO_BIG if error.status_code == 413 else copy.BAD_REQUEST
             return ctx.finish(ctx.dead_end(request, text, error.status_code, session))
         except Exception as error:  # the page says something generic; the log has the rest
             log.exception(redact(f"admin request failed: {type(error).__name__}"))
-            return ctx.finish(ctx.dead_end(request, FAILED, 500, session))
+            return ctx.finish(ctx.dead_end(request, copy.WENT_WRONG, 500, session))
     return run

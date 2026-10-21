@@ -41,10 +41,16 @@ async def callback(ctx: AdminContext, request: Request, session, form) -> Respon
         identity = await ctx.login.finish(code, state, request.cookies.get(LOGIN_COOKIE))
     except LoginRefused as refused:
         not_admin = refused.reason == "not_admin"
+        # Someone signed in at Auth0 with the wrong account has no session here to sign out of, so the page
+        # links straight to Auth0's sign-out: a plain GET, nothing local to protect.
         response = ctx.dead_end(request, copy.NOT_ADMIN if not_admin else copy.LOGIN_FAILED,
-                                403 if not_admin else 400)
+                                403 if not_admin else 400,
+                                logout_url=ctx.login.logout_url() if not_admin else None)
         ctx.clear_cookie(response, LOGIN_COOKIE)
         return response
+    previous = request.cookies.get(SESSION_COOKIE)
+    if previous:  # a new sign-in replaces the session this browser held, rather than leaving it to expire
+        ctx.sessions.delete(previous)
     raw_id, _ = ctx.sessions.create(identity.subject, identity.email)
     response = redirect("/admin", 302)
     ctx.clear_cookie(response, LOGIN_COOKIE)
@@ -53,7 +59,8 @@ async def callback(ctx: AdminContext, request: Request, session, form) -> Respon
 
 
 async def logout(ctx: AdminContext, request: Request, session, form) -> Response:
-    """End the session here, then at Auth0 (so the next sign-in asks again)."""
+    """End the session here (if there is one), then at Auth0 so the next sign-in asks again. The guard has
+    already checked the CSRF token when a session exists."""
     raw_id = request.cookies.get(SESSION_COOKIE)
     if raw_id:
         ctx.sessions.delete(raw_id)

@@ -19,7 +19,7 @@
   {{ m.csrf(csrf_token) }}
   {% if editing %}
   {% for field in ["default_model", "alias_map", "fusion_panel", "fusion_analyst", "subagent_model", "fetch_allowlist", "daily_cap_usd", "max_concurrent", "invoker_allowlist", "family_models"] %}
-  <input type="hidden" name="orig_{{ field }}" value="{{ values[field]|tojson|forceescape }}">
+  <input type="hidden" name="orig_{{ field }}" value="{{ orig[field]|tojson|forceescape }}">
   {% endfor %}
   <p><span class="muted">Label</span> <code>{{ row.team_label }}</code> · <span class="muted">Cohort</span> <code>{{ row.cohort }}</code></p>
   <p class="muted">The label names the team's key and the cohort decides which workspace holds it, so neither changes after the first save.</p>
@@ -38,11 +38,14 @@
   {% endif %}
 
   <h2>Models</h2>
-  <p class="muted">The model each family uses in this channel's chats.</p>
+  <p class="muted">The model each family uses in this channel's chats. None leaves a family as it is.</p>
+  {% if not models_readable %}
+  <p class="warning" role="status">{{ copy.MODELS_UNREADABLE }}</p>
+  {% endif %}
   <div class="grid">
     {% for family in families %}
     <label>{{ family }}
-      {{ m.model_select("model_" ~ family, models, values.family_models.get(family, ""), "Model for " ~ family, family=family) }}
+      {{ m.model_select("model_" ~ family, models, values.family_models.get(family, ""), "Model for " ~ family, family=family, blank=not values.family_models.get(family), disabled=not models_readable) }}
     </label>
     {% endfor %}
   </div>

@@ -139,6 +139,14 @@ def test_message_page_standalone():
     assert 'name="_csrf" value="' + "c" * 32 + '"' in with_session
 
 
+def test_message_page_with_a_sign_out_link():
+    url = "https://auth.example/v2/logout?client_id=x&returnTo=https%3A%2F%2Fsidecar.example%2Fadmin"
+    html = Views().env.get_template("message.html").render(text=copy.NOT_ADMIN, session=None, logout_url=url)
+    assert '<a href="https://auth.example/v2/logout?client_id=x&amp;returnTo=' in html  # a plain, escaped link
+    assert "<form" not in html and "Sign out" in html
+    assert "Sign out" not in body(Views().message(copy.NOT_ADMIN))  # no link unless one is passed
+
+
 def test_unknown_page_is_an_error():
     with pytest.raises(TemplateNotFound):
         Views().page("nope", session=Sess())

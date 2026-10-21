@@ -10,7 +10,7 @@ from __future__ import annotations
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
 
-from ..slack.channel_setup import ChannelRefused
+from ..slack.channel_setup import SETUP_REASONS, ChannelRefused
 from . import forms
 from .routes_base import AdminContext, is_htmx, redirect
 from .routes_channels import edit_page, edit_url, refusal_page, register_page, team_id
@@ -30,12 +30,23 @@ async def register(ctx: AdminContext, request: Request, session, form) -> Respon
         await ctx.channels.register(team, channel_id, forms.new_row_fields(shown),
                                     forms.selected_models(shown), session)
     except ChannelRefused as refusal:
-        # Once the row is written a failed setup is the edit page's business (Finish setup), not a retry here.
-        written = team is not None and ctx.channels.registry.get(team, channel_id) is not None
-        build = (edit_page(ctx, request, session, team, channel_id, error=str(refusal), status=422) if written
-                 else register_page(ctx, session, channel_id, shown=shown, error=str(refusal), status=422))
-        return await refusal_page(ctx, request, session, build)
+        return await _register_refused(ctx, request, session, team, channel_id, shown, refusal)
     return redirect(edit_url(team, channel_id))
+
+
+async def _register_refused(ctx: AdminContext, request: Request, session, team: str | None, channel_id: str,
+                            shown: dict, refusal: ChannelRefused) -> Response:
+    """Before the row is written: the register form again with what was typed. After (a setup that stopped, or a
+    double submit): the edit page, where Finish setup retries; it keeps the typed models for that retry."""
+    found = await ctx.channels.channel(team, channel_id) if team is not None else None
+    if found is None:
+        build = register_page(ctx, session, channel_id, shown=shown, error=str(refusal), status=422)
+    else:
+        row = found[0]
+        unfinished = not row.active and row.inactive_reason in SETUP_REASONS
+        build = edit_page(ctx, request, session, team, channel_id, shown=shown if unfinished else None,
+                          error=str(refusal), status=422)
+    return await refusal_page(ctx, request, session, build)
 
 
 async def refused_edit(ctx: AdminContext, request: Request, session, refusal: ChannelRefused, form) -> Response:
@@ -51,9 +62,8 @@ async def refused_edit(ctx: AdminContext, request: Request, session, refusal: Ch
 
 async def save(ctx: AdminContext, request: Request, session, form) -> Response:
     team, channel_id = _path(request)
-    shown = forms.submitted_values(form)
-    changes, family_changes = forms.changed(shown, forms.orig_values(form))
     try:
+        changes, family_changes = forms.changed(forms.submitted_values(form), forms.orig_values(form))
         await ctx.channels.change(team, channel_id, changes, family_changes, session)
     except ChannelRefused as refusal:
         return await refused_edit(ctx, request, session, refusal, form)

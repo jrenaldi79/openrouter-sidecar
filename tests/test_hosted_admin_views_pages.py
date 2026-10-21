@@ -88,6 +88,35 @@ def test_form_fields_and_prefill():
     assert "Grace Hopper" in html and 'name="invoker_allowlist_text"' not in html
 
 
+def test_family_selects_have_a_none_choice_unless_a_model_is_saved():
+    ctx = form_ctx(values=values(family_models={"gpt": "openai/gpt-x", "gemini": ""}))
+    html = body(Views().page("channel_form", session=Sess(), **ctx))
+    gpt = re.search(r'<select name="model_gpt".*?</select>', html, re.DOTALL).group()
+    gemini = re.search(r'<select name="model_gemini".*?</select>', html, re.DOTALL).group()
+    assert '<option value="" selected>None</option>' in gemini  # nothing saved: a blank, never the first model
+    assert 'value=""' not in gpt  # saved: no way to blank it (a blank is no change)
+    register = body(Views().page("channel_form", session=Sess(), **form_ctx("register")))
+    assert register.count('<option value="" selected>None</option>') >= 2  # both families start unset
+
+
+def test_unreadable_saved_models_disable_the_selects():
+    html = body(Views().page("channel_form", session=Sess(), **form_ctx(models_readable=False)))
+    assert copy.MODELS_UNREADABLE.replace("'", "&#39;") in html
+    for family in ("gpt", "gemini"):
+        assert f'<select name="model_{family}" aria-label="Model for {family}" disabled>' in html
+    assert '<select name="default_model"' in html and 'name="default_model" disabled' not in html
+    readable = body(Views().page("channel_form", session=Sess(), **form_ctx()))
+    assert "disabled" not in readable and copy.MODELS_UNREADABLE.replace("'", "&#39;") not in readable
+
+
+def test_hidden_originals_come_from_orig_not_from_values():
+    r = row()
+    ctx = form_ctx("edit", r, values=values(r, daily_cap_usd="9"), orig=values(r))
+    html = body(Views().page("channel_form", session=Sess(), **ctx))
+    assert 'name="daily_cap_usd" type="number" min="0.01" step="0.01" value="9"' in html
+    assert 'name="orig_daily_cap_usd" value="&#34;4.0&#34;"' in html
+
+
 def test_form_keeps_a_saved_model_missing_from_the_catalog():
     r = row(base={"fusion_analyst": "old/retired-model"})
     html = body(Views().page("channel_form", session=Sess(), **form_ctx(r=r)))

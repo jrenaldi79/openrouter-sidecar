@@ -17,3 +17,9 @@ def test_templated_sentences_format():
 def test_sentences_are_plain_text():
     texts = [value for name, value in vars(copy).items() if name.isupper()]
     assert texts and not any(mark in text for text in texts for mark in "<>&")
+
+
+def test_route_sentences_are_whole_sentences():
+    for text in (copy.BAD_TOKEN, copy.BAD_REQUEST, copy.TOO_BIG, copy.NOT_FOUND, copy.WENT_WRONG,
+                 copy.CAP_INVALID, copy.CONCURRENT_INVALID, copy.MODELS_UNREADABLE):
+        assert text[0].isupper() and text.endswith(".")

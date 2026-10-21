@@ -65,8 +65,10 @@ def form_ctx(mode="edit", r=None, **over):
     r = r or row()
     ctx = {"mode": mode, "row": r if mode == "edit" else None, "channel": {"id": "C1", "name": "abbott-team"},
                "values": values(r), "models": MODELS, "families": ["gpt", "gemini"], "aliases": list(DEFAULT_ALIASES),
-               "members": [("U1", "Grace Hopper"), ("U2", "Alan Turing")], "error": None, "setup_unfinished": False}
+               "members": [("U1", "Grace Hopper"), ("U2", "Alan Turing")], "error": None, "setup_unfinished": False,
+               "models_readable": True}
     ctx.update(over)
+    ctx.setdefault("orig", ctx["values"])  # the snapshot the hidden `orig_*` fields carry
     return ctx
 
 

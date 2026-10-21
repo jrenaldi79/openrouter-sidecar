@@ -1,16 +1,16 @@
 """The /admin headers, static files and not-configured mode. The guard, sign-in and channels have their own files."""
 
 import pytest
-from admin_routes_rig import ISSUER, AdminRig, register_form
+from admin_routes_rig import EDIT, ISSUER, NEW, TEAM, AdminRig, register_form
 from markupsafe import escape
 
 from openrouter_image_mcp.hosted.admin import copy
 from openrouter_image_mcp.hosted.admin.views import PUBLIC_DIR, security_headers
 
-CHANNEL = "/admin/channels/T1/C1"
-POSTS = ["/admin/logout", "/admin/channels/new?channel=C1", CHANNEL, CHANNEL + "/finish", CHANNEL + "/off",
+CHANNEL = EDIT
+POSTS = ["/admin/logout", NEW, CHANNEL, CHANNEL + "/finish", CHANNEL + "/off",
          CHANNEL + "/on"]
-GETS = ["/admin", "/admin/log", "/admin/channels/new?channel=C1", CHANNEL]
+GETS = ["/admin", "/admin/log", NEW, CHANNEL]
 
 
 @pytest.fixture
@@ -22,14 +22,14 @@ async def rig(db_target):
 
 async def test_headers_on_every_response(rig):
     expected = security_headers(ISSUER, rig.settings.public_origin)
-    await rig.slack_rig.register()
+    await rig.register()
     rig.sign_in()
     responses = [
         await rig.client.get("/admin"),  # a page
         await rig.client.get("/admin/login"),  # a redirect
         await rig.post(CHANNEL + "/off", {"reason": ""}),  # a refusal
         await rig.post("/admin/logout", token="bad"),  # a 403
-        await rig.client.get("/admin/channels/T1/NOPE"),  # a 404 page
+        await rig.client.get(f"/admin/channels/{TEAM}/C9999ZZZZ"),  # a 404 page
         await rig.client.get("/admin/public/nothing.css"),  # a static 404
     ]
     for response in responses:
@@ -47,7 +47,7 @@ async def test_not_configured_mode(db_target):
             assert response.status_code == 503 and escape(copy.NOT_CONFIGURED) in response.text, path
             assert response.headers["content-security-policy"]
         assert (await rig.client.post("/admin/logout", data={})).status_code == 503
-        assert (await rig.client.post("/admin/channels/new?channel=C1", data=register_form())).status_code == 503
+        assert (await rig.client.post(NEW, data=register_form())).status_code == 503
         assert (await rig.client.get("/admin/public/admin.css")).status_code == 200
         assert rig.slack_rig.registry.all() == []
     finally:
@@ -82,3 +82,21 @@ async def test_static_refuses_everything_else(rig, path):
     response = await rig.client.get(f"/admin/public/{path}")
     assert response.status_code == 404
     assert "root:" not in response.text
+
+
+async def test_headers_on_router_level_responses(rig):
+    expected = security_headers(ISSUER, rig.settings.public_origin)
+    rig.sign_in()
+    responses = [
+        await rig.client.get("/admin/nothing-here"),  # no route
+        await rig.client.get("/admin/channels/not/a/real/path"),
+        await rig.client.get("/admin/"),  # trailing slash
+        await rig.client.post("/admin/log", data={"_csrf": rig.csrf}),  # wrong method
+        await rig.client.get("/admin/logout"),  # wrong method
+        await rig.client.request("DELETE", "/admin/login"),
+    ]
+    for response in responses:
+        assert response.status_code == 404 and "That page doesn&#39;t exist." in response.text, response.url
+        for name, value in expected.items():
+            assert response.headers[name] == value, (response.url, name)
+    assert (await rig.client.get("/admin")).status_code == 200  # the real routes still win

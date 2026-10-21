@@ -1,15 +1,12 @@
 """The Channels, register, edit and log pages through the routes, against the real channel admin service."""
 
 import pytest
-from admin_routes_rig import AdminRig, edited, form_pairs
+from admin_routes_rig import CHAN, EDIT, NEW, OTHER, AdminRig, edited, form_pairs
 from markupsafe import escape
 from slack_admin_rig import FAMILY_DEFAULTS, GUEST_TEXT, registered_row
 
 from openrouter_image_mcp.errors import ProviderError
 from openrouter_image_mcp.hosted.admin import copy
-
-EDIT = "/admin/channels/T1/C1"
-NEW = "/admin/channels/new?channel=C1"
 
 
 @pytest.fixture
@@ -23,7 +20,7 @@ async def rig(db_target):
 async def register(rig):
     """A registered channel whose team has a model for every family the form lists (as a registered team does:
     the page selects the first model of a family with none saved)."""
-    await rig.slack_rig.register({**FAMILY_DEFAULTS, "x-ai": "x-ai/grok-x"})
+    await rig.register({**FAMILY_DEFAULTS, "x-ai": "x-ai/grok-x"})
 
 
 async def edit_form(rig, **changes):
@@ -34,14 +31,14 @@ async def edit_form(rig, **changes):
 
 
 async def test_channels_page_lists_registered_and_unregistered(rig):
-    await rig.slack_rig.register()
+    await rig.register()
     page = (await rig.client.get("/admin")).text
     assert "abbott" in page and f'href="{EDIT}"' in page
-    assert 'href="/admin/channels/new?channel=C2"' in page and "#other" in page
+    assert f'href="/admin/channels/new?channel={OTHER}"' in page and "#other" in page
 
 
 async def test_channels_page_when_slack_fails(rig):
-    await rig.slack_rig.register()
+    await rig.register()
     rig.slack_rig.slack.fail_next("bot_channels", "boom")
     response = await rig.client.get("/admin")
     assert response.status_code == 200
@@ -99,7 +96,13 @@ async def test_log_page(rig):
 
 async def test_registered_channel_with_scripted_label_renders_escaped(rig):
     rig.slack_rig.registry.add(registered_row(label="x-label"))
-    rig.slack_rig.slack.channels["C1"]["name"] = "<script>alert(1)</script>"
+    rig.slack_rig.slack.channels[CHAN]["name"] = "<script>alert(1)</script>"
     page = (await rig.client.get("/admin")).text
     assert "<script>alert(1)" not in page and "&lt;script&gt;" in page
     assert FAMILY_DEFAULTS  # the rig's families are what the forms offer
+
+
+async def test_register_link_for_a_registered_channel_goes_to_its_edit_page(rig):
+    await rig.register()
+    response = await rig.client.get(NEW)
+    assert (response.status_code, response.headers["location"]) == (303, EDIT)

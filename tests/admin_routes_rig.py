@@ -6,7 +6,7 @@ from html.parser import HTMLParser
 from urllib.parse import urlsplit
 
 import httpx
-from slack_admin_rig import FAMILY_DEFAULTS, FIELDS, PANEL, Rig
+from slack_admin_rig import ACTOR, FAMILY_DEFAULTS, FIELDS, PANEL, Rig
 from starlette.applications import Starlette
 
 from openrouter_image_mcp.advisor_store import AdvisorStore
@@ -23,6 +23,10 @@ LOCAL = "http://localhost:8000"
 AUTHORIZE = ISSUER + "authorize?client_id=cid"
 LOGOUT = ISSUER + "v2/logout?client_id=cid"
 IDENTITY = AdminIdentity("auth0|admin", "admin@northwestern.edu")
+# Slack-shaped ids: the routes refuse anything else in a URL.
+TEAM, CHAN, OTHER = "T0123ABCD", "C0123ABCD", "C0456EFGH"
+EDIT = f"/admin/channels/{TEAM}/{CHAN}"
+NEW = f"/admin/channels/new?channel={CHAN}"
 
 
 class FakeLogin:
@@ -60,6 +64,10 @@ class AdminRig:
     def __init__(self, target, *, origin: str = ORIGIN, login: FakeLogin | None | bool = True):
         self.target = target
         self.slack_rig = Rig(target)  # registry, audit, slack, provisioner and the ChannelAdmin
+        slack = self.slack_rig.slack
+        slack.team, slack.bot_in = TEAM, [CHAN, OTHER]
+        slack.channels = {CHAN: {"name": "abbott"}, OTHER: {"name": "other", "is_private": True}}
+        slack.members[CHAN] = ["U1", "U2"]
         self.login = FakeLogin() if login is True else login
         self.sessions = AdminSessions(target)
         self.logins = PendingLogins(target)
@@ -72,6 +80,14 @@ class AdminRig:
                                         base_url=origin)
         self.csrf = ""
         self.session_id = ""
+
+    async def register(self, family_defaults=None, **fields):
+        """Register the Slack rig's channel through the service (not the page)."""
+        wanted = FAMILY_DEFAULTS if family_defaults is None else family_defaults
+        return await self.slack_rig.admin.register(TEAM, CHAN, {**FIELDS, **fields}, wanted, ACTOR)
+
+    def row(self):
+        return self.slack_rig.registry.get(TEAM, CHAN)
 
     def sign_in(self, email: str = IDENTITY.email) -> str:
         """Start a session the way the callback would, and send its cookie from now on."""
@@ -127,8 +143,8 @@ class _Form(HTMLParser):
             if a.get("type") != "submit":
                 self.pairs.append((a["name"], a.get("value") or ""))
         elif tag == "select":
-            self._select, self._options = a["name"], []
-        elif tag == "option" and self._select:
+            self._select, self._options = (None if "disabled" in a else a["name"]), []
+        elif tag == "option" and self._options is not None:
             self._options.append((a.get("value") or "", "selected" in a))
         elif tag == "textarea":
             self._textarea, self._text = a["name"], ""
@@ -140,10 +156,12 @@ class _Form(HTMLParser):
     def handle_endtag(self, tag):
         if tag == "form":
             self.inside = False
-        elif tag == "select" and self._select:
-            chosen = next((v for v, picked in self._options if picked), self._options[0][0] if self._options else "")
-            self.pairs.append((self._select, chosen))
-            self._select = None
+        elif tag == "select":
+            if self._select:  # a disabled select is never posted
+                chosen = next((v for v, picked in self._options if picked),
+                              self._options[0][0] if self._options else "")
+                self.pairs.append((self._select, chosen))
+            self._select = self._options = None
         elif tag == "textarea" and self._textarea:
             self.pairs.append((self._textarea, self._text.removeprefix("\n")))
             self._textarea = None

@@ -133,8 +133,15 @@ async def test_channel_returns_row_and_saved_models(rig):
     assert saved["google"] == "google/gemini-x" and saved["openai"] == "openai/gpt-x"
 
 
-async def test_channel_without_readable_models_has_none_saved(rig):
+async def test_channel_without_readable_models_says_so(rig):
     rig.registry.add(registered_row())
     admin = ChannelAdmin(rig.registry, rig.slack, None, rig.provisioner, rig.audit)  # no advisor services
     row, saved = await admin.channel("T1", "C1")
-    assert row.team_label == "abbott" and saved == {}
+    assert row.team_label == "abbott" and saved is None  # not {}: that would read as "nothing saved"
+
+
+async def test_is_registered(rig):
+    assert not await rig.admin.is_registered("T1", "C1")
+    rig.registry.add(registered_row())
+    assert await rig.admin.is_registered("T1", "C1")
+    assert not await rig.admin.is_registered("T2", "C1") and not await rig.admin.is_registered("T1", "C2")

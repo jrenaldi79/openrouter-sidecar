@@ -58,39 +58,51 @@ def edit_url(team: str, channel_id: str) -> str:
     return f"/admin/channels/{quote(team, safe='')}/{quote(channel_id, safe='')}"
 
 
+async def _choices(ctx: AdminContext, channel_id: str, *, keep_input: bool) -> tuple[list[dict], list | None, str]:
+    """The models, members and #name a form offers. Showing a refused submission again must not lose it because
+    the model list is down now, so with `keep_input` a failed list is empty (typed models stay selectable)."""
+    try:
+        models = await ctx.channels.catalog()
+    except ChannelRefused:
+        if not keep_input:
+            raise
+        models = []
+    return models, await ctx.channels.members(channel_id), await slack_name(ctx.channels, channel_id)
+
+
 async def register_page(ctx: AdminContext, session, channel_id: str, *, shown: dict | None = None,
                         error: str | None = None, status: int = 200) -> Response:
     """The register form: blank, or showing a refused submission."""
-    models, members = await ctx.channels.catalog(), await ctx.channels.members(channel_id)
-    name = await slack_name(ctx.channels, channel_id)
+    models, members, name = await _choices(ctx, channel_id, keep_input=shown is not None)
     values = shown or forms.blank_values(next(iter(config.COHORT_WORKSPACES)), *ctx.register_defaults)
     families = sorted({m["family"] for m in models} | set(values["family_models"]))
     values = {**values, "family_models": {f: values["family_models"].get(f, "") for f in families}}
     return ctx.views.page(
         "channel_form", session=session, status=status, mode="register", row=None,
-        channel={"id": channel_id, "name": name}, values=values, models=models, families=families,
-        aliases=list(values["alias_map"]), members=members, error=error, setup_unfinished=False)
+        channel={"id": channel_id, "name": name}, values=values, orig=values, models=models,
+        families=families, aliases=list(values["alias_map"]), members=members, models_readable=True,
+        error=error, setup_unfinished=False)
 
 
 async def edit_page(ctx: AdminContext, request: Request, session, team: str, channel_id: str, *,
                     shown: dict | None = None, orig: dict | None = None, error: str | None = None,
                     status: int = 200) -> Response:
     """The edit form for a registered channel. With `shown`, the inputs keep a refused submission while the
-    hidden originals stay the snapshot it was rendered from (`forms.FormValues`)."""
+    hidden originals stay the snapshot it was rendered from."""
     found = await ctx.channels.channel(team, channel_id)
     if found is None:
         return ctx.dead_end(request, copy.NOT_REGISTERED, 404, session)
     row, saved = found
-    models, members = await ctx.channels.catalog(), await ctx.channels.members(channel_id)
-    name = await slack_name(ctx.channels, channel_id)
-    families = sorted({m["family"] for m in models} | set(saved) | set((shown or {}).get("family_models", {})))
-    rendered = forms.row_values(row, saved, families)
-    values = rendered if shown is None else forms.FormValues(shown, {**rendered, **(orig or {})})
+    models, members, name = await _choices(ctx, channel_id, keep_input=shown is not None)
+    families = sorted({m["family"] for m in models} | set(saved or {}) | set((shown or {}).get("family_models", {})))
+    rendered = forms.row_values(row, saved or {}, families)
+    values = rendered if shown is None else shown
     return ctx.views.page(
         "channel_form", session=session, status=status, mode="edit", row=row,
-        channel={"id": channel_id, "name": name}, values=values, models=models, families=families,
-        aliases=list(rendered["alias_map"] if shown is None else shown["alias_map"]), members=members,
-        error=error, setup_unfinished=not row.active and row.inactive_reason in SETUP_REASONS)
+        channel={"id": channel_id, "name": name}, values=values, orig=forms.snapshot(rendered, orig),
+        models=models, families=families, aliases=list(values["alias_map"]), members=members,
+        models_readable=saved is not None, error=error,
+        setup_unfinished=not row.active and row.inactive_reason in SETUP_REASONS)
 
 
 async def new_form(ctx: AdminContext, request: Request, session, form) -> Response:
@@ -99,6 +111,9 @@ async def new_form(ctx: AdminContext, request: Request, session, form) -> Respon
         return redirect("/admin")
 
     async def build() -> Response:
+        team = await team_id(ctx.channels)
+        if await ctx.channels.is_registered(team, channel_id):  # a bookmarked or stale Register link
+            return redirect(edit_url(team, channel_id))
         problem = await ctx.channels.check(channel_id)  # a guest or outside member: no form, just why
         if problem:
             return ctx.dead_end(request, problem, 422, session)
