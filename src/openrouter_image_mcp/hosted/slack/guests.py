@@ -1,8 +1,10 @@
 """Guest and shared-channel checks: Sidecar stays off in a channel that has a guest or is shared outside.
 
-`channel_problem` is the one check (the ops script and the guard both use it). `GuestGuard` deactivates a
+`channel_problem` is the one check, used by the guard. `GuestGuard` deactivates a
 registered channel on a guest join or a share event, posting `GUEST_OFF` once, and re-checks members at
-most hourly as a backstop for anything the events missed.
+most hourly as a backstop for anything the events missed. A failed check fails open only within two
+intervals of the last success; a failed join lookup denies until a check succeeds.
+The ops script will call `channel_problem` (it does not exist yet).
 """
 
 from __future__ import annotations
@@ -42,26 +44,36 @@ class GuestGuard:
     def __init__(self, registry: ChannelRegistry, api: SlackApi, *, every_s: float = RECHECK_S,
                  clock=time.monotonic):
         self.registry, self.api, self.every_s, self.clock = registry, api, every_s, clock
-        self._checked: dict[tuple[str, str], float] = {}
+        self._verified: dict[tuple[str, str], float] = {}  # last successful check per channel
+        self._recheck: set[tuple[str, str]] = set()  # a join lookup failed: deny until a check succeeds
 
     async def allowed(self, row: ChannelRow) -> bool:
-        if not row.active:
+        # Re-read the row: the caller's copy may predate a deactivation.
+        current = self.registry.get(row.slack_team_id, row.channel_id)
+        if current is None or not current.active:
             return False
         key = (row.slack_team_id, row.channel_id)
-        last = self._checked.get(key)
-        if last is not None and self.clock() - last < self.every_s:
+        verified = self._verified.get(key)
+        if key not in self._recheck and verified is not None and self.clock() - verified < self.every_s:
             return True
         try:
             problem = await channel_problem(self.api, row.channel_id)
-        except SlackCallError as error:
-            # Fail open for this call only; with no cache entry the next call retries.
-            log.warning("Guest check for %s failed: %s", row.channel_id, redact(str(error)))
-            return True
+        except Exception as error:  # noqa: BLE001 - any failed check counts, not only Slack errors
+            log.warning("Guest check for %s failed (%s): %s", row.channel_id, type(error).__name__,
+                        redact(str(error)))
+            return self._fail_open(key, verified)
+        self._verified[key] = self.clock()
+        self._recheck.discard(key)
         if problem is None:
-            self._checked[key] = self.clock()
             return True
         await self._deactivate(row.slack_team_id, row.channel_id, problem)
         return False
+
+    def _fail_open(self, key: tuple[str, str], verified: float | None) -> bool:
+        """A failed check passes only on recent evidence, and never while a join lookup is unresolved."""
+        if key in self._recheck or verified is None:
+            return False
+        return self.clock() - verified < 2 * self.every_s
 
     async def on_member_joined(self, team_id: str, channel_id: str, user_id: str) -> None:
         row = self.registry.get(team_id, channel_id)
@@ -70,9 +82,9 @@ class GuestGuard:
         try:
             guest = is_guest(await self.api.user(user_id))
         except SlackCallError as error:
-            # Unknown member: drop the cache so the next request re-checks the whole channel.
+            # Unknown member: deny until a full check of the channel succeeds.
             log.warning("Guest lookup in %s failed: %s", channel_id, redact(str(error)))
-            self._checked.pop((team_id, channel_id), None)
+            self._recheck.add((team_id, channel_id))
             return
         if guest:
             await self._deactivate(team_id, channel_id, GUEST_JOINED)
@@ -83,7 +95,8 @@ class GuestGuard:
 
     async def _deactivate(self, team_id: str, channel_id: str, reason: str) -> None:
         """`deactivate` is True only on active to inactive, so the notice posts once however many events race."""
-        self._checked.pop((team_id, channel_id), None)
+        self._verified.pop((team_id, channel_id), None)
+        self._recheck.discard((team_id, channel_id))
         if not self.registry.deactivate(team_id, channel_id, reason):
             return
         try:

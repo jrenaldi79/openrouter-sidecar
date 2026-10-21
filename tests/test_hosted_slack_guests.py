@@ -92,13 +92,33 @@ async def test_member_join_non_guest_noop(guard, registry, slack):
     assert registry.get("T1", "C1").active and slack.posts == []
 
 
-async def test_member_join_lookup_failure_leaves_channel_active_and_rechecks(guard, registry, slack):
-    await guard.allowed(registry.get("T1", "C1"))
+async def test_failed_join_lookup_then_failing_check_denies(guard, registry, slack, clock):
+    row = registry.get("T1", "C1")
+    assert await guard.allowed(row)  # recent success
     slack.fail_next("user", "ratelimited")
     await guard.on_member_joined("T1", "C1", "UG")
     assert registry.get("T1", "C1").active and slack.posts == []
+    slack.fail_next("channel_info", "ratelimited")
+    assert not await guard.allowed(row)  # the cache and the success window are both ignored
+
+
+async def test_failed_join_lookup_then_clean_check_clears_mark(guard, registry, slack):
+    row = registry.get("T1", "C1")
+    assert await guard.allowed(row)
+    slack.fail_next("user", "ratelimited")
+    await guard.on_member_joined("T1", "C1", "UG")
+    assert await guard.allowed(row)  # clean check runs despite the cache
+    slack.fail_next("channel_info", "ratelimited")
+    assert await guard.allowed(row)  # cached again: no Slack call, so the queued failure is unused
+    assert slack._failures["channel_info"]
+
+
+async def test_failed_join_lookup_then_guest_found_deactivates(guard, registry, slack):
+    slack.fail_next("user", "ratelimited")
+    await guard.on_member_joined("T1", "C1", "UG")
     slack.members["C1"] = ["UG"]
-    assert not await guard.allowed(registry.get("T1", "C1"))  # cache dropped: re-checked at once
+    assert not await guard.allowed(registry.get("T1", "C1"))
+    assert registry.get("T1", "C1").inactive_reason == GUEST
 
 
 async def test_channel_shared_deactivates(guard, registry, slack):
@@ -160,10 +180,63 @@ async def test_inactive_row_makes_no_slack_calls(guard, registry, slack):
     assert slack._failures["channel_info"]  # never consumed
 
 
-async def test_slack_failure_fails_open_and_retries(guard, registry, slack, caplog):
+async def test_failure_without_prior_success_denies(guard, registry, slack):
+    slack.fail_next("channel_info", "ratelimited")
+    assert not await guard.allowed(registry.get("T1", "C1"))
+
+
+async def test_failure_fails_open_only_within_two_intervals(guard, registry, slack, clock, caplog):
     row = registry.get("T1", "C1")
+    assert await guard.allowed(row)  # success at t0
+    clock.now += 3601
+    slack.fail_next("channel_info", "ratelimited")
+    assert await guard.allowed(row)  # one interval past the success: still open
+    assert "ratelimited" in caplog.text
+    clock.now += 3600  # 7201 s after the last success; the failure did not refresh it
+    slack.fail_next("channel_info", "ratelimited")
+    assert not await guard.allowed(row)
+
+
+async def test_failure_is_retried_on_the_next_call(guard, registry, slack, clock):
+    row = registry.get("T1", "C1")
+    assert await guard.allowed(row)
+    clock.now += 3601
     slack.fail_next("channel_info", "ratelimited")
     assert await guard.allowed(row)
-    assert "ratelimited" in caplog.text
     slack.members["C1"] = ["UG"]
-    assert not await guard.allowed(row)  # no cache entry was written, so this call re-checked
+    assert not await guard.allowed(row)  # no success was recorded, so this call re-checked
+
+
+async def test_non_slack_exception_follows_the_same_rule(guard, registry, slack, clock):
+    row = registry.get("T1", "C1")
+    slack.members["C1"] = ["U2"]
+    assert await guard.allowed(row)
+    clock.now += 3601
+
+    async def broken(channel):
+        raise KeyError("members")
+
+    slack.members._call = broken
+    assert await guard.allowed(row)
+    clock.now += 3600
+    assert not await guard.allowed(row)
+
+
+async def test_non_slack_exception_without_success_denies(guard, registry, slack):
+    async def broken(channel):
+        raise KeyError("members")
+
+    slack.members._call = broken
+    assert not await guard.allowed(registry.get("T1", "C1"))
+
+
+async def test_stale_active_row_after_deactivation_is_denied(guard, registry, slack):
+    stale = registry.get("T1", "C1")
+    registry.deactivate("T1", "C1", "manual")
+    slack.fail_next("channel_info", "boom")
+    assert not await guard.allowed(stale)
+    assert slack._failures["channel_info"]  # no Slack call
+
+
+async def test_row_removed_from_registry_is_denied(guard, slack):
+    assert not await guard.allowed(make_row("C9"))
