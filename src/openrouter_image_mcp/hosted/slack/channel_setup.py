@@ -13,6 +13,7 @@ from dataclasses import fields, replace
 from typing import TYPE_CHECKING
 
 from ...errors import (
+    KEY_REJECTED,
     AuthRequiredError,
     BadRequestError,
     NoGuardrailError,
@@ -24,7 +25,14 @@ from ..admin import audit as audit_log
 from ..admin import copy
 from ..admin.audit import AdminAudit
 from ..admin.sessions import Session
-from ..provisioning import KeyProvisioner, TeamKey
+from ..provisioning import (
+    DISABLED,
+    NOT_READY,
+    NOT_SERVED,
+    NOT_SET_UP,
+    KeyProvisioner,
+    TeamKey,
+)
 from .principal import acting_as, team_principal
 from .registry import ChannelRegistry, ChannelRow
 
@@ -86,15 +94,36 @@ def model_ids(values: Mapping) -> set[str]:
     return ids
 
 
+# What a key problem looks like to an admin: the provisioning messages are written for one student ("Your key").
+_KEY_REASONS = {NOT_SERVED: copy.KEY_NOT_SERVED, NOT_SET_UP: copy.KEY_NOT_SET_UP, NOT_READY: copy.KEY_NOT_READY,
+                KEY_REJECTED: copy.KEY_REJECTED, DISABLED: copy.KEY_DISABLED}
+
+
 def failure_reason(error: Exception, row: ChannelRow) -> str:
-    """A plain reason for a failed setup or model save; raw error text never reaches the page."""
+    """A plain reason for a failed setup or model save, in admin words; raw error text never reaches the page."""
     if isinstance(error, NoGuardrailError):
         return copy.NO_GUARDRAIL.format(cohort=row.cohort).rstrip(".")
-    if isinstance(error, AuthRequiredError | BadRequestError):  # fixed provisioning and model-check sentences
-        return redact(error.message).rstrip(".")
+    if isinstance(error, AuthRequiredError):
+        return _KEY_REASONS.get(error.message, copy.KEY_OTHER).format(cohort=row.cohort)
+    if isinstance(error, BadRequestError):
+        return copy.MODEL_NOT_ACCEPTED
     if isinstance(error, OpenRouterError):
         return copy.OPENROUTER_DOWN
     return copy.UNEXPECTED
+
+
+def default_family(row: ChannelRow) -> str | None:
+    """The model family whose saved model the default alias resolves through; None when the alias names an
+    exact model id (those need no family model). An alias maps to a brand ("Gemini") or an exact id."""
+    target = row.alias_map.get(row.default_model)
+    return ALIASES.get(target.casefold()) if target else None
+
+
+def require_default_model(row: ChannelRow, models: Mapping[str, str | None]) -> None:
+    """Refuse unless the default alias resolves to a model, given the team's models as they will be saved."""
+    family = default_family(row)
+    if family and not models.get(family):
+        raise ChannelRefused(copy.CHOOSE_DEFAULT_MODEL.format(family=family))
 
 
 def team_of(row: ChannelRow):
@@ -148,7 +177,11 @@ class ChannelSetup:
             raise ChannelRefused(copy.NOT_IN_SETUP)
         try:
             await self.provisioner.ensure(team_of(row), team=TeamKey(row.team_label))
+            wanted = {family: model for family, model in family_defaults.items() if model}
+            require_default_model(row, {**self.models.saved(row), **wanted})  # before saving anything
             changes = await self.models.save(row, family_defaults)
+        except ChannelRefused:
+            raise  # the row stays as it is, in setup; the sentence says what to choose
         except Exception as error:  # noqa: BLE001 - whatever failed, the row stays off and Finish setup retries
             return self._unfinished(row, error)
         if changes:  # outside the try: a failed audit write after a good save is a server error, not a setup failure
@@ -161,14 +194,15 @@ class ChannelSetup:
         return self.registry.get(team_id, channel_id) or row
 
     def _unfinished(self, row: ChannelRow, error: Exception) -> ChannelRow:
-        """Report a failed attempt, unless a concurrent attempt finished the row meanwhile."""
+        """Report a failed attempt, unless a concurrent attempt finished a row that was off when this one began."""
         log.warning("slack admin: setup of %s did not finish (%s): %s", row.team_label,
                     type(error).__name__, redact(str(error)))
         current = self.registry.get(row.slack_team_id, row.channel_id)
-        if current is not None and current.active:
+        if current is not None and current.active and not row.active:
             return current
         try:
-            self.registry.set_inactive_reason(row.slack_team_id, row.channel_id, copy.SETUP_UNFINISHED)
+            self.registry.set_inactive_reason(row.slack_team_id, row.channel_id, copy.SETUP_UNFINISHED,
+                                              from_reasons=SETUP_REASONS)
         except Exception as write_error:  # noqa: BLE001 - the refusal matters more than a second failed write
             log.warning("slack admin: could not mark %s unfinished: %s", row.team_label, redact(str(write_error)))
         raise ChannelRefused(copy.SETUP_UNFINISHED_TEXT.format(reason=failure_reason(error, row))) from None

@@ -11,7 +11,7 @@ import math
 import re
 import sqlite3
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, fields, replace
 
@@ -111,13 +111,13 @@ def _row(found) -> ChannelRow:
 Audit = Callable[[object, "ChannelRow | None", "ChannelRow"], None]
 
 
-def _read(db, team_id: str, channel_id: str) -> ChannelRow | None:
-    found = db.execute("SELECT * FROM slack_channels WHERE slack_team_id=? AND channel_id=?",
-                       (team_id, channel_id)).fetchone()
+def _read(db, team_id: str, channel_id: str, *, lock: bool = False) -> ChannelRow | None:
+    found = db.execute("SELECT * FROM slack_channels WHERE slack_team_id=? AND channel_id=?"
+                       + (" FOR UPDATE" if lock else ""), (team_id, channel_id)).fetchone()
     return _row(found) if found else None
 
 
-def _audit(db, audit: Audit, before: ChannelRow | None, after: ChannelRow | None) -> None:
+def _audit(db, audit: Audit, before: ChannelRow | None, after: ChannelRow) -> None:
     audit(db, before, after)
 
 
@@ -162,9 +162,6 @@ class ChannelRegistry:
                 _audit(db, audit, None, stored)
 
     def update(self, team_id: str, channel_id: str, *, audit: Audit | None = None, **changes) -> ChannelRow:
-        current = self.get(team_id, channel_id)
-        if current is None:
-            raise ValueError("That channel is not registered.")
         allowed = {f.name for f in fields(ChannelRow)} - set(_KEYS) - {"created_at", "workspace_id"}
         unknown = set(changes) - allowed
         if unknown:
@@ -174,24 +171,30 @@ class ChannelRegistry:
         for name, kind in _JSON.items():
             if name in changes:
                 changes[name] = kind(changes[name])
-        updated = replace(current, **changes)
-        _validate(updated)
-        # Write only the columns asked for: the snapshot may predate a racing mark_welcomed, deactivate or
-        # mark_warned, and rewriting every column from it would undo that guarded write.
-        values = dict(zip(_COLUMNS, _values(updated), strict=True))
         names = [c for c in _COLUMNS if c in changes]
-        if names:
-            sets = ",".join(f"{c}=?" for c in names)
-            with self._db() as db:
-                before = _read(db, team_id, channel_id) if audit else None
+        with self._db() as db:
+            # The row is read, validated with the changes and written in one transaction (locked on Postgres), so
+            # a racing admin's write can't slip between the check and the write.
+            before = _read(db, team_id, channel_id, lock=storage.is_postgres(self.target))
+            if before is None:
+                raise ValueError("That channel is not registered.")
+            updated = replace(before, **changes)
+            _validate(updated)
+            after = before
+            # Write only the columns asked for: rewriting every column would undo a racing guarded write
+            # (mark_welcomed, deactivate, mark_warned).
+            if names:
+                values = dict(zip(_COLUMNS, _values(updated), strict=True))
                 try:
-                    db.execute(f"UPDATE slack_channels SET {sets} WHERE slack_team_id=? AND channel_id=?",
+                    db.execute(f"UPDATE slack_channels SET {','.join(f'{c}=?' for c in names)} "
+                               "WHERE slack_team_id=? AND channel_id=?",
                                (*(values[c] for c in names), team_id, channel_id))
                 except (sqlite3.IntegrityError, psycopg.errors.IntegrityError) as error:
                     raise ValueError("That team label is already registered.") from error
+                after = _read(db, team_id, channel_id)
                 if audit:  # a call that changes no column writes nothing, so it leaves no audit entry
-                    _audit(db, audit, before, _read(db, team_id, channel_id))
-        return self.get(team_id, channel_id) or updated
+                    _audit(db, audit, before, after)
+        return after
 
     def _claim(self, assignment: str, guard: str, args: tuple) -> bool:
         """Run one guarded UPDATE; True only when it changed the row (the caller won)."""
@@ -225,9 +228,14 @@ class ChannelRegistry:
             _audit(db, audit, before, _read(db, team_id, channel_id))
             return True
 
-    def set_inactive_reason(self, team_id: str, channel_id: str, reason: str) -> bool:
-        """Change why an off row is off; never touches a row that is on."""
-        return self._claim("inactive_reason=?", "active=0", (reason, team_id, channel_id))
+    def set_inactive_reason(self, team_id: str, channel_id: str, reason: str, *, from_reasons: Sequence[str]) -> bool:
+        """Change why an off row is off, but only while its reason is one of `from_reasons`: never a row that is
+        on, and never a reason another admin gave."""
+        if not from_reasons:
+            return False
+        marks = ",".join("?" * len(from_reasons))
+        return self._claim("inactive_reason=?", f"active=0 AND inactive_reason IN ({marks})",
+                           (reason, team_id, channel_id, *from_reasons))
 
     def mark_welcomed(self, team_id: str, channel_id: str) -> bool:
         return self._claim("welcomed_at=?", "welcomed_at IS NULL", (self.clock(), team_id, channel_id))

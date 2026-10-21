@@ -3,6 +3,7 @@ from dataclasses import replace
 import pytest
 
 from openrouter_image_mcp.errors import (
+    KEY_REJECTED,
     AuthRequiredError,
     BadRequestError,
     NoGuardrailError,
@@ -12,12 +13,20 @@ from openrouter_image_mcp.hosted.admin import audit as audit_log
 from openrouter_image_mcp.hosted.admin import copy
 from openrouter_image_mcp.hosted.admin.audit import AdminAudit
 from openrouter_image_mcp.hosted.admin.sessions import Session
+from openrouter_image_mcp.hosted.provisioning import (
+    DISABLED,
+    NOT_READY,
+    NOT_SERVED,
+    NOT_SET_UP,
+)
 from openrouter_image_mcp.hosted.slack.channel_setup import (
     ChannelRefused,
     audit_callback,
+    default_family,
     diff,
     failure_reason,
     model_ids,
+    require_default_model,
     same,
 )
 from openrouter_image_mcp.hosted.slack.registry import ChannelRegistry, new_row
@@ -56,14 +65,35 @@ def test_failure_reason_is_plain_and_never_raw():
     current = row()
     missing = copy.NO_GUARDRAIL.format(cohort="2027").rstrip(".")
     assert failure_reason(NoGuardrailError("Couldn't create the key."), current) == missing
-    assert failure_reason(AuthRequiredError("Your class workspace is not served."), current) == (
-        "Your class workspace is not served")  # not a missing guardrail
-    assert failure_reason(BadRequestError("Choose a model."), current) == "Choose a model"
+    assert failure_reason(BadRequestError("Choose a model."), current) == copy.MODEL_NOT_ACCEPTED
     down = failure_reason(ProviderError("key abc is down"), current)
     assert down == "OpenRouter didn't answer" and "abc" not in down
     assert "secret" not in failure_reason(RuntimeError("secret"), current)
     refused = ChannelRefused("Nothing changed.")
     assert str(refused) == "Nothing changed."
+
+
+@pytest.mark.parametrize(("message", "sentence"), [
+    (NOT_SERVED, copy.KEY_NOT_SERVED.format(cohort="2027")), (NOT_SET_UP, copy.KEY_NOT_SET_UP),
+    (NOT_READY, copy.KEY_NOT_READY), (KEY_REJECTED, copy.KEY_REJECTED), (DISABLED, copy.KEY_DISABLED),
+    ("secret detail nobody listed", copy.KEY_OTHER)])
+def test_key_problems_are_worded_for_admins_not_students(message, sentence):
+    reason = failure_reason(AuthRequiredError(message), row())
+    assert reason == sentence
+    assert "Your" not in reason and "instructor" not in reason and "secret" not in reason  # no student copy
+
+
+def test_default_family_follows_the_default_alias():
+    assert default_family(row()) == "google"  # the default alias gemini stands for the Gemini brand
+    assert default_family(row(default_model="gpt")) == "openai"
+    assert default_family(row(default_model="open")) == "open_weight"
+    direct = row(alias_map={"fast": "google/gemini-flash"}, default_model="fast")
+    assert default_family(direct) is None  # an exact model id needs no family model
+    with pytest.raises(ChannelRefused) as refused:
+        require_default_model(row(), {"openai": "openai/b", "google": None})
+    assert str(refused.value) == copy.CHOOSE_DEFAULT_MODEL.format(family="google")
+    require_default_model(row(), {"google": "google/a"})
+    require_default_model(direct, {})
 
 
 def test_audit_callback_writes_on_the_callers_connection(db_target):

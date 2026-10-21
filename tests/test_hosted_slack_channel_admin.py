@@ -9,6 +9,8 @@ from slack_admin_rig import (
 )
 
 from openrouter_image_mcp.errors import (
+    KEY_REJECTED,
+    AuthRequiredError,
     NoGuardrailError,
     ProviderError,
 )
@@ -145,3 +147,17 @@ async def test_is_registered(rig):
     rig.registry.add(registered_row())
     assert await rig.admin.is_registered("T1", "C1")
     assert not await rig.admin.is_registered("T2", "C1") and not await rig.admin.is_registered("T1", "C2")
+
+
+async def test_catalog_with_no_services_is_the_slack_off_refusal(rig):
+    off = ChannelAdmin(rig.registry, None, None, rig.provisioner, rig.audit)
+    with pytest.raises(ChannelRefused) as refused:
+        await off.catalog()
+    assert str(refused.value) == copy.SLACK_OFF
+
+
+async def test_a_401_from_the_model_list_never_puts_a_key_sentence_on_the_page(rig):
+    rig.client.error = AuthRequiredError(KEY_REJECTED)  # the public list needs no key, but a proxy could say 401
+    with pytest.raises(ChannelRefused) as refused:
+        await rig.admin.catalog()
+    assert str(refused.value) == copy.CATALOG_DOWN

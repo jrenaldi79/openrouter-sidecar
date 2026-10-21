@@ -14,9 +14,9 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from ...errors import OpenRouterError
+from ...errors import AuthRequiredError, OpenRouterError
 from ...logs import redact
-from ...preferences import filter_catalog
+from ...preferences import FAMILIES, filter_catalog
 from ..admin import audit as audit_log
 from ..admin import copy
 from ..admin.audit import AdminAudit
@@ -31,6 +31,7 @@ from .channel_setup import (
     audit_callback,
     failure_reason,
     model_ids,
+    require_default_model,
     same,
     team_of,
 )
@@ -108,10 +109,12 @@ class ChannelAdmin:
 
     async def catalog(self) -> list[dict]:
         """The models a team may use: the public list, filtered like the students' lists."""
+        if not self.services:  # Slack is off: there is no cohort client to ask
+            raise ChannelRefused(copy.SLACK_OFF)
         try:
-            client = next(iter((self.services or {}).values())).client
+            client = next(iter(self.services.values())).client
             return filter_catalog(await client.public_models(), self._utcnow())
-        except (StopIteration, OpenRouterError) as error:
+        except OpenRouterError as error:
             log.warning("slack admin: model list failed: %s", redact(str(error)) or type(error).__name__)
             raise ChannelRefused(copy.CATALOG_DOWN) from None
 
@@ -136,12 +139,19 @@ class ChannelAdmin:
         """The registered row and the team's saved per-family models, for the edit page; None when unregistered.
 
         The models are None when they can't be read (no services for the cohort, or the preferences failed): the
-        page then leaves the model selects off, since a form can't tell "nothing saved" from "couldn't look"."""
+        page then leaves the model selects off, since a form can't tell "nothing saved" from "couldn't look".
+        A row still in setup that has no key yet is the exception: nothing can be saved before the key exists,
+        so it reads as nothing saved and the selects stay on for Finish setup to post."""
         row = self.registry.get(team_id, channel_id)
         if row is None:
             return None
         try:
             return row, self._models.saved(row)
+        except AuthRequiredError as error:
+            if not row.active and row.inactive_reason in SETUP_REASONS:
+                return row, dict.fromkeys(FAMILIES)
+            log.warning("slack admin: reading %s's models failed (%s)", row.team_label, type(error).__name__)
+            return row, None
         except Exception as error:  # noqa: BLE001 - an unreadable model list must not hide the channel
             log.warning("slack admin: reading %s's models failed (%s)", row.team_label, type(error).__name__)
             return row, None
@@ -170,6 +180,7 @@ class ChannelAdmin:
         except ValueError as error:
             raise ChannelRefused(str(error)) from None
         wanted = {family: model for family, model in family_defaults.items() if model}
+        require_default_model(row, wanted)  # a new team has no saved models yet
         await self._check_models(model_ids(fields), wanted)
         problem = await self.check(channel_id)
         if problem:

@@ -138,3 +138,17 @@ def test_custom_window_does_not_use_the_principal_minute_budget(store):
     limits.admit(A)
     with pytest.raises(RateLimitedError, match="this minute"):
         limits.admit(A)
+
+
+def test_expired_window_keys_are_dropped_so_memory_does_not_grow(store):
+    clock = [1000.0]
+    limits = Limits(store, clock=lambda: clock[0])
+    for n in range(300):  # a sign-in key per client address, each used once
+        limits.window(f"admin-login|10.0.{n // 250}.{n % 250}", "sign-ins", limit=20, span_s=600)
+    assert len(limits._recent) == 300
+    clock[0] += 601
+    limits.window("admin-login|10.9.9.9", "sign-ins", limit=20, span_s=600)
+    assert list(limits._recent) == [("admin-login|10.9.9.9", 600)]
+    clock[0] += 1
+    limits.window("admin-login|10.9.9.9", "sign-ins", limit=20, span_s=600)  # a live key keeps counting
+    assert len(limits._recent[("admin-login|10.9.9.9", 600)]) == 2

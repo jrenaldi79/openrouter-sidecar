@@ -216,7 +216,8 @@ async def test_a_family_can_be_set_later_from_none(rig):
 
 
 async def test_register_can_leave_every_family_unset(rig):
-    data = register_form(model_google="", model_openai="")
+    data = register_form(model_google="", model_openai="", default_model="fast",  # an exact model id needs no family
+                         alias_name=["gpt", "fast"], alias_target=["ChatGPT", "google/gemini-flash"])
     assert (await rig.post(NEW, data)).status_code == 303
     assert rig.row().active and set(rig.slack_rig.prefs.saved.values()) == {None}
     assert rig.slack_rig.actions() == [audit_log.REGISTERED, audit_log.TURNED_ON]

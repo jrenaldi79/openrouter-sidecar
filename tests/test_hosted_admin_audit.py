@@ -63,3 +63,10 @@ def test_insert_creates_its_table(db_target):
     with storage.connect(db_target) as db:
         audit.insert(db, at=9.0, actor=ACTOR, action=audit.REGISTERED, row=_row("first"), changes={})
     assert [e.label for e in AdminAudit(db_target).recent()] == ["first"]
+
+
+def test_recent_clamps_the_limit(db_target):
+    log = AdminAudit(db_target, clock=Clock())
+    log.record(ACTOR, audit.REGISTERED, _row("one"), {})
+    assert log.recent(-1) == [] and log.recent(0) == []  # a negative LIMIT would mean "no limit" in SQLite
+    assert len(log.recent(1)) == 1

@@ -71,6 +71,6 @@ class AdminAudit:
     def recent(self, limit: int = 200) -> list[AuditEntry]:
         with self._db() as db:
             found = db.execute("SELECT * FROM admin_audit ORDER BY at DESC, rowid DESC LIMIT ?",
-                               (limit,)).fetchall()
+                               (max(0, limit),)).fetchall()
         return [AuditEntry(r["at"], r["actor_email"], r["action"], r["team_id"], r["channel_id"], r["label"],
                            json.loads(r["changes"])) for r in found]

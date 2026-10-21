@@ -65,7 +65,7 @@ async def test_change_model_failure_keeps_registry_change(rig):
     rig.prefs.error = BadRequestError("The team's key was rejected")
     with pytest.raises(ChannelRefused) as refused:
         await rig.admin.change("T1", "C1", {"daily_cap_usd": 2.0}, {"google": "google/gemini-flash"}, ACTOR)
-    assert str(refused.value) == copy.MODELS_NOT_SAVED.format(reason="The team's key was rejected")
+    assert str(refused.value) == copy.MODELS_NOT_SAVED.format(reason=copy.MODEL_NOT_ACCEPTED)
     assert rig.registry.get("T1", "C1").daily_cap_usd == 2.0
     assert rig.actions() == [audit_log.REGISTERED, audit_log.MODELS_CHANGED, audit_log.TURNED_ON,
                              audit_log.CHANGED]
@@ -83,7 +83,7 @@ async def test_change_nothing(rig):
 
 
 async def test_a_model_audit_failure_after_a_good_save_is_a_server_error(rig):
-    await rig.register(family_defaults={})
+    await rig.register(family_defaults={"google": "google/gemini-x"})
 
     def broken():
         raise RuntimeError("audit store down")

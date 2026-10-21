@@ -6,6 +6,7 @@ tests use `FakeSlack` (tests/slack_fakes.py), which keeps these signatures.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -13,6 +14,8 @@ import aiohttp
 import httpx
 from slack_sdk.errors import SlackApiError, SlackClientError
 from slack_sdk.web.async_client import AsyncWebClient
+
+log = logging.getLogger(__name__)
 
 DOWNLOAD_TIMEOUT_S = 30.0
 MAX_CHANNEL_PAGES = 10  # of 200 channels each
@@ -155,6 +158,8 @@ class SdkSlackApi:
             cursor = (response.get("response_metadata") or {}).get("next_cursor") or None
             if not cursor:
                 break
+        else:  # every page was full of more: the list is cut off, so the admin page may miss channels
+            log.warning("slack channel list cut off after %d pages", MAX_CHANNEL_PAGES)
         return found
 
     async def replies(self, channel, thread_ts, *, cursor=None, limit=200) -> Page:

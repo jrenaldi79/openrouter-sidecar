@@ -73,7 +73,8 @@ async def test_slack_off_lists_rows_read_only(db_target):
             assert page.status_code == 200
             assert "team-a" in page.text and escape(copy.SLACK_OFF) in page.text
             # With no team models to read, the edit page is a plain refusal, never an error page.
-            assert (await http.get("/admin/channels/T0ADMIN01/C0ADMIN01")).status_code == 422
+            edit = await http.get("/admin/channels/T0ADMIN01/C0ADMIN01")
+            assert edit.status_code == 422 and escape(copy.SLACK_OFF) in edit.text
             # Nothing can be registered without a Slack client: the form is refused, no row appears.
             form = await http.get("/admin/channels/new?channel=C0ADMIN02")
             assert form.status_code == 422 and escape(copy.SLACK_OFF) in form.text

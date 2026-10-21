@@ -69,10 +69,10 @@ async def test_setup_failure_then_finish(rig, failure):
         reason = copy.NO_GUARDRAIL.format(cohort="2027").rstrip(".")
     elif failure == "not_set_up":  # only a missing guardrail may say "no guardrail"
         rig.provisioner.error = AuthRequiredError(NOT_SET_UP)
-        reason = NOT_SET_UP.rstrip(".")
+        reason = copy.KEY_NOT_SET_UP
     else:
         rig.prefs.error = BadRequestError("Choose an available exact advisor model ID")
-        reason = "Choose an available exact advisor model ID"
+        reason = copy.MODEL_NOT_ACCEPTED
     with pytest.raises(ChannelRefused) as refused:
         await rig.register()
     assert str(refused.value) == copy.SETUP_UNFINISHED_TEXT.format(reason=reason)

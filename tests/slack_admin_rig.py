@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 from slack_fakes import FakeSlack
 
-from openrouter_image_mcp.errors import BadRequestError
+from openrouter_image_mcp.errors import AuthRequiredError, BadRequestError
 from openrouter_image_mcp.hosted.admin.audit import AdminAudit
 from openrouter_image_mcp.hosted.admin.sessions import Session
 from openrouter_image_mcp.hosted.slack.channel_admin import ChannelAdmin
@@ -37,9 +37,13 @@ class FakeClient:
 
 
 class FakePreferences:
-    """`PreferenceService.get`/`update` for one team; records who was acting."""
+    """`PreferenceService.get`/`update` for one team; records who was acting.
 
-    def __init__(self):
+    Like the real service (through `SlackCredentials.resolve`), `get` raises `AuthRequiredError` until the key
+    provisioner has made the acting team's key."""
+
+    def __init__(self, provisioner=None):
+        self.provisioner = provisioner
         self.saved = dict.fromkeys(("google", "openai", "x-ai", "open_weight"))
         self.revision = 0
         self.error: Exception | None = None
@@ -48,6 +52,9 @@ class FakePreferences:
         self.yield_in_update = False  # a real save awaits the catalog before it writes
 
     def get(self):
+        acting = _acting.get()
+        if self.provisioner is not None and (acting is None or acting.key not in self.provisioner.keys):
+            raise AuthRequiredError("Your Sidecar OpenRouter key isn't ready yet. Try again in a moment.")
         return {"settings_id": "s1", "revision": self.revision, "family_defaults": dict(self.saved)}
 
     async def update(self, settings_id, expected_revision, family_defaults=None):
@@ -110,7 +117,8 @@ class Rig:
         self.slack.bot_in = ["C1", "C2"]
         self.slack.members["C1"] = ["U1", "U2"]
         self.slack.users = {"U1": {"profile": {"display_name": "Zed"}}, "U2": {"profile": {"display_name": "Ana"}}}
-        self.client, self.prefs, self.provisioner = FakeClient(), FakePreferences(), FakeProvisioner()
+        self.client, self.provisioner = FakeClient(), FakeProvisioner()
+        self.prefs = FakePreferences(self.provisioner)
         services = {c: SimpleNamespace(preferences=self.prefs, client=self.client) for c in ("2027", "2028")}
         self.admin = ChannelAdmin(self.registry, self.slack, services, self.provisioner, self.audit,
                                   utcnow=lambda: NOW)

@@ -145,6 +145,17 @@ def test_update_does_not_undo_a_racing_guarded_write(db_target):
     assert updated == saved
 
 
+def test_update_validates_the_row_as_it_is_inside_the_transaction(db_target):
+    reg = ChannelRegistry(db_target)
+    reg.add(row())
+    stale, real_get = reg.get("T1", "C1"), reg.get
+    reg.update("T1", "C1", alias_map={"gemini": "Gemini", "gpt": "ChatGPT"})  # another admin drops the grok alias
+    reg.get = lambda team_id, channel_id: stale  # a snapshot read before that write
+    with pytest.raises(ValueError, match="not one of the channel's aliases"):
+        reg.update("T1", "C1", default_model="grok")
+    assert real_get("T1", "C1").default_model == "gemini"
+
+
 AUDIT_DDL = "CREATE TABLE IF NOT EXISTS test_audit (kind TEXT NOT NULL, before_label TEXT, after_label TEXT)"
 
 
@@ -245,8 +256,17 @@ def test_activate_audit_failure_rolls_back(db_target, audit_table):
 def test_set_inactive_reason_never_touches_an_active_row(db_target):
     reg = ChannelRegistry(db_target)
     reg.add(row())
-    assert reg.set_inactive_reason("T1", "C1", "late") is False
+    assert reg.set_inactive_reason("T1", "C1", "late", from_reasons=("guest",)) is False
     assert reg.get("T1", "C1").inactive_reason is None
     reg.deactivate("T1", "C1", "guest")
-    assert reg.set_inactive_reason("T1", "C1", "late") is True
+    assert reg.set_inactive_reason("T1", "C1", "late", from_reasons=("guest",)) is True
     assert reg.get("T1", "C1").inactive_reason == "late" and not reg.get("T1", "C1").active
+
+
+def test_set_inactive_reason_leaves_another_admins_reason_alone(db_target):
+    reg = ChannelRegistry(db_target)
+    reg.add(row())
+    reg.deactivate("T1", "C1", "class ended")  # an admin's own reason is not a setup reason
+    assert reg.set_inactive_reason("T1", "C1", "late", from_reasons=("Setting up", "Setup didn't finish")) is False
+    assert reg.set_inactive_reason("T1", "C1", "late", from_reasons=()) is False
+    assert reg.get("T1", "C1").inactive_reason == "class ended"

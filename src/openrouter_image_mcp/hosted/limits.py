@@ -27,6 +27,9 @@ def _span_phrase(span_s: float) -> str:
     return f"in the last {int(span_s // 60)} minutes" if span_s % 60 == 0 else f"in {span_s:g} seconds"
 
 
+SWEEP_EVERY_S = 60  # how often keys with nothing left in their window are dropped
+
+
 class Limits:
     """Concurrency and daily spend come from durable job rows; the minute window is in memory."""
 
@@ -34,6 +37,7 @@ class Limits:
         self.results, self.clock = AdvisorResults(store), clock
         self.max_concurrent, self.per_minute, self.daily_usd = max_concurrent, per_minute, daily_usd
         self._recent: dict[tuple[str, float], deque] = defaultdict(deque)  # (key, span) -> call times
+        self._swept_at = clock()
         self._image_calls: Counter = Counter()
         self._lock = threading.Lock()
 
@@ -41,6 +45,7 @@ class Limits:
         """Sliding window of `limit` calls per `span_s` for `key`; windows of different spans are independent."""
         now = self.clock()
         with self._lock:
+            self._sweep(now)
             recent = self._recent[(key, span_s)]
             while recent and recent[0] <= now - span_s:
                 recent.popleft()
@@ -48,6 +53,15 @@ class Limits:
                 raise RateLimitedError(f"Too many {what} {_span_phrase(span_s)}.",
                                        max(1, int(recent[0] + span_s - now)), kind, limit=limit, span_s=span_s)
             recent.append(now)
+
+    def _sweep(self, now: float) -> None:
+        """Drop keys whose calls have all expired, at most once a minute: a key seen once (a sign-in from one
+        address) would otherwise stay in memory for good. The caller holds the lock."""
+        if now - self._swept_at < SWEEP_EVERY_S:
+            return
+        self._swept_at = now
+        for key in [k for k, calls in self._recent.items() if not calls or calls[-1] <= now - k[1]]:
+            del self._recent[key]
 
     def _window(self, owner: str, what: str = "advisor requests") -> None:
         self.window(owner, what, limit=self.per_minute, span_s=60, kind="minute")

@@ -1,5 +1,8 @@
 """`team_id` and `bot_channels`: the Slack reads behind the admin page."""
 
+import asyncio
+import inspect
+
 import pytest
 from slack_fakes import FakeSlack
 from slack_sdk.errors import SlackApiError
@@ -78,6 +81,19 @@ async def test_bot_channels_stops_after_ten_pages():
     assert len(client.calls) == 10
 
 
+async def test_bot_channels_logs_one_warning_when_the_page_cap_cuts_it_short(caplog):
+    page = {"ok": True, "channels": [_chan(1)], "response_metadata": {"next_cursor": "again"}}
+    with caplog.at_level("WARNING"):
+        await SdkSlackApi(PagedClient({"0": page, "again": page})).bot_channels()
+    cut = [r for r in caplog.records if "cut off" in r.getMessage()]
+    assert len(cut) == 1 and "10" in cut[0].getMessage()
+    caplog.clear()
+    done = {"ok": True, "channels": [_chan(1)], "response_metadata": {"next_cursor": ""}}
+    with caplog.at_level("WARNING"):
+        await SdkSlackApi(PagedClient({"0": done})).bot_channels()
+    assert not [r for r in caplog.records if "cut off" in r.getMessage()]
+
+
 async def test_bot_channels_error_is_slack_call_error():
     error = SlackApiError("boom", _Response({"ok": False, "error": "ratelimited"}, {"Retry-After": "3"}))
     with pytest.raises(SlackCallError) as caught:
@@ -100,6 +116,10 @@ async def test_fake_bot_channels_and_team():
         await fake.team_id()
 
 
-def test_fake_matches_protocol():
-    for name in ("team_id", "bot_channels"):
-        assert hasattr(SlackApi, name) and hasattr(SdkSlackApi, name) and hasattr(FakeSlack(), name)
+@pytest.mark.parametrize("name", ["team_id", "bot_channels"])
+def test_fake_matches_protocol(name):
+    shapes = {kind: list(inspect.signature(getattr(owner, name)).parameters.values())
+              for kind, owner in (("protocol", SlackApi), ("sdk", SdkSlackApi), ("fake", FakeSlack))}
+    assert shapes["protocol"] == shapes["sdk"] == shapes["fake"]
+    assert asyncio.iscoroutinefunction(getattr(SdkSlackApi, name)) and asyncio.iscoroutinefunction(
+        getattr(FakeSlack, name))
