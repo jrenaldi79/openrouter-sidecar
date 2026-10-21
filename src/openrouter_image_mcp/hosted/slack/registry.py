@@ -173,8 +173,9 @@ class ChannelRegistry:
                 changes[name] = kind(changes[name])
         names = [c for c in _COLUMNS if c in changes]
         with self._db() as db:
-            # The row is read, validated with the changes and written in one transaction (locked on Postgres), so
-            # a racing admin's write can't slip between the check and the write.
+            # On Postgres (production) the row is read FOR UPDATE, validated with the changes and written in one
+            # transaction, so a racing admin's write can't slip between the check and the write. SQLite's read runs
+            # before its implicit transaction starts, so locally that window stays open.
             before = _read(db, team_id, channel_id, lock=storage.is_postgres(self.target))
             if before is None:
                 raise ValueError("That channel is not registered.")
