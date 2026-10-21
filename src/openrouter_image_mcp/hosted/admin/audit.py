@@ -42,7 +42,10 @@ class AuditEntry:
 
 
 def insert(db, *, at: float, actor: Session, action: str, row: ChannelRow, changes: dict[str, list]) -> None:
-    """Add one entry on the caller's connection; the caller commits (or rolls back)."""
+    """Add one entry on the caller's connection; the caller commits (or rolls back).
+
+    The table is created here, inside the caller's transaction, so registry writes need not know its schema."""
+    db.execute(SCHEMA)
     db.execute("INSERT INTO admin_audit (at, actor_email, actor_subject, action, team_id, channel_id, label, "
                "changes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                (at, actor.email, actor.subject, action, row.slack_team_id, row.channel_id, row.team_label,

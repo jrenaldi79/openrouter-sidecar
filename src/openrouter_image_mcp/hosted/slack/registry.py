@@ -38,11 +38,6 @@ _SCHEMA = """CREATE TABLE IF NOT EXISTS slack_channels (
     PRIMARY KEY (slack_team_id, channel_id))"""
 
 
-# DDL for the admin audit table, set by the hosted wiring (hosted/admin/audit.py). When set, it runs on the same
-# connection just before an `audit` callback, so a callback can write its row without owning the schema.
-AUDIT_SCHEMA: str | None = None
-
-
 @dataclass(frozen=True)
 class ChannelRow:
     slack_team_id: str
@@ -123,8 +118,6 @@ def _read(db, team_id: str, channel_id: str) -> ChannelRow | None:
 
 
 def _audit(db, audit: Audit, before: ChannelRow | None, after: ChannelRow | None) -> None:
-    if AUDIT_SCHEMA:
-        db.execute(AUDIT_SCHEMA)
     audit(db, before, after)
 
 

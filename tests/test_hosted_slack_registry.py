@@ -1,7 +1,6 @@
 import pytest
 
 from openrouter_image_mcp import config, storage
-from openrouter_image_mcp.hosted.slack import registry as registry_module
 from openrouter_image_mcp.hosted.slack.registry import (
     DEFAULT_ALIASES,
     ChannelRegistry,
@@ -150,9 +149,7 @@ AUDIT_DDL = "CREATE TABLE IF NOT EXISTS test_audit (kind TEXT NOT NULL, before_l
 
 
 @pytest.fixture
-def audit_table(db_target, monkeypatch):
-    """Registers the test audit DDL the way the hosted wiring registers `audit.SCHEMA`."""
-    monkeypatch.setattr(registry_module, "AUDIT_SCHEMA", AUDIT_DDL)
+def audit_table(db_target):
     with storage.connect(db_target) as db:  # created up front so the rollback tests can read it afterwards
         db.execute(AUDIT_DDL)
     yield
