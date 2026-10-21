@@ -78,7 +78,9 @@ Users: holders of the `mpd-admin` role (two people today). There is no instructo
    `https://mpd.northwestern.edu/profile` with an email (the Action sets it only for a verified email). Anyone else
    sees a standalone "This page is for Sidecar admins." page with a sign-out link. Tokens are not stored.
 4. `POST /admin/logout` (CSRF-checked) deletes the session and redirects to Auth0 `/v2/logout` with the client id
-   and the return URL.
+   and the return URL. With no session there is no token to check (and SameSite=Lax drops the cookie on a
+   cross-site POST), so the request must carry `Sec-Fetch-Site: same-origin` or an `Origin` equal to the public
+   origin; otherwise it is redirected to `/admin` and nothing is signed out.
 
 ### Sessions
 
@@ -138,8 +140,12 @@ One form; nothing is created until Save.
 - **Fields:**
   - label, and cohort (select from `COHORT_WORKSPACES`);
   - aliases: rows of alias → brand or exact model id, starting from `DEFAULT_ALIASES`;
-  - the model for each family, and the default alias (select from the aliases);
-  - Fusion panel (1 to 8 models), Fusion analyst and helper model;
+  - the model for each family, and the default alias (select from the aliases). A row turns on only when the
+    default alias resolves to a model: an alias for a brand (Gemini, ChatGPT, Grok, open weight) needs that
+    family's model, an alias for an exact model id needs none. Otherwise the page says "Choose a model for
+    <family>, the family the default alias uses." and the row stays off (Register shows the form again);
+  - Fusion panel (1 to 8 models), Fusion analyst and helper model. The analyst and helper selects start on
+    "Choose a model" and are required, so neither preselects the first model;
   - fetch allowlist, one domain per line;
   - daily cap and concurrent limit, prefilled from `SIDECAR_SLACK_DAILY_CAP_USD` and
     `SIDECAR_SLACK_MAX_CONCURRENT`;
@@ -156,9 +162,12 @@ One form; nothing is created until Save.
   A key is therefore only ever made for a saved row, and the label and cohort can't change after step 2.
 - **When it fails:**
   - A failure before step 2 re-shows the form with the entered values and one plain sentence.
-  - A failure in steps 3 to 5 leaves the row off with reason "Setup didn't finish". The edit page then says
-    "Setup didn't finish: <plain reason>." and shows a Finish setup button that retries steps 3 to 5, which are
-    safe to repeat.
+  - A failure in steps 3 to 5 leaves the row off with reason "Setup didn't finish". The page says "Setup didn't
+    finish: <plain reason>." at that moment (the reason is the admin's own wording of the failure, never the
+    student-facing text or the raw error). Later visits to the edit page show a generic notice ("Setup didn't
+    finish. The channel is saved but off. ...") with a Finish setup button that retries steps 3 to 5, which are
+    safe to repeat. Until the team has a key, nothing is saved for it, so the edit page keeps its model selects on
+    and Finish setup saves the models typed there.
 
 ### Edit (`GET`/`POST /admin/channels/<team>/<channel>`)
 
@@ -173,13 +182,16 @@ One form; nothing is created until Save.
   <plain reason>." and the change log shows only what was saved. With no change at all, the page says "Nothing
   changed."
 - Turn off (`POST .../off`, reason required) and Turn on (`POST .../on`, runs the guest check first) are buttons
-  with a confirm, each written with its audit entry in one transaction.
+  with a confirm, each written with its audit entry in one transaction. A row still in setup is sent to Finish
+  setup instead ("Finish setting up this channel first.").
+- While OpenRouter's model list is down the page still opens: it says "The model list didn't load. Try again.",
+  shows no model choices beyond the current values, and Turn off, Turn on and non-model edits keep working.
 
 ### Change log (`GET /admin/log`)
 
 The newest 200 entries. Each shows:
 - the time (America/Chicago) and the admin's email;
-- the `#channel` and label;
+- the label and the channel id (the channel name isn't stored with the entry);
 - the action: registered, changed, models changed, turned off or turned on;
 - each changed field as before → after.
 
