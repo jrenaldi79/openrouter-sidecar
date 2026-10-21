@@ -10,6 +10,7 @@ of real money; run each once. Change MODEL or PANEL below to pick other models.
 
 import json
 import os
+from dataclasses import dataclass, field
 
 import httpx
 import pytest
@@ -31,6 +32,16 @@ ECHO_TOOL = {
 }
 
 
+@dataclass(frozen=True)
+class Live:
+    # pytest prints a failing test's arguments, so the key stays out of the repr.
+    key: str = field(repr=False)
+    workspace: str
+
+    def __iter__(self):
+        return iter((self.key, self.workspace))
+
+
 @pytest.fixture
 def live():
     key = os.environ.get("OPENROUTER_LIVE_KEY")
@@ -38,12 +49,12 @@ def live():
         pytest.skip("set OPENROUTER_LIVE_KEY to a class workspace key to run live tests")
     # A workspace id of its own (e.g. a scratch workspace for spikes) wins over the cohort's.
     workspace = os.environ.get("OPENROUTER_LIVE_WORKSPACE")
-    return key, workspace or COHORT_WORKSPACES[os.environ.get("OPENROUTER_LIVE_COHORT", "2027")]
+    return Live(key, workspace or COHORT_WORKSPACES[os.environ.get("OPENROUTER_LIVE_COHORT", "2027")])
 
 
 @pytest.fixture
 async def advisor(live):
-    client = AdvisorClient(live[1], 300)
+    client = AdvisorClient(live.workspace, 300)
     yield client
     await client.aclose()
 
@@ -57,8 +68,8 @@ def _types(body: dict) -> list[str]:
     return [item.get("type", "?") for item in body.get("output", [])]
 
 
-def _show(label: str, value) -> None:
-    print(f"[spike] {label}: {json.dumps(value, default=str)[:1500]}")
+def _show(label: str, value, limit: int = 1500) -> None:
+    print(f"[spike] {label}: {json.dumps(value, default=str)[:limit]}")
 
 
 def _walk(value):
@@ -90,8 +101,18 @@ async def test_function_call_replay(live, advisor):
 
 
 def _shell_files(body: dict) -> list[dict]:
-    return [f for item in _walk(body) for f in item.get("files", []) or []
-            if isinstance(f, dict) and f.get("type") == "container_file_citation"]
+    # Anywhere in the body: a shell item's `files`, a message annotation, or a shape we haven't seen yet.
+    return [node for node in _walk(body) if node.get("type") == "container_file_citation"]
+
+
+def _where(body: dict, cite: dict) -> str:
+    """Which output item holds the citation, and under which key, so the parser can be pointed at it."""
+    for index, item in enumerate(body.get("output", [])):
+        for parent in _walk(item):
+            for key, value in parent.items():
+                if value is cite or (isinstance(value, list) and any(v is cite for v in value)):
+                    return f"output[{index}] type={item.get('type')} key={key}"
+    return "not found"
 
 
 async def _download(key: str, workspace: str, cite: dict, query: dict) -> tuple[int, int]:
@@ -108,10 +129,13 @@ async def test_shell_files_shape(live, advisor):
               "text 'hello spike' to /workspace/project/outputs/a.txt, then confirm it.")
     body = await advisor.respond(key, _payload(prompt, [SHELL_TOOL], max_tool_calls=4))
     _show("output types", _types(body))
+    for item in body.get("output", []):
+        _show(f"{item.get('type')} item", item, 6000)
     files = _shell_files(body)
     for cite in files:
         _show("file citation (filename form)", {k: cite.get(k) for k in
               ("type", "container_id", "file_id", "filename")})
+        print(f"[spike] citation found at: {_where(body, cite)}")
     assert files, "no container_file_citation found in the shell items; see output types"
     cite = files[0]
     plain = await _download(key, workspace, cite, {})
