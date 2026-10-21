@@ -180,6 +180,7 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/replies.py](../src/openrouter_image_mcp/hosted/slack/replies.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/settings.py](../src/openrouter_image_mcp/hosted/slack/settings.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/threads.py](../src/openrouter_image_mcp/hosted/slack/threads.py)
+- [src/openrouter&#95;image&#95;mcp/hosted/slack/welcome.py](../src/openrouter_image_mcp/hosted/slack/welcome.py)
 
 ### [src/openrouter&#95;image&#95;mcp/ui](../src/openrouter_image_mcp/ui/CLAUDE.md): Generated MCP App bundles: one self-contained HTML file per app, built from ui/src by ui/build.mjs, (preview, advisor, settings, uploader), plus the Northwestern logo. Never edit by hand.
 
