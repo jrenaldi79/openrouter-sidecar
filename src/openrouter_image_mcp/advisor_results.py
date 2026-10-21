@@ -35,6 +35,11 @@ class AdvisorResults:
             # Shared with Claude from the viewer (advisor_shares.py).
             for column in ("shared_kind", "shared_summary_id", "shared_at", "share_read_at"):
                 db.ensure_column("advisor_jobs", column, "TEXT")
+            # Slack runs (hosted/slack): who asked, where, the "working" message, and when the
+            # result was posted (restart recovery re-posts completed jobs where this is NULL).
+            for column in ("slack_user_id", "slack_channel_id", "slack_working_ts"):
+                db.ensure_column("advisor_jobs", column, "TEXT")
+            db.ensure_column("advisor_jobs", "slack_posted_at", "REAL")
             db.execute("CREATE UNIQUE INDEX IF NOT EXISTS advisor_active_job ON "
                        "advisor_jobs(chat_id) WHERE status IN ('queued','running')")
             db.commit()
@@ -109,7 +114,8 @@ class AdvisorResults:
                              (scope.owner, scope.workspace, chat_id)).fetchone()
             return row["id"] if row else None
 
-    def create(self, scope, chat, prompt, process_id, *, kind="message", source_job_id=None, model=None):
+    def create(self, scope, chat, prompt, process_id, *, kind="message", source_job_id=None, model=None,
+               slack_user_id=None, slack_channel_id=None):
         job_id, token = "job_" + secrets.token_hex(16), secrets.token_hex(16)
         with self.connection() as db:
             db.execute("BEGIN IMMEDIATE")
@@ -122,11 +128,12 @@ class AdvisorResults:
             db.execute("UPDATE advisor_chats SET lease_token=?,lease_until=? WHERE id=?",
                        (token, time.time() + OPERATION_LEASE_S, chat.id))
             db.execute("INSERT INTO advisor_jobs (id,owner,workspace,chat_id,model,title,status,"
-                       "prompt,kind,source_job_id,created_at,process_id,lease_token,heartbeat_until) "
-                       "VALUES (?,?,?,?,?,?,'queued',?,?,?,?,?,?,?)",
+                       "prompt,kind,source_job_id,created_at,process_id,lease_token,heartbeat_until,"
+                       "slack_user_id,slack_channel_id) "
+                       "VALUES (?,?,?,?,?,?,'queued',?,?,?,?,?,?,?,?,?)",
                        (job_id, scope.owner, scope.workspace, chat.id, model or chat.model, chat.title,
                         prompt, kind, source_job_id, datetime.now(UTC).isoformat(),
-                        process_id, token, time.time() + HEARTBEAT_S))
+                        process_id, token, time.time() + HEARTBEAT_S, slack_user_id, slack_channel_id))
             return dict(self._row(db, scope, job_id))
 
     def guard(self, scope, job_id, process_id):
@@ -138,7 +145,8 @@ class AdvisorResults:
             self.store._leased(self.store._row(db, scope, row["chat_id"]), row["lease_token"])
 
     def update(self, scope, job_id, process_id, **fields):
-        allowed = {"status", "answer", "cost_usd", "cleanup_pending", "error", "heartbeat_until"}
+        allowed = {"status", "answer", "cost_usd", "cleanup_pending", "error", "heartbeat_until",
+                   "slack_working_ts", "slack_posted_at"}
         if not fields or not set(fields) <= allowed:
             raise ValueError("Invalid internal job update")
         with self.connection() as db:

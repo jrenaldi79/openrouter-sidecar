@@ -69,3 +69,20 @@ def test_polls_of_settled_jobs_take_no_write_lock(rig):
     assert results.for_chat(SCOPE, chat_id, 5)[0]["status"] == "completed"
     assert results.active_for_chat(SCOPE, chat_id) is None
     assert locks == []
+
+
+def test_slack_columns_roundtrip(rig):
+    results, _, _, _ = rig
+    chat = results.store.create(SCOPE, "openai/test-advisor", "Slack")
+    job = results.create(SCOPE, chat, "Prompt", PROCESS, slack_user_id="U1", slack_channel_id="C1")
+    assert job["slack_posted_at"] is None
+    results.update(SCOPE, job["id"], PROCESS, slack_working_ts="1.2", slack_posted_at=5.5)
+    row = results.get(SCOPE, job["id"])
+    assert (row["slack_user_id"], row["slack_channel_id"], row["slack_working_ts"]) == ("U1", "C1", "1.2")
+    assert row["slack_posted_at"] == 5.5
+
+
+def test_jobs_without_slack_fields_keep_them_null(rig):
+    results, _, job_id, _ = rig
+    row = results.get(SCOPE, job_id)
+    assert row["slack_user_id"] is None and row["slack_channel_id"] is None
