@@ -95,13 +95,20 @@ class SlackApp:
         bot = await self._bot_user_id()
         if bot is None or self._closed:
             return
-        self.gateway.bot_user_id = self.dispatcher.bot_user_id = bot
-        if self.recovery_task is None or self.recovery_task.done():
-            self.recovery_task = asyncio.create_task(self._recover())
-        await self.gateway.start()
+        try:
+            self.gateway.bot_user_id = self.dispatcher.bot_user_id = bot
+            if self.recovery_task is None or self.recovery_task.done():
+                self.recovery_task = asyncio.create_task(self._recover())
+            await self.gateway.start()
+        except Exception as error:  # noqa: BLE001 - nobody awaits this task: log the type, never the message
+            log.error("Slack start failed (%s); it is retried on the next lock gain", type(error).__name__)
 
     async def _recover(self) -> dict:
-        counts = await self.recover_once()
+        try:
+            counts = await self.recover_once()
+        except Exception as error:  # noqa: BLE001 - nobody awaits this task: log the type, never the message
+            log.error("Slack restart recovery failed (%s)", type(error).__name__)
+            return {}
         log.info("Slack restart recovery: %s", counts)
         return counts
 

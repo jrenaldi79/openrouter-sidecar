@@ -211,16 +211,38 @@ async def test_a_gain_after_close_starts_nothing(world):
 
 
 async def test_close_during_auth_test_starts_nothing_after_it(world):
-    calls = []
+    calls, in_flight, release = [], asyncio.Event(), asyncio.Event()
     world.app.recover_once = recorder(calls)
 
-    async def closes_meanwhile():
-        world.app._closed = True  # close() began while auth.test was in flight
+    async def held_auth_test():
+        in_flight.set()
+        await release.wait()
         return "UBOT"
 
-    world.slack.bot_user_id = closes_meanwhile
-    await gain(world.app)
+    world.slack.bot_user_id = held_auth_test
+    await world.app.on_gain()
+    start = world.app.start_task
+    await in_flight.wait()
+    closing = asyncio.create_task(world.app.close())
+    await asyncio.sleep(0)
+    release.set()
+    await closing
+    assert start.done() and world.app.start_task is None
     assert world.clients == [] and calls == [] and world.app.recovery_task is None
+
+
+async def test_a_failing_start_is_logged_by_type_only(world, caplog):
+    def broken_factory(app_token, web_client):
+        raise ValueError("detail that must stay out of the log")
+
+    world.app.gateway._factory = broken_factory
+    with caplog.at_level(logging.ERROR):
+        await gain(world.app)
+    start = world.app.start_task
+    assert start.done() and not start.cancelled() and start.exception() is None  # nothing left unretrieved
+    [record] = [r for r in caplog.records if "Slack start failed" in r.getMessage()]
+    assert "ValueError" in record.getMessage() and record.exc_info is None
+    assert "detail that must stay out" not in caplog.text
 
 
 async def test_close_drains_jobs_then_cancels_the_rest(world):
