@@ -102,6 +102,7 @@ def load_hosted_settings(env: Mapping[str, str]) -> HostedSettings:
     if len(env["LINK_SIGNING_KEY"]) < 32:
         raise ValueError("LINK_SIGNING_KEY must be at least 32 characters.")
     public_origin = _origin(resource)
+    profile_claim = env.get("PROFILE_CLAIM", "https://mpd.northwestern.edu/profile")
     return HostedSettings(
         issuer=issuer,
         jwks_uri=env.get("AUTH0_JWKS_URI") or issuer + ".well-known/jwks.json",
@@ -111,7 +112,7 @@ def load_hosted_settings(env: Mapping[str, str]) -> HostedSettings:
         vault_keys=env["VAULT_KEYS"],
         link_signing_key=env["LINK_SIGNING_KEY"],
         permission=env.get("MCP_PERMISSION", "sidecar:use"),
-        profile_claim=env.get("PROFILE_CLAIM", "https://mpd.northwestern.edu/profile"),
+        profile_claim=profile_claim,
         sandbox_enabled=env.get("SIDECAR_SANDBOX_ENABLED", "").lower() in _TRUE,
         summary_model=env.get("SIDECAR_SUMMARY_MODEL", "").strip() or DEFAULT_SUMMARY_MODEL,
         maintenance=env.get("SIDECAR_MAINTENANCE", "").lower() in _TRUE,
@@ -119,5 +120,6 @@ def load_hosted_settings(env: Mapping[str, str]) -> HostedSettings:
         asset_dir=_asset_dir(env),
         management_key=env.get("OPENROUTER_MANAGEMENT_KEY") or None,
         slack=load_slack_settings(env),
-        admin=load_admin_settings(env, issuer=issuer, resource=resource, public_origin=public_origin),
+        admin=load_admin_settings(env, issuer=issuer, resource=resource, public_origin=public_origin,
+                                  profile_claim=profile_claim),
     )

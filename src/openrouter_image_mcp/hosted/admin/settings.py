@@ -21,6 +21,8 @@ class AdminSettings:
     issuer: str
     resource: str
     public_origin: str
+    # The access token claim holding the admin's email; the same one the MCP endpoint reads.
+    profile_claim: str
 
     @property
     def callback_url(self) -> str:
@@ -49,7 +51,7 @@ class AdminSettings:
 
 
 def load_admin_settings(env: Mapping[str, str], *, issuer: str, resource: str,
-                        public_origin: str) -> AdminSettings:
+                        public_origin: str, profile_claim: str) -> AdminSettings:
     secret = env.get(CLIENT_SECRET_VAR, "").strip() or None
     # A missing secret only turns sign-in off; a wrong one is a typo worth stopping startup for.
     if secret is not None and len(secret) < MIN_SECRET_CHARS:
@@ -61,4 +63,5 @@ def load_admin_settings(env: Mapping[str, str], *, issuer: str, resource: str,
         issuer=issuer,
         resource=resource,
         public_origin=public_origin,
+        profile_claim=profile_claim,
     )

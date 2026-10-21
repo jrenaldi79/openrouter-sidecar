@@ -1,6 +1,8 @@
 import base64
 import hashlib
 import logging
+import time
+from dataclasses import replace
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
@@ -21,7 +23,7 @@ SECRET = "s" * 40
 CODE = "code-" + "c" * 20
 TOKEN_URL = jh.ISSUER + "oauth/token"
 SETTINGS = AdminSettings(enabled=True, client_id=CLIENT_ID, client_secret=SECRET, issuer=jh.ISSUER,
-                         resource=jh.RESOURCE, public_origin="https://sidecar.example")
+                         resource=jh.RESOURCE, public_origin="https://sidecar.example", profile_claim=jh.PROFILE)
 
 
 @pytest.fixture
@@ -37,11 +39,15 @@ def _access(permissions=("sidecar:use", "sidecar:admin"), **overrides):
     return jh.token(permissions=list(permissions), **overrides)
 
 
-def _start(login, mock, *, access=None, id_token=None, status=200):
-    """Begin a login and stub the token endpoint with an ID token carrying the login's nonce."""
+def _start(login, mock, *, access=None, id_token=None, status=200, **id_overrides):
+    """Begin a login and stub the token endpoint with an ID token carrying the login's real nonce.
+
+    `id_overrides` change the ID token (key, alg, aud, exp...) so one defect is tested at a time.
+    """
     url, state = login.start()
     body = {"access_token": access or _access(),
-            "id_token": id_token or jh.id_token(CLIENT_ID, _query(url)["nonce"]), "token_type": "Bearer"}
+            "id_token": id_token or jh.id_token(CLIENT_ID, _query(url)["nonce"], **id_overrides),
+            "token_type": "Bearer"}
     mock.post(TOKEN_URL).mock(return_value=httpx.Response(status, json=body))
     return state
 
@@ -129,9 +135,9 @@ async def test_wrong_nonce(login):
 
 
 async def test_hs256_id_token_refused(login):
-    forged = jh.id_token(CLIENT_ID, "n", key="k" * 32, alg="HS256")
+    # Real nonce, valid audience and issuer: the algorithm is the only defect.
     with respx.mock() as mock:
-        assert await _refused(login, mock, id_token=forged) == "id_token"
+        assert await _refused(login, mock, key="k" * 32, alg="HS256") == "id_token"
 
 
 async def test_exchange_failure_logs_status_only(login, caplog):
@@ -153,6 +159,83 @@ async def test_exchange_with_bad_json_is_refused(login):
         with pytest.raises(LoginRefused) as refused:
             await login.finish(CODE, state, state)
     assert refused.value.reason == "exchange"
+
+
+async def test_id_token_from_another_key_is_refused(login):
+    with respx.mock() as mock:
+        assert await _refused(login, mock, key=jh.OTHER_KEY) == "id_token"
+
+
+async def test_id_token_wrong_audience(login):
+    with respx.mock() as mock:
+        assert await _refused(login, mock, aud="another-client") == "id_token"
+
+
+async def test_expired_id_token(login):
+    now = int(time.time())
+    with respx.mock() as mock:
+        assert await _refused(login, mock, iat=now - 7200, exp=now - 3600) == "id_token"
+
+
+async def test_multi_audience_id_token_needs_azp(login):
+    audience = [CLIENT_ID, "another-client"]
+    with respx.mock() as mock:
+        assert await _refused(login, mock, aud=audience) == "id_token"
+    with respx.mock() as mock:
+        assert await _refused(login, mock, aud=audience, azp="another-client") == "id_token"
+    with respx.mock() as mock:
+        state = _start(login, mock, aud=audience, azp=CLIENT_ID)
+        assert (await login.finish(CODE, state, state)).subject == "email|alice"
+
+
+async def test_single_audience_id_token_needs_no_azp(login):
+    with respx.mock() as mock:
+        state = _start(login, mock, aud=[CLIENT_ID])
+        assert (await login.finish(CODE, state, state)).email == "alice@u.northwestern.edu"
+
+
+@pytest.mark.parametrize("overrides", [{"key": jh.OTHER_KEY}, {"aud": ["https://other.example/mcp"]}])
+async def test_access_token_the_verifier_rejects(login, overrides):
+    with respx.mock() as mock:
+        assert await _refused(login, mock, access=_access(**overrides)) == "exchange"
+
+
+async def test_subject_mismatch_between_tokens(login, caplog):
+    caplog.set_level(logging.INFO)
+    with respx.mock() as mock:
+        assert await _refused(login, mock, access=_access(sub="email|bob")) == "id_token"
+    assert "subjects differ" in caplog.text
+    assert "bob" not in caplog.text and "alice" not in caplog.text
+
+
+async def test_transport_error_on_exchange(login):
+    with respx.mock() as mock:
+        _, state = login.start()
+        mock.post(TOKEN_URL).mock(side_effect=httpx.ConnectError("unreachable"))
+        with pytest.raises(LoginRefused) as refused:
+            await login.finish(CODE, state, state)
+    assert refused.value.reason == "exchange"
+
+
+async def test_not_admin_is_logged_without_identity(login, caplog):
+    caplog.set_level(logging.INFO)
+    with respx.mock() as mock:
+        assert await _refused(login, mock, access=_access(["sidecar:use"])) == "not_admin"
+    assert "not_admin" in caplog.text
+    assert "alice" not in caplog.text and "northwestern" not in caplog.text
+
+
+async def test_profile_claim_comes_from_settings(db_target):
+    settings = replace(SETTINGS, profile_claim="https://other.example/profile")
+    custom = Auth0Login(settings, PendingLogins(db_target), key_resolver=jh.resolver)
+    profile = {"email": "root@u.northwestern.edu"}
+    with respx.mock() as mock:
+        # The default claim name now carries no email, the configured one does.
+        refused = await _refused(custom, mock, access=_access(**{jh.PROFILE: profile}))
+        assert refused == "not_admin"
+    with respx.mock() as mock:
+        state = _start(custom, mock, access=_access(**{"https://other.example/profile": profile}))
+        assert (await custom.finish(CODE, state, state)).email == "root@u.northwestern.edu"
 
 
 def test_logout_url(login):

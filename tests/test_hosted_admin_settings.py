@@ -9,6 +9,7 @@ from openrouter_image_mcp.hosted.settings import load_hosted_settings
 ISSUER = "https://tenant.us.auth0.com/"
 RESOURCE = "https://sidecar.example/mcp"
 ORIGIN = "https://sidecar.example"
+PROFILE = "https://mpd.northwestern.edu/profile"
 BASE = {
     "AUTH0_ISSUER": ISSUER,
     "MCP_RESOURCE_URI": RESOURCE,
@@ -19,7 +20,8 @@ BASE = {
 
 
 def load(env=None, origin=ORIGIN) -> AdminSettings:
-    return load_admin_settings(env or {}, issuer=ISSUER, resource=RESOURCE, public_origin=origin)
+    return load_admin_settings(env or {}, issuer=ISSUER, resource=RESOURCE, public_origin=origin,
+                               profile_claim=PROFILE)
 
 
 def test_on_by_default_and_not_configured():
@@ -87,6 +89,12 @@ def test_hosted_settings_carry_admin():
     assert s.admin.enabled and s.admin.configured
     assert s.admin.callback_url == "https://sidecar.example/admin/callback"
     assert (s.admin.issuer, s.admin.resource) == (s.issuer, s.resource)
+
+
+def test_admin_profile_claim_follows_hosted_setting():
+    assert load_hosted_settings(BASE).admin.profile_claim == PROFILE
+    custom = load_hosted_settings(BASE | {"PROFILE_CLAIM": "https://other.example/profile"})
+    assert custom.admin.profile_claim == custom.profile_claim == "https://other.example/profile"
 
 
 def test_hosted_settings_reject_short_admin_secret():

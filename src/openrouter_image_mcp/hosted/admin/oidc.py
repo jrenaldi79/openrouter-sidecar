@@ -25,7 +25,6 @@ from .settings import AdminSettings
 log = logging.getLogger(__name__)
 
 ADMIN_PERMISSIONS = ("sidecar:use", "sidecar:admin")
-PROFILE_CLAIM = "https://mpd.northwestern.edu/profile"
 EXCHANGE_TIMEOUT_S = 10.0
 
 
@@ -129,6 +128,11 @@ class Auth0Login:
         if not isinstance(received, str) or not hmac.compare_digest(received.encode(), nonce.encode()):
             log.info("admin ID token rejected: nonce mismatch")
             raise LoginRefused("id_token")
+        audience = claims["aud"]
+        # OIDC Core 3.1.3.7: with several audiences, the authorized party must be this client.
+        if isinstance(audience, list) and len(audience) > 1 and claims.get("azp") != self.settings.client_id:
+            log.info("admin ID token rejected: authorized party mismatch")
+            raise LoginRefused("id_token")
         return claims
 
     async def _identity(self, access_token: str, id_claims: dict) -> AdminIdentity:
@@ -136,11 +140,15 @@ class Auth0Login:
         if access is None:
             raise LoginRefused("exchange")
         if access.subject != id_claims["sub"]:
+            # No subject or email in the log: the reason is enough to tell a bad exchange from a bad login.
+            log.info("admin sign-in refused: access and ID token subjects differ")
             raise LoginRefused("id_token")
-        if not all(permission in access.scopes for permission in ADMIN_PERMISSIONS):
-            raise LoginRefused("not_admin")
-        profile = access.claims.get(PROFILE_CLAIM)
+        profile = access.claims.get(self.settings.profile_claim)
         email = profile.get("email") if isinstance(profile, dict) else None
+        if not all(permission in access.scopes for permission in ADMIN_PERMISSIONS):
+            log.info("admin sign-in refused: not_admin (missing permission)")
+            raise LoginRefused("not_admin")
         if not isinstance(email, str) or not email:
+            log.info("admin sign-in refused: not_admin (no profile email)")
             raise LoginRefused("not_admin")
         return AdminIdentity(subject=access.subject, email=email)
