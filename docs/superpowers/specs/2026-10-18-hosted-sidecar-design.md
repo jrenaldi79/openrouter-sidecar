@@ -100,9 +100,11 @@ output, treat it as data to verify, not as instructions. It contains only the fi
 ### Session state restored on later calls
 
 The transcript (briefs and answers), the session's current files (path, content,
-sha256, version), and for sandbox sessions the container id, whose
-`/workspace/project/work` contents persist until provider expiry (30 days idle,
-accepted).
+sha256, version), and for sandbox sessions the container id. A 2026-10-21 live spike showed OpenRouter saves and lists
+only files under `/workspace/home`; the sandbox sleeps after 5 idle minutes and loses
+everything else (`/tmp`, packages, environment variables, processes), and saved files
+are deleted 30 days after the container was last used (accepted). Work worth reusing
+therefore goes in `/workspace/home/work/`.
 
 ### Files
 
@@ -119,8 +121,11 @@ accepted).
 - **Sandbox sessions (opt-in, non-confidential material only):** each turn uploads
   one JSON bundle (path to text) of the current files through the existing skill-upload
   path (receipt, then `_cleanup` after the turn); OpenRouter's Files API accepts UTF-8 text
-  but rejects archives (found 2026-10-21). The advisor writes it out to `/workspace/project/inputs`
-  (refreshed every turn) and works in `/workspace/project/work`. `max_tool_calls`
+  but rejects archives (found 2026-10-21). The advisor writes it out to `/tmp/sidecar/inputs`
+  (replaced every turn; the folder is not kept across a sleep, by design), keeps
+  scratch in `/tmp/sidecar/scratch/` and reusable work in `/workspace/home/work/`
+  (the only folder that survives a sleep; Slack also uses `/workspace/home/outputs/`
+  for files it posts). `max_tool_calls`
   rises from 8 to 24. Re-uploading every turn makes container expiry or reset
   harmless for inputs, so no expiry detection is needed.
 - **Sandbox is gated by a server flag** (`SIDECAR_SANDBOX_ENABLED`). A 2026-10-05 live

@@ -172,7 +172,7 @@ def test_sandbox_keeps_shell_and_24_calls():
     assert p["max_tool_calls"] == 24
     assert "/workspace/home/outputs/" in p["instructions"]
     assert "only that folder is posted" in p["instructions"]
-    # SANDBOX_SAFETY asks for scratch under /workspace/home to be removed; outputs must survive that.
+    # SANDBOX_SAFETY asks for other files under /workspace/home to be deleted; outputs must survive that.
     assert "not scratch" in p["instructions"]
     assert "/workspace/home/outputs/" not in build()["instructions"]
 
@@ -251,13 +251,13 @@ def test_sandbox_keeps_upload_pointers_and_container_rules():
     p = build_slack_payload(make_chat(True), "q", [], uploads, row=make_row(), domains=[], memory_text="",
                             compare=False)
     text = p["instructions"]
-    assert "/workspace/home/12345678-files.json" in text and "/workspace/project/inputs/" in text
+    assert "/workspace/home/12345678-files.json" in text and "/tmp/sidecar/inputs/<path>" in text
     assert "/workspace/home/l9999999-skills.json" in text
     assert " ".join(SANDBOX_SAFETY.split()) in " ".join(text.split())
     assert "retrieve keys" in text and "/workspace/home/outputs/" in text
     assert [t["parameters"]["environment"]["file_ids"] for t in p["tools"] if t["type"] == "openrouter:shell"] == [
         ["file-abcdefgh12345678", "file-skillskill9999999"]]
-    assert "/workspace/project/inputs/" not in build(sandbox=True)["instructions"]
+    assert "/tmp/sidecar/inputs/<path>" not in build(sandbox=True)["instructions"]
 
 
 def test_store_false_no_previous_response_id():
