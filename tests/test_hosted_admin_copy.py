@@ -9,6 +9,9 @@ def test_templated_sentences_format():
         "Sidecar can't be used in #abbott: it has a guest member.")
     assert copy.SETUP_UNFINISHED_TEXT.format(reason="x") == "Setup didn't finish: x."
     assert copy.MODELS_NOT_SAVED.format(reason="x").endswith("weren't changed: x.")
+    assert copy.MODELS_ONLY_FAILED.format(reason="x") == "The team's models weren't changed: x."
+    assert copy.MODEL_NOT_LISTED.format(model="a/b") == "a/b isn't in the model list."
+    assert copy.MODEL_WRONG_FAMILY.format(model="a/b", family="google") == "a/b isn't a google model."
 
 
 def test_sentences_are_plain_text():

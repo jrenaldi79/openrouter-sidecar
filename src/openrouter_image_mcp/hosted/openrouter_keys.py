@@ -31,6 +31,10 @@ class KeyManagementError(ProviderError):
         super().__init__(message)
 
 
+class GuardrailMissingError(KeyManagementError):
+    """The workspace has no guardrail of the wanted name, so no budgeted key can be made."""
+
+
 @dataclass(frozen=True)
 class CreatedKey:
     key: str    # plaintext, returned only once by OpenRouter
@@ -103,8 +107,8 @@ class KeyManager:
             found = next((g.get("id") for g in await self.guardrails(workspace_id)
                           if g.get("name") == name and g.get("id")), None)
             if found is None:
-                raise KeyManagementError(f"No '{name}' guardrail in workspace {workspace_id}; "
-                                         "refusing to create an unbudgeted key.")
+                raise GuardrailMissingError(f"No '{name}' guardrail in workspace {workspace_id}; "
+                                            "refusing to create an unbudgeted key.")
             self._guardrails[(workspace_id, name)] = found
         return self._guardrails[(workspace_id, name)]
 

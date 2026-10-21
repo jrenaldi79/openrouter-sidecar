@@ -21,10 +21,11 @@ from ..errors import (
     KEY_REJECTED,
     AuthRequiredError,
     BadRequestError,
+    NoGuardrailError,
     OpenRouterError,
     ProviderError,
 )
-from .openrouter_keys import TEAM_GUARDRAIL
+from .openrouter_keys import TEAM_GUARDRAIL, GuardrailMissingError
 from .principal import SLACK_ISSUER, Principal, current_principal
 from .student_keys import StudentKey, StudentKeyStore
 
@@ -106,6 +107,8 @@ class KeyProvisioner:
             created = await self.manager.create(name, principal.workspace_id, **extra)
         except ProviderError as exc:
             log.warning("student key creation failed: %s", exc.message)
+            if isinstance(exc, GuardrailMissingError):
+                raise NoGuardrailError(UNAVAILABLE) from None
             raise ProviderError(UNAVAILABLE) from None
         try:
             stored = await asyncio.to_thread(self.store.insert, principal, created.key, created.hash, name)

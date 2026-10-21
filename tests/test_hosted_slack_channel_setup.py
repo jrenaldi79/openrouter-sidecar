@@ -5,6 +5,7 @@ import pytest
 from openrouter_image_mcp.errors import (
     AuthRequiredError,
     BadRequestError,
+    NoGuardrailError,
     ProviderError,
 )
 from openrouter_image_mcp.hosted.admin import audit as audit_log
@@ -53,7 +54,10 @@ def test_model_ids_skips_brands():
 
 def test_failure_reason_is_plain_and_never_raw():
     current = row()
-    assert failure_reason(AuthRequiredError("whatever"), current) == copy.NO_GUARDRAIL.format(cohort="2027").rstrip(".")
+    missing = copy.NO_GUARDRAIL.format(cohort="2027").rstrip(".")
+    assert failure_reason(NoGuardrailError("Couldn't create the key."), current) == missing
+    assert failure_reason(AuthRequiredError("Your class workspace is not served."), current) == (
+        "Your class workspace is not served")  # not a missing guardrail
     assert failure_reason(BadRequestError("Choose a model."), current) == "Choose a model"
     down = failure_reason(ProviderError("key abc is down"), current)
     assert down == "OpenRouter didn't answer" and "abc" not in down

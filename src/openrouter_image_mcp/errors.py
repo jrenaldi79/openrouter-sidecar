@@ -62,6 +62,13 @@ class ProviderError(OpenRouterError):
     """HTTP 5xx after retry, timeouts and transport failures."""
 
 
+class NoGuardrailError(ProviderError):
+    """A key couldn't be made because the workspace has no budget guardrail to put it under.
+
+    Carries the same retry message as any other creation failure, so what students see doesn't change; the
+    admin page tells the two apart by type."""
+
+
 class ContainerFileTooLargeError(ProviderError):
     """A sandbox output file is over the byte cap the caller allowed."""
 

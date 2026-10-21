@@ -212,6 +212,23 @@ class ChannelRegistry:
             _audit(db, audit, before, _read(db, team_id, channel_id))
             return True
 
+    def activate(self, team_id: str, channel_id: str, *, audit: Audit | None = None) -> bool:
+        """Turn an off row on; True only for the caller that did, so a double submit writes one audit entry."""
+        if audit is None:
+            return self._claim("active=1, inactive_reason=NULL", "active=0", (team_id, channel_id))
+        with self._db() as db:
+            before = _read(db, team_id, channel_id)
+            cursor = db.execute("UPDATE slack_channels SET active=1, inactive_reason=NULL WHERE "
+                                "slack_team_id=? AND channel_id=? AND active=0", (team_id, channel_id))
+            if cursor.rowcount != 1:
+                return False
+            _audit(db, audit, before, _read(db, team_id, channel_id))
+            return True
+
+    def set_inactive_reason(self, team_id: str, channel_id: str, reason: str) -> bool:
+        """Change why an off row is off; never touches a row that is on."""
+        return self._claim("inactive_reason=?", "active=0", (reason, team_id, channel_id))
+
     def mark_welcomed(self, team_id: str, channel_id: str) -> bool:
         return self._claim("welcomed_at=?", "welcomed_at IS NULL", (self.clock(), team_id, channel_id))
 

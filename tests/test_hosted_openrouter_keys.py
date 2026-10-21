@@ -10,6 +10,7 @@ from openrouter_image_mcp.errors import AuthRequiredError
 from openrouter_image_mcp.hosted.openrouter_keys import (
     BUDGET_GUARDRAIL,
     TEAM_GUARDRAIL,
+    GuardrailMissingError,
     KeyManagementError,
     KeyManager,
     current_key,
@@ -198,6 +199,7 @@ async def test_create_with_the_team_guardrail_assigns_it_and_caches_per_name(man
 async def test_missing_team_guardrail_names_it_and_creates_no_key(manager):
     _budget_routes()  # only the student guardrail exists
     create = respx.post(f"{API}/keys")
-    with pytest.raises(KeyManagementError, match=TEAM_GUARDRAIL):
+    with pytest.raises(GuardrailMissingError, match=TEAM_GUARDRAIL) as missing:
         await manager.create("n", WS, guardrail=TEAM_GUARDRAIL)
+    assert isinstance(missing.value, KeyManagementError)
     assert not create.called

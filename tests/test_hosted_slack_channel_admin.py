@@ -7,14 +7,14 @@ from slack_admin_rig import (
     Rig,
     registered_row,
 )
-from slack_fakes import FakeSlack
 
 from openrouter_image_mcp.errors import (
-    AuthRequiredError,
+    NoGuardrailError,
     ProviderError,
 )
 from openrouter_image_mcp.hosted.admin import audit as audit_log
 from openrouter_image_mcp.hosted.admin import copy
+from openrouter_image_mcp.hosted.provisioning import UNAVAILABLE
 from openrouter_image_mcp.hosted.slack.channel_admin import ChannelAdmin, ChannelRefused
 from openrouter_image_mcp.hosted.slack.context import NameCache
 
@@ -89,7 +89,7 @@ async def test_turn_on_reruns_guest_check(rig):
 
 
 async def test_turn_on_leaves_unfinished_setup_to_finish_setup(rig):
-    rig.provisioner.error = AuthRequiredError("No guardrail.")
+    rig.provisioner.error = NoGuardrailError(UNAVAILABLE)
     with pytest.raises(ChannelRefused):
         await rig.register()
     with pytest.raises(ChannelRefused):
@@ -97,28 +97,24 @@ async def test_turn_on_leaves_unfinished_setup_to_finish_setup(rig):
     assert not rig.registry.get("T1", "C1").active
 
 
-class SlowSlack(FakeSlack):
-    def __init__(self):
-        super().__init__()
-        self.running = self.peak = 0
-
-    async def user(self, user_id):
-        self.running += 1
-        self.peak = max(self.peak, self.running)
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
-        self.running -= 1
-        return await super().user(user_id)
+async def test_two_turn_ons_at_once_make_one_entry(rig):
+    await rig.register()
+    await rig.admin.turn_off("T1", "C1", "class ended", ACTOR)
+    results = await asyncio.gather(*(rig.admin.turn_on("T1", "C1", ACTOR) for _ in range(2)), return_exceptions=True)
+    refused = [r for r in results if isinstance(r, ChannelRefused)]
+    assert len(refused) == 1 and str(refused[0]) == copy.NOTHING_CHANGED
+    assert rig.registry.get("T1", "C1").active
+    assert rig.actions().count(audit_log.TURNED_ON) == 2  # setup's, and this one
 
 
 async def test_members_cap_50_and_concurrency(rig):
-    slack = SlowSlack()
+    slack = rig.slack
     slack.members["C1"] = [f"U{i}" for i in range(12)]
     slack.users = {f"U{i}": {"profile": {"display_name": f"{'ba'[i % 2]}-{i:02d}"}} for i in range(12)}
-    rig.admin.api, rig.admin.names = slack, NameCache(slack)
+    rig.admin.names = NameCache(slack)
     found = await rig.admin.members("C1")
     assert [name for _, name in found] == sorted(name for _, name in found) and len(found) == 12
-    assert found[0] == ("U1", "a-01") and 1 < slack.peak <= 5
+    assert found[0] == ("U1", "a-01") and slack.peak == 5
     slack.members["C1"] = [f"U{i}" for i in range(50)]
     assert len(await rig.admin.members("C1")) == 50  # names missing from `users` fall back to the id
     slack.members["C1"] = [f"U{i}" for i in range(51)]

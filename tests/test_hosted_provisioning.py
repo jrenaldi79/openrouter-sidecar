@@ -12,6 +12,7 @@ import pytest
 from openrouter_image_mcp.errors import (
     AuthRequiredError,
     BadRequestError,
+    NoGuardrailError,
     OpenRouterError,
 )
 from openrouter_image_mcp.hosted.openrouter_keys import (
@@ -25,6 +26,7 @@ from openrouter_image_mcp.hosted.provisioning import (
     NOT_SERVED,
     NOT_SET_UP,
     TEAM_GUARDRAIL,
+    UNAVAILABLE,
     KeyProvisioner,
     TeamKey,
     key_name,
@@ -213,9 +215,17 @@ async def test_students_still_get_the_student_guardrail(store, fake_manager):
 async def test_no_team_guardrail_no_key(store, fake_manager):
     fake, manager = fake_manager
     fake.guardrails[:] = [g for g in fake.guardrails if g["name"] != TEAM_GUARDRAIL]
-    with pytest.raises(OpenRouterError):
+    with pytest.raises(NoGuardrailError) as refused:
         await KeyProvisioner(store, manager, {WS}).ensure(TEAM, team=TeamKey("abbott"))
+    assert str(refused.value) == UNAVAILABLE  # the text students already see for any creation failure
     assert fake.created_bodies() == [] and store.row(TEAM.key, WS) is None
+
+
+async def test_other_creation_failures_are_not_a_missing_guardrail(provisioner, manager):
+    manager.fail_create = KeyManagementError("OpenRouter key management failed (HTTP 500).", 500)
+    with pytest.raises(OpenRouterError) as refused:
+        await provisioner.ensure(ALICE)
+    assert not isinstance(refused.value, NoGuardrailError) and str(refused.value) == UNAVAILABLE
 
 
 async def test_slack_principal_requires_team(provisioner, manager):

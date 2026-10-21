@@ -2,8 +2,7 @@
 
 `ChannelAdmin` (channel_admin.py) validates and writes the registry row; `ChannelSetup.finish` then creates the
 team's key, saves its per-family models and turns the row on. Every step is safe to repeat, so a failed setup is
-retried with the same call. Page text comes from `hosted/admin/copy.py`; the few sentences it has no entry for
-are defined here.
+retried with the same call. Page text comes from `hosted/admin/copy.py`.
 """
 
 from __future__ import annotations
@@ -13,7 +12,12 @@ from collections.abc import Callable, Mapping
 from dataclasses import fields, replace
 from typing import TYPE_CHECKING
 
-from ...errors import AuthRequiredError, BadRequestError, OpenRouterError
+from ...errors import (
+    AuthRequiredError,
+    BadRequestError,
+    NoGuardrailError,
+    OpenRouterError,
+)
 from ...logs import redact
 from ...preferences import ALIASES
 from ..admin import audit as audit_log
@@ -28,16 +32,6 @@ if TYPE_CHECKING:
     from .runner import SlackServices
 
 log = logging.getLogger(__name__)
-
-MODEL_NOT_LISTED = "{model} isn't in the model list."
-MODEL_WRONG_FAMILY = "{model} isn't a {family} model."
-NOT_REGISTERED = "That channel is not registered."
-NOT_IN_SETUP = "That channel isn't waiting for setup."
-FINISH_FIRST = "Finish setting up this channel first."
-REASON_REQUIRED = "Say why it is being turned off."
-MODELS_ONLY_FAILED = "The team's models weren't changed: {reason}."
-OPENROUTER_DOWN = "OpenRouter didn't answer"
-UNEXPECTED = "something unexpected went wrong, and the server log has the details"
 
 SETUP_REASONS = (copy.SETTING_UP, copy.SETUP_UNFINISHED)
 # What the change log records of a row. The ids, creation time and welcome/warning marks are bookkeeping, and
@@ -72,11 +66,15 @@ def diff(before: ChannelRow | None, after: ChannelRow) -> dict[str, list]:
     return changes
 
 
-def audit_callback(audit: AdminAudit, actor: Session, action: str) -> Callable:
-    """The registry's `audit` hook: one entry on the write's own connection, so both commit or neither does."""
+def audit_callback(audit: AdminAudit, actor: Session, action: str, *, capture: dict | None = None) -> Callable:
+    """The registry's `audit` hook: one entry on the write's own connection, so both commit or neither does.
+
+    `capture`, when given, receives the changes of the transaction's own before and after rows."""
     def write(db, before: ChannelRow | None, after: ChannelRow) -> None:
-        audit_log.insert(db, at=audit.clock(), actor=actor, action=action, row=after,
-                         changes=diff(before, after))
+        changes = diff(before, after)
+        audit_log.insert(db, at=audit.clock(), actor=actor, action=action, row=after, changes=changes)
+        if capture is not None:
+            capture.update(changes)
     return write
 
 
@@ -90,13 +88,13 @@ def model_ids(values: Mapping) -> set[str]:
 
 def failure_reason(error: Exception, row: ChannelRow) -> str:
     """A plain reason for a failed setup or model save; raw error text never reaches the page."""
-    if isinstance(error, AuthRequiredError):  # a team key that can't be made: no budget guardrail to put it under
+    if isinstance(error, NoGuardrailError):
         return copy.NO_GUARDRAIL.format(cohort=row.cohort).rstrip(".")
-    if isinstance(error, BadRequestError):
-        return error.message.rstrip(".")
+    if isinstance(error, AuthRequiredError | BadRequestError):  # fixed provisioning and model-check sentences
+        return redact(error.message).rstrip(".")
     if isinstance(error, OpenRouterError):
-        return OPENROUTER_DOWN
-    return UNEXPECTED
+        return copy.OPENROUTER_DOWN
+    return copy.UNEXPECTED
 
 
 def team_of(row: ChannelRow):
@@ -139,32 +137,38 @@ class ChannelSetup:
 
     async def finish(self, team_id: str, channel_id: str, family_defaults: Mapping[str, str],
                      actor: Session) -> ChannelRow:
-        """Create the team's key, save its models, turn the row on. Repeating it completes what is missing."""
+        """Create the team's key, save its models, turn the row on. Repeating it completes what is missing.
+
+        Turning on is a guarded claim, so a double submit makes one `turned on` entry and the loser gets the row
+        as the winner left it."""
         row = self.registry.get(team_id, channel_id)
         if row is None:
-            raise ChannelRefused(NOT_REGISTERED)
+            raise ChannelRefused(copy.NOT_REGISTERED)
         if not row.active and row.inactive_reason not in SETUP_REASONS:
-            raise ChannelRefused(NOT_IN_SETUP)
+            raise ChannelRefused(copy.NOT_IN_SETUP)
         try:
             await self.provisioner.ensure(team_of(row), team=TeamKey(row.team_label))
             changes = await self.models.save(row, family_defaults)
-            if changes:
-                self.audit.record(actor, audit_log.MODELS_CHANGED, row, changes)
-            if row.active:
-                return row
-            return self.registry.update(team_id, channel_id, active=True, inactive_reason=None,
-                                        audit=audit_callback(self.audit, actor, audit_log.TURNED_ON))
         except Exception as error:  # noqa: BLE001 - whatever failed, the row stays off and Finish setup retries
-            log.warning("slack admin: setup of %s did not finish (%s): %s", row.team_label,
-                        type(error).__name__, redact(str(error)))
-            self._mark_unfinished(row)
-            reason = failure_reason(error, row)
-            raise ChannelRefused(copy.SETUP_UNFINISHED_TEXT.format(reason=reason)) from None
-
-    def _mark_unfinished(self, row: ChannelRow) -> None:
-        if row.active:
-            return
+            return self._unfinished(row, error)
+        if changes:  # outside the try: a failed audit write after a good save is a server error, not a setup failure
+            self.audit.record(actor, audit_log.MODELS_CHANGED, row, changes)
         try:
-            self.registry.update(row.slack_team_id, row.channel_id, inactive_reason=copy.SETUP_UNFINISHED)
-        except Exception as error:  # noqa: BLE001 - the refusal matters more than a second failed write
-            log.warning("slack admin: could not mark %s unfinished: %s", row.team_label, redact(str(error)))
+            self.registry.activate(team_id, channel_id,
+                                   audit=audit_callback(self.audit, actor, audit_log.TURNED_ON))
+        except Exception as error:  # noqa: BLE001
+            return self._unfinished(row, error)
+        return self.registry.get(team_id, channel_id) or row
+
+    def _unfinished(self, row: ChannelRow, error: Exception) -> ChannelRow:
+        """Report a failed attempt, unless a concurrent attempt finished the row meanwhile."""
+        log.warning("slack admin: setup of %s did not finish (%s): %s", row.team_label,
+                    type(error).__name__, redact(str(error)))
+        current = self.registry.get(row.slack_team_id, row.channel_id)
+        if current is not None and current.active:
+            return current
+        try:
+            self.registry.set_inactive_reason(row.slack_team_id, row.channel_id, copy.SETUP_UNFINISHED)
+        except Exception as write_error:  # noqa: BLE001 - the refusal matters more than a second failed write
+            log.warning("slack admin: could not mark %s unfinished: %s", row.team_label, redact(str(write_error)))
+        raise ChannelRefused(copy.SETUP_UNFINISHED_TEXT.format(reason=failure_reason(error, row))) from None

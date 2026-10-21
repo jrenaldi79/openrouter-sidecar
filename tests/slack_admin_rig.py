@@ -1,11 +1,13 @@
 """The channel admin service rig: FakeSlack, a fake model list, fake preferences and key provisioner, and real
 registry and audit stores. Shared by the `test_hosted_slack_channel_admin*.py` files."""
 
+import asyncio
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from slack_fakes import FakeSlack
 
+from openrouter_image_mcp.errors import BadRequestError
 from openrouter_image_mcp.hosted.admin.audit import AdminAudit
 from openrouter_image_mcp.hosted.admin.sessions import Session
 from openrouter_image_mcp.hosted.slack.channel_admin import ChannelAdmin
@@ -28,6 +30,7 @@ class FakeClient:
         self.ids = ["google/gemini-x", "google/gemini-flash", "openai/gpt-x", "openai/gpt-y", "x-ai/grok-x"]
 
     async def public_models(self):
+        await asyncio.sleep(0)  # a real request yields, so concurrent callers interleave
         if self.error:
             raise self.error
         return [{"id": i, "name": i.upper(), "created": CREATED} for i in self.ids]
@@ -42,31 +45,58 @@ class FakePreferences:
         self.error: Exception | None = None
         self.calls: list[dict] = []
         self.actors: list = []
+        self.yield_in_update = False  # a real save awaits the catalog before it writes
 
     def get(self):
         return {"settings_id": "s1", "revision": self.revision, "family_defaults": dict(self.saved)}
 
     async def update(self, settings_id, expected_revision, family_defaults=None):
         self.actors.append(_acting.get())
+        if self.yield_in_update:
+            await asyncio.sleep(0)
         if self.error:
             raise self.error
-        assert (settings_id, expected_revision) == ("s1", self.revision)
+        assert settings_id == "s1"
+        if expected_revision != self.revision:  # what the real service says to a stale save
+            raise BadRequestError("The settings changed; reload and try again")
         self.saved.update(family_defaults)
         self.revision += 1
         self.calls.append(dict(family_defaults))
 
 
 class FakeProvisioner:
+    """`KeyProvisioner.ensure`: one key per principal; `creations` counts the keys actually made."""
+
     def __init__(self):
         self.calls: list[tuple] = []
         self.keys: set[str] = set()
+        self.creations = 0
         self.error: Exception | None = None
 
     async def ensure(self, principal, *, team=None):
         self.calls.append((principal, team))
+        await asyncio.sleep(0)
         if self.error:
             raise self.error
-        self.keys.add(principal.key)
+        if principal.key not in self.keys:
+            self.creations += 1
+            self.keys.add(principal.key)
+
+
+class YieldingSlack(FakeSlack):
+    """Every user lookup yields, and `peak` records how many ran at once."""
+
+    def __init__(self):
+        super().__init__()
+        self.running = self.peak = 0
+
+    async def user(self, user_id):
+        self.running += 1
+        self.peak = max(self.peak, self.running)
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        self.running -= 1
+        return await super().user(user_id)
 
 
 class Rig:
@@ -74,7 +104,7 @@ class Rig:
         self.target = target
         self.registry = ChannelRegistry(target)
         self.audit = AdminAudit(target, clock=iter(range(1000, 2000)).__next__)
-        self.slack = FakeSlack()
+        self.slack = YieldingSlack()
         self.slack.team = "T1"
         self.slack.channels = {"C1": {"name": "abbott"}, "C2": {"name": "other", "is_private": True}}
         self.slack.bot_in = ["C1", "C2"]

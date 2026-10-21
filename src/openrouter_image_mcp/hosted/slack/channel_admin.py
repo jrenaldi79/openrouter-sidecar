@@ -24,18 +24,11 @@ from ..admin.sessions import Session
 from ..provisioning import KeyProvisioner, TeamKey
 from .api import SlackApi, SlackCallError
 from .channel_setup import (
-    FINISH_FIRST,
-    MODEL_NOT_LISTED,
-    MODEL_WRONG_FAMILY,
-    MODELS_ONLY_FAILED,
-    NOT_REGISTERED,
-    REASON_REQUIRED,
     SETUP_REASONS,
     ChannelRefused,
     ChannelSetup,
     TeamModels,
     audit_callback,
-    diff,
     failure_reason,
     model_ids,
     same,
@@ -144,7 +137,7 @@ class ChannelAdmin:
     def _row(self, team_id: str, channel_id: str) -> ChannelRow:
         row = self.registry.get(team_id, channel_id)
         if row is None:
-            raise ChannelRefused(NOT_REGISTERED)
+            raise ChannelRefused(copy.NOT_REGISTERED)
         return row
 
     # ---- registering ----
@@ -180,17 +173,21 @@ class ChannelAdmin:
         listed = {model["id"]: model for model in await self.catalog()}
         for model in sorted(ids | set(family_defaults.values())):
             if model not in listed:
-                raise ChannelRefused(MODEL_NOT_LISTED.format(model=model))
+                raise ChannelRefused(copy.MODEL_NOT_LISTED.format(model=model))
         for family, model in family_defaults.items():
             if listed[model]["family"] != family:
-                raise ChannelRefused(MODEL_WRONG_FAMILY.format(model=model, family=family))
+                raise ChannelRefused(copy.MODEL_WRONG_FAMILY.format(model=model, family=family))
 
     # ---- editing ----
 
     async def change(self, team_id: str, channel_id: str, changes: dict, family_defaults: dict,
                      actor: Session) -> dict[str, list]:
         """Write only what differs from the row now: registry fields in one transaction with their entry, then
-        the team's models. Returns `{field: [before, after]}` for what was saved."""
+        the team's models. Returns `{field: [before, after]}` for what was saved.
+
+        Protection against overwriting another admin's edit depends on the caller: the route must send only the
+        fields this admin changed against the snapshot the form was rendered from. Here, values already equal to
+        the row's are dropped, but a stale value that differs from it would be written."""
         row = self._row(team_id, channel_id)
         unknown = set(changes) - EDITABLE
         if unknown:
@@ -200,16 +197,15 @@ class ChannelAdmin:
         if not registry_changes and not wanted:
             raise ChannelRefused(copy.NOTHING_CHANGED)
         await self._check_models(model_ids(registry_changes), wanted)
-        updated, saved = row, {}
+        saved: dict[str, list] = {}  # filled from the transaction's own before and after rows
         if registry_changes:
             try:
-                updated = self.registry.update(team_id, channel_id, **registry_changes,
-                                               audit=audit_callback(self.audit, actor, audit_log.CHANGED))
+                self.registry.update(team_id, channel_id, **registry_changes,
+                                     audit=audit_callback(self.audit, actor, audit_log.CHANGED, capture=saved))
             except ValueError as error:
                 raise ChannelRefused(str(error)) from None
-            saved = diff(row, updated)
         if wanted:
-            saved |= await self._save_models(updated, wanted, actor, kept_registry=bool(registry_changes))
+            saved |= await self._save_models(row, wanted, actor, kept_registry=bool(registry_changes))
         return saved
 
     async def _differing_models(self, row: ChannelRow, family_defaults: Mapping[str, str]) -> dict[str, str]:
@@ -229,22 +225,22 @@ class ChannelAdmin:
         try:
             await self.provisioner.ensure(team_of(row), team=TeamKey(row.team_label))
             saved = await self._models.save(row, wanted)
-            if saved:
-                self.audit.record(actor, audit_log.MODELS_CHANGED, row, saved)
-            return saved
         except Exception as error:  # noqa: BLE001 - the registry change stays; the page says what didn't happen
             log.warning("slack admin: model save for %s failed (%s): %s", row.team_label,
                         type(error).__name__, redact(str(error)))
             reason = failure_reason(error, row)
-            text = copy.MODELS_NOT_SAVED if kept_registry else MODELS_ONLY_FAILED
+            text = copy.MODELS_NOT_SAVED if kept_registry else copy.MODELS_ONLY_FAILED
             raise ChannelRefused(text.format(reason=reason)) from None
+        if saved:  # outside the try: the models are saved, so a failed audit write must not say they weren't
+            self.audit.record(actor, audit_log.MODELS_CHANGED, row, saved)
+        return saved
 
     # ---- turning off and on ----
 
     async def turn_off(self, team_id: str, channel_id: str, reason: str, actor: Session) -> None:
         reason = reason.strip()
         if not reason:
-            raise ChannelRefused(REASON_REQUIRED)
+            raise ChannelRefused(copy.REASON_REQUIRED)
         self._row(team_id, channel_id)
         if not self.registry.deactivate(team_id, channel_id, reason,
                                         audit=audit_callback(self.audit, actor, audit_log.TURNED_OFF)):
@@ -255,12 +251,13 @@ class ChannelAdmin:
         if row.active:
             raise ChannelRefused(copy.NOTHING_CHANGED)
         if row.inactive_reason in SETUP_REASONS:
-            raise ChannelRefused(FINISH_FIRST)  # a row with no key or models yet is finished, not just switched on
+            raise ChannelRefused(copy.FINISH_FIRST)  # a row with no key or models yet is finished, not just switched on
         problem = await self.check(channel_id)
         if problem:
             raise ChannelRefused(problem)
-        self.registry.update(team_id, channel_id, active=True, inactive_reason=None,
-                             audit=audit_callback(self.audit, actor, audit_log.TURNED_ON))
+        if not self.registry.activate(team_id, channel_id,
+                                      audit=audit_callback(self.audit, actor, audit_log.TURNED_ON)):
+            raise ChannelRefused(copy.NOTHING_CHANGED)  # a double submit: the other call turned it on
 
 
 async def _limited(calls: Iterable) -> list:

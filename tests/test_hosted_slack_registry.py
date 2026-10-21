@@ -218,3 +218,35 @@ def test_audit_callback_failure_rolls_back(db_target, audit_table):
         reg.deactivate("T1", "C1", "guest", audit=_boom)
     assert reg.get("T1", "C1").active is True
     assert _entries(db_target) == []
+
+
+def test_activate_once_and_only_an_off_row(db_target, audit_table):
+    reg = ChannelRegistry(db_target)
+    reg.add(row(), audit=_recorder("add"))
+    assert reg.activate("T1", "C1", audit=_recorder("activate")) is False  # already on: no write, no entry
+    reg.deactivate("T1", "C1", "guest")
+    assert reg.activate("T1", "C1", audit=_recorder("activate")) is True
+    assert reg.activate("T1", "C1", audit=_recorder("activate")) is False
+    assert reg.get("T1", "C1").active is True and reg.get("T1", "C1").inactive_reason is None
+    assert _entries(db_target) == [("add", None, "abbott"), ("activate", "abbott", "abbott")]
+    reg.deactivate("T1", "C1", "guest")
+    assert reg.activate("T1", "C1") is True and reg.activate("T1", "missing") is False
+
+
+def test_activate_audit_failure_rolls_back(db_target, audit_table):
+    reg = ChannelRegistry(db_target)
+    reg.add(row())
+    reg.deactivate("T1", "C1", "guest")
+    with pytest.raises(RuntimeError):
+        reg.activate("T1", "C1", audit=_boom)
+    assert reg.get("T1", "C1").active is False
+
+
+def test_set_inactive_reason_never_touches_an_active_row(db_target):
+    reg = ChannelRegistry(db_target)
+    reg.add(row())
+    assert reg.set_inactive_reason("T1", "C1", "late") is False
+    assert reg.get("T1", "C1").inactive_reason is None
+    reg.deactivate("T1", "C1", "guest")
+    assert reg.set_inactive_reason("T1", "C1", "late") is True
+    assert reg.get("T1", "C1").inactive_reason == "late" and not reg.get("T1", "C1").active

@@ -80,3 +80,22 @@ async def test_change_nothing(rig):
     with pytest.raises(ValueError):  # state changes go through turn_off and turn_on
         await rig.admin.change("T1", "C1", {"active": False}, {}, ACTOR)
     assert len(rig.actions()) == 3
+
+
+async def test_a_model_audit_failure_after_a_good_save_is_a_server_error(rig):
+    await rig.register(family_defaults={})
+
+    def broken():
+        raise RuntimeError("audit store down")
+
+    rig.audit.clock = broken
+    with pytest.raises(RuntimeError):  # not "the models weren't changed": they were
+        await rig.admin.change("T1", "C1", {}, {"google": "google/gemini-flash"}, ACTOR)
+    assert rig.prefs.saved["google"] == "google/gemini-flash"
+
+
+async def test_change_reports_what_the_transaction_wrote(rig):
+    await rig.register()
+    rig.registry.update("T1", "C1", daily_cap_usd=3.0)  # saved after the admin's form was rendered
+    changed = await rig.admin.change("T1", "C1", {"daily_cap_usd": 2.0}, {}, ACTOR)
+    assert changed == {"daily_cap_usd": [3.0, 2.0]} == rig.audit.recent()[0].changes
