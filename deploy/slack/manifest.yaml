@@ -1,0 +1,34 @@
+_metadata:
+  major_version: 2
+  minor_version: 1
+display_information:
+  name: Sidecar
+  description: Ask other AI models for a second opinion, right in your team's channel.
+features:
+  bot_user:
+    display_name: Sidecar
+    always_online: true
+oauth_config:
+  scopes:
+    bot:
+      - app_mentions:read
+      - channels:history
+      - groups:history
+      - channels:read
+      - groups:read
+      - pins:read
+      - chat:write
+      - chat:write.customize
+      - files:read
+      - files:write
+      - users:read
+settings:
+  event_subscriptions:
+    bot_events:
+      - app_mention
+      - member_joined_channel
+      - member_left_channel
+      - channel_shared
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false

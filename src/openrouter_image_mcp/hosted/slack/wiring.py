@@ -133,13 +133,14 @@ class SlackApp:
                 log.warning("Slack client close failed (%s)", type(error).__name__)
 
 
-def _cohort_services(settings, target, keys, transport) -> dict[str, SlackServices]:
+def cohort_services(target, keys, *, sandbox_allowed: bool, transport=None) -> dict[str, SlackServices]:
+    """One `SlackServices` per cohort. The ops scripts reuse this to read and seed a team's preferences."""
     services = {}
     for cohort, workspace in COHORT_WORKSPACES.items():
         store = AdvisorStore(target)
         client = AdvisorClient(workspace, ADVISOR_MAX_TIMEOUT_S, transport=transport)
         advisors = AdvisorService(workspace, store, client, credentials=SlackCredentials(workspace, keys),
-                                  sandbox_default=False, sandbox_allowed=settings.sandbox_enabled)
+                                  sandbox_default=False, sandbox_allowed=sandbox_allowed)
         services[cohort] = SlackServices(advisors, PreferenceService(advisors), store, AdvisorResults(store),
                                          advisors.files, client)
     return services
@@ -159,7 +160,7 @@ def build_slack(settings, target, keys, provisioner, limits, *, transport=None, 
     if api is None:
         api = SdkSlackApi(web, http=httpx.AsyncClient(timeout=DOWNLOAD_TIMEOUT_S))
         closers.append(api.aclose)
-    services = _cohort_services(settings, target, keys, transport)
+    services = cohort_services(target, keys, sandbox_allowed=settings.sandbox_enabled, transport=transport)
     closers += [s.client.aclose for s in services.values()]
     registry, threads, memory, jobs = ChannelRegistry(target), ThreadMap(target), ChannelMemory(target), SlackJobs(target)
     names, process_id = NameCache(api), "slack-" + secrets.token_hex(8)

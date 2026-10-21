@@ -150,16 +150,19 @@ class ChannelRegistry:
                 changes[name] = kind(changes[name])
         updated = replace(current, **changes)
         _validate(updated)
-        values = _values(updated)
-        names = [c for c in _COLUMNS if c not in _KEYS and c != "created_at"]
-        sets = ",".join(f"{c}=?" for c in names)
-        with self._db() as db:
-            try:
-                db.execute(f"UPDATE slack_channels SET {sets} WHERE slack_team_id=? AND channel_id=?",
-                           (*(values[_COLUMNS.index(c)] for c in names), team_id, channel_id))
-            except (sqlite3.IntegrityError, psycopg.errors.IntegrityError) as error:
-                raise ValueError("That team label is already registered.") from error
-        return updated
+        # Write only the columns asked for: the snapshot may predate a racing mark_welcomed, deactivate or
+        # mark_warned, and rewriting every column from it would undo that guarded write.
+        values = dict(zip(_COLUMNS, _values(updated), strict=True))
+        names = [c for c in _COLUMNS if c in changes]
+        if names:
+            sets = ",".join(f"{c}=?" for c in names)
+            with self._db() as db:
+                try:
+                    db.execute(f"UPDATE slack_channels SET {sets} WHERE slack_team_id=? AND channel_id=?",
+                               (*(values[c] for c in names), team_id, channel_id))
+                except (sqlite3.IntegrityError, psycopg.errors.IntegrityError) as error:
+                    raise ValueError("That team label is already registered.") from error
+        return self.get(team_id, channel_id) or updated
 
     def _claim(self, assignment: str, guard: str, args: tuple) -> bool:
         """Run one guarded UPDATE; True only when it changed the row (the caller won)."""

@@ -92,11 +92,14 @@ Filenames grouped by folder; each heading links that folder's note.
 - [scripts/dev/fake&#95;openrouter.py](../scripts/dev/fake_openrouter.py)
 - [scripts/dev/run&#95;sidecar.sh](../scripts/dev/run_sidecar.sh)
 
-### [scripts/ops](../scripts/ops/CLAUDE.md): Operator tools for a deployed sidecar: a real Auth0 PKCE login, a no-cost probe of the live server, and the instructor's student OpenRouter key manager.
+### [scripts/ops](../scripts/ops/CLAUDE.md): Operator tools for a deployed sidecar: a real Auth0 PKCE login, a no-cost probe of the live server, the instructor's student OpenRouter key manager, and the Slack channel and usage tools.
 
 - [scripts/ops/acceptance&#95;probe.py](../scripts/ops/acceptance_probe.py)
 - [scripts/ops/openrouter&#95;keys.py](../scripts/ops/openrouter_keys.py)
 - [scripts/ops/real&#95;login.py](../scripts/ops/real_login.py)
+- [scripts/ops/slack&#95;channels.py](../scripts/ops/slack_channels.py)
+- [scripts/ops/slack&#95;common.py](../scripts/ops/slack_common.py)
+- [scripts/ops/slack&#95;usage.py](../scripts/ops/slack_usage.py)
 
 ### [src/openrouter&#95;image&#95;mcp](../src/openrouter_image_mcp/CLAUDE.md): Core package: the command line, the shared tool helpers, the image pipeline (catalog, client, imaging, service, outputs), the advisor, preferences and onboarding, and the SQLite/Postgres storage seam the hosted server builds on.
 

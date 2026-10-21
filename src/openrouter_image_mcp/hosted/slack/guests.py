@@ -4,7 +4,7 @@
 registered channel on a guest join or a share event, posting `GUEST_OFF` once, and re-checks members at
 most hourly as a backstop for anything the events missed. A failed check fails open only within two
 intervals of the last success; a failed join lookup denies until a check succeeds.
-The ops script will call `channel_problem` (it does not exist yet).
+`scripts/ops/slack_channels.py` calls `channel_problem` before `add` and `update --active`.
 """
 
 from __future__ import annotations

@@ -107,3 +107,23 @@ def test_mark_warned_once_per_month(db_target):
     assert reg.mark_warned("T1", "C1", "2026-10") is False
     assert reg.mark_warned("T1", "C1", "2026-11") is True
     assert reg.get("T1", "C1").warned_month == "2026-11"
+
+
+def test_update_does_not_undo_a_racing_guarded_write(db_target):
+    reg = ChannelRegistry(db_target)
+    reg.add(row())
+    stale, real_get, reads = reg.get("T1", "C1"), reg.get, []
+
+    def get_once_stale(team_id, channel_id):
+        reads.append(1)
+        return stale if len(reads) == 1 else real_get(team_id, channel_id)
+
+    reg.get = get_once_stale  # update's snapshot predates the three guarded writes below
+    assert reg.mark_welcomed("T1", "C1") and reg.mark_warned("T1", "C1", "2026-10")
+    assert reg.deactivate("T1", "C1", "guest")
+    updated = reg.update("T1", "C1", daily_cap_usd=9.0)
+    saved = real_get("T1", "C1")
+    assert saved.daily_cap_usd == 9.0
+    assert saved.welcomed_at is not None and saved.warned_month == "2026-10"
+    assert saved.active is False and saved.inactive_reason == "guest"
+    assert updated == saved
