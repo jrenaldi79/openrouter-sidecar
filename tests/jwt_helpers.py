@@ -31,3 +31,12 @@ def token(key=KEY, alg="RS256", **overrides):
 
 def resolver(_token):
     return KEY.public_key()
+
+
+def id_token(client_id, nonce, key=KEY, alg="RS256", **overrides):
+    """An OIDC ID token as the admin client's code exchange returns it."""
+    now = int(time.time())
+    base = {"iss": ISSUER, "aud": client_id, "sub": "email|alice", "iat": now, "exp": now + 600,
+            "nonce": nonce}
+    payload = {k: v for k, v in (base | overrides).items() if v is not None}
+    return jwt.encode(payload, key, algorithm=alg, headers={"kid": "k1"})

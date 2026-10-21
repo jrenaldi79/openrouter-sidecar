@@ -21,8 +21,12 @@ read_when: "Changing or adding files in src/openrouter_image_mcp/hosted/admin/."
   (`security_headers`) and holds the static-file allowlist (`STATIC_FILES`, `PUBLIC_DIR`). Its `templates/` are Jinja2
   with autoescaping; `public/` is the Interview Coach admin design system, copied from `mpd-class-mcp` (change it
   there first).
-- Being built (`docs/superpowers/plans/2026-10-21-slack-admin.md`): `oidc.py` (Auth0 sign-in), `forms.py`, `routes.py`
-  and `wiring.py`. The Slack side is `hosted/slack/channel_admin.py`.
+- `oidc.py`: `Auth0Login` (authorization code with PKCE, `state` and `nonce`; `start`, `finish`, `logout_url`),
+  `AdminIdentity` and `LoginRefused` (reason `state`, `exchange`, `id_token` or `not_admin`). `finish` needs the login
+  cookie to equal `state`, checks the RS256 ID token, then the access token through `Auth0Verifier(profile_claim=None)`
+  for both permissions and a profile email. A failed exchange logs the HTTP status only.
+- Being built (`docs/superpowers/plans/2026-10-21-slack-admin.md`): `forms.py`, `routes.py` and `wiring.py`. The Slack
+  side is `hosted/slack/channel_admin.py`.
 
 **Invariants:**
 

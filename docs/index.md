@@ -175,6 +175,7 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/hosted/admin/&#95;&#95;init&#95;&#95;.py](../src/openrouter_image_mcp/hosted/admin/__init__.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/admin/audit.py](../src/openrouter_image_mcp/hosted/admin/audit.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/admin/copy.py](../src/openrouter_image_mcp/hosted/admin/copy.py)
+- [src/openrouter&#95;image&#95;mcp/hosted/admin/oidc.py](../src/openrouter_image_mcp/hosted/admin/oidc.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/admin/sessions.py](../src/openrouter_image_mcp/hosted/admin/sessions.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/admin/settings.py](../src/openrouter_image_mcp/hosted/admin/settings.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/admin/views.py](../src/openrouter_image_mcp/hosted/admin/views.py)
