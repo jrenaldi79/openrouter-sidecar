@@ -13,11 +13,19 @@ import asyncio
 import hashlib
 import logging
 from contextvars import ContextVar
+from dataclasses import dataclass
 
 from .. import storage
 from ..config import COHORT_WORKSPACES
-from ..errors import KEY_REJECTED, AuthRequiredError, OpenRouterError, ProviderError
-from .principal import Principal, current_principal
+from ..errors import (
+    KEY_REJECTED,
+    AuthRequiredError,
+    BadRequestError,
+    OpenRouterError,
+    ProviderError,
+)
+from .openrouter_keys import TEAM_GUARDRAIL
+from .principal import SLACK_ISSUER, Principal, current_principal
 from .student_keys import StudentKey, StudentKeyStore
 
 log = logging.getLogger(__name__)
@@ -40,8 +48,15 @@ def pending_reason() -> str | None:
     return _pending.get()
 
 
-def key_name(principal: Principal, cohort: str | None = None) -> str:
-    who = principal.email or "user-" + hashlib.sha256(principal.key.encode()).hexdigest()[:10]
+@dataclass(frozen=True)
+class TeamKey:
+    """Marks a Slack team's key: named after the team and budgeted by `TEAM_GUARDRAIL`."""
+
+    label: str
+
+
+def key_name(principal: Principal, cohort: str | None = None, team_label: str | None = None) -> str:
+    who = team_label or principal.email or "user-" + hashlib.sha256(principal.key.encode()).hexdigest()[:10]
     return f"Sidecar · {who} · {principal.cohort or cohort or '?'}"
 
 
@@ -60,8 +75,14 @@ class KeyProvisioner:
     async def _row(self, principal: Principal) -> StudentKey | None:
         return await asyncio.to_thread(self.store.row, principal.key, principal.workspace_id)
 
-    async def ensure(self, principal: Principal) -> StudentKey:
-        """The principal's usable key row, creating the key at OpenRouter if needed."""
+    async def ensure(self, principal: Principal, *, team: TeamKey | None = None) -> StudentKey:
+        """The principal's usable key row, creating the key at OpenRouter if needed.
+
+        Slack team principals must pass `team` and students must not, so a student key can
+        never be created under a team name or guardrail, nor a team key under a student's.
+        """
+        if (principal.issuer == SLACK_ISSUER) != (team is not None):
+            raise BadRequestError("Team keys are only for Slack teams, and Slack teams need a team key.")
         if principal.workspace_id not in self.workspaces:
             raise AuthRequiredError(NOT_SERVED)
         row = await self._row(principal)
@@ -76,12 +97,13 @@ class KeyProvisioner:
                 return row
             if self.manager is None:
                 raise AuthRequiredError(NOT_SET_UP)
-            return await self._create(principal)
+            return await self._create(principal, team)
 
-    async def _create(self, principal: Principal) -> StudentKey:
-        name = key_name(principal, _cohort(principal.workspace_id))
+    async def _create(self, principal: Principal, team: TeamKey | None = None) -> StudentKey:
+        name = key_name(principal, _cohort(principal.workspace_id), team.label if team else None)
+        extra = {"guardrail": TEAM_GUARDRAIL} if team else {}
         try:
-            created = await self.manager.create(name, principal.workspace_id)
+            created = await self.manager.create(name, principal.workspace_id, **extra)
         except ProviderError as exc:
             log.warning("student key creation failed: %s", exc.message)
             raise ProviderError(UNAVAILABLE) from None

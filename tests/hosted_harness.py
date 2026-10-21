@@ -43,6 +43,8 @@ class FakeOpenRouter:
     def __init__(self, answer="Final advice"):
         self.answer, self.requests, self.delay = answer, [], 0.0
         self.keys: dict[str, dict] = {}  # hash -> key data, as the management API reports it
+        self.guardrails = [{"id": "g-budget", "name": BUDGET_GUARDRAIL}]  # tests append e.g. the team one
+        self.assignments: list[tuple[str, list[str]]] = []  # (guardrail id, key hashes)
 
     def final(self):
         return {"status": "completed", "usage": {"cost": 0.002}, "output": [{
@@ -52,11 +54,12 @@ class FakeOpenRouter:
     async def handle(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
         path = request.url.path
-        if "/guardrails" in path:  # the class budget guardrail and its key assignments
+        if "/guardrails" in path:  # the class guardrails and their key assignments
             if request.method == "POST":
-                return httpx.Response(200, json={"assigned_count": len(json.loads(request.content)["key_hashes"])})
-            return httpx.Response(200, json={"data": [{"id": "g-budget", "name": BUDGET_GUARDRAIL}],
-                                             "total_count": 1})
+                hashes = json.loads(request.content)["key_hashes"]
+                self.assignments.append((path.split("/")[-3], hashes))
+                return httpx.Response(200, json={"assigned_count": len(hashes)})
+            return httpx.Response(200, json={"data": self.guardrails, "total_count": len(self.guardrails)})
         if "/keys" in path or path.endswith("/key"):
             return self._keys(request, path)
         if path.endswith("/models"):

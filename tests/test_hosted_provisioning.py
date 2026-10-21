@@ -4,23 +4,38 @@ import asyncio
 import base64
 import hashlib
 import os
+from dataclasses import replace
 
+import httpx
 import pytest
 
-from openrouter_image_mcp.errors import AuthRequiredError, OpenRouterError
-from openrouter_image_mcp.hosted.openrouter_keys import CreatedKey, KeyManagementError
+from openrouter_image_mcp.errors import (
+    AuthRequiredError,
+    BadRequestError,
+    OpenRouterError,
+)
+from openrouter_image_mcp.hosted.openrouter_keys import (
+    CreatedKey,
+    KeyManagementError,
+    KeyManager,
+)
 from openrouter_image_mcp.hosted.principal import Principal
 from openrouter_image_mcp.hosted.provisioning import (
     DISABLED,
     NOT_SERVED,
     NOT_SET_UP,
+    TEAM_GUARDRAIL,
     KeyProvisioner,
+    TeamKey,
     key_name,
     pending_reason,
 )
+from openrouter_image_mcp.hosted.slack.principal import team_principal
+from openrouter_image_mcp.hosted.slack.registry import new_row
 from openrouter_image_mcp.hosted.student_keys import StudentKeyStore
 from openrouter_image_mcp.hosted.vault import Vault
 from tests import jwt_helpers as h
+from tests.hosted_harness import FakeOpenRouter
 
 WS = "ws-2027"
 ALICE = Principal(h.ISSUER, "email|alice", WS, "2027", "alice@u.edu")
@@ -33,7 +48,7 @@ class FakeManager:
         self.created, self.deleted, self.keys = [], [], {}
         self.delay, self.fail_create = 0.0, None
 
-    async def create(self, name, workspace_id):
+    async def create(self, name, workspace_id, **_kwargs):
         await asyncio.sleep(self.delay)
         if self.fail_create:
             raise self.fail_create
@@ -159,3 +174,80 @@ async def test_prepare_records_why_no_key_is_available(store):
     store.insert(ALICE, "sk-or-v1-alice", "h1", "n")
     await provisioner.prepare(ALICE)
     assert pending_reason() is None
+
+
+# The test workspace is not a real cohort workspace, so move the team into it.
+TEAM = replace(team_principal("T1", "C1", new_row(
+    "T1", "C1", "abbott", "2027", fusion_panel=("openai/gpt-x",), fusion_analyst="openai/gpt-x",
+    subagent_model="google/gemini-flash")), workspace_id=WS)
+
+
+def test_team_key_name_uses_the_label():
+    assert key_name(TEAM, team_label="abbott") == "Sidecar · abbott · 2027"
+    assert key_name(ALICE, team_label="abbott") == "Sidecar · abbott · 2027"
+
+
+@pytest.fixture
+async def fake_manager():
+    fake = FakeOpenRouter()
+    fake.guardrails.append({"id": "g-team", "name": TEAM_GUARDRAIL})
+    manager = KeyManager("sk-or-v1-management", transport=httpx.MockTransport(fake.handle))
+    yield fake, manager
+    await manager.aclose()
+
+
+async def test_team_key_name_and_guardrail(store, fake_manager):
+    fake, manager = fake_manager
+    row = await KeyProvisioner(store, manager, {WS}).ensure(TEAM, team=TeamKey("abbott"))
+    assert fake.created_bodies() == [{"name": "Sidecar · abbott · 2027", "workspace_id": WS}]
+    assert fake.assignments == [("g-team", [row.key_hash])]
+    assert store.key_for(TEAM) == "sk-or-v1-fake1"
+
+
+async def test_students_still_get_the_student_guardrail(store, fake_manager):
+    fake, manager = fake_manager
+    await KeyProvisioner(store, manager, {WS}).ensure(ALICE)
+    assert [guardrail for guardrail, _ in fake.assignments] == ["g-budget"]
+
+
+async def test_no_team_guardrail_no_key(store, fake_manager):
+    fake, manager = fake_manager
+    fake.guardrails[:] = [g for g in fake.guardrails if g["name"] != TEAM_GUARDRAIL]
+    with pytest.raises(OpenRouterError):
+        await KeyProvisioner(store, manager, {WS}).ensure(TEAM, team=TeamKey("abbott"))
+    assert fake.created_bodies() == [] and store.row(TEAM.key, WS) is None
+
+
+async def test_slack_principal_requires_team(provisioner, manager):
+    with pytest.raises(BadRequestError):
+        await provisioner.ensure(TEAM)
+    assert manager.created == []
+
+
+async def test_student_cannot_get_a_team_key(provisioner, manager):
+    with pytest.raises(BadRequestError):
+        await provisioner.ensure(ALICE, team=TeamKey("abbott"))
+    assert manager.created == []
+
+
+async def test_team_key_goes_through_the_team_guardrail(provisioner, manager):
+    calls = []
+    real = manager.create
+
+    async def create(name, workspace_id, **kwargs):
+        calls.append(kwargs)
+        return await real(name, workspace_id)
+
+    manager.create = create
+    await provisioner.ensure(TEAM, team=TeamKey("abbott"))
+    await provisioner.ensure(ALICE)
+    assert calls == [{"guardrail": TEAM_GUARDRAIL}, {}]
+
+
+async def test_recheck_recreates_with_team_name(provisioner, manager, store):
+    await provisioner.ensure(TEAM, team=TeamKey("abbott"))
+    store.mark_rejected(TEAM.key, WS)
+    manager.keys.pop("h1")  # deleted at OpenRouter
+    row = await provisioner.ensure(TEAM, team=TeamKey("abbott"))
+    assert row.key_hash == "h2" and row.key_name == "Sidecar · abbott · 2027"
+    assert [name for name, _ in manager.created] == ["Sidecar · abbott · 2027"] * 2

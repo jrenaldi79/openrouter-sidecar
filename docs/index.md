@@ -172,6 +172,7 @@ Filenames grouped by folder; each heading links that folder's note.
 
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/&#95;&#95;init&#95;&#95;.py](../src/openrouter_image_mcp/hosted/slack/__init__.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/api.py](../src/openrouter_image_mcp/hosted/slack/api.py)
+- [src/openrouter&#95;image&#95;mcp/hosted/slack/principal.py](../src/openrouter_image_mcp/hosted/slack/principal.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/registry.py](../src/openrouter_image_mcp/hosted/slack/registry.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/slack/settings.py](../src/openrouter_image_mcp/hosted/slack/settings.py)
 

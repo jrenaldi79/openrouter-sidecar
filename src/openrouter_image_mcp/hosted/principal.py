@@ -9,6 +9,7 @@ from mcp.server.auth.provider import AccessToken
 
 from ..errors import AuthRequiredError
 
+SLACK_ISSUER = "slack"  # issuer of Slack team principals (hosted/slack/principal.py); never an Auth0 URL
 NO_WORKSPACE = "Your class profile has no OpenRouter workspace; ask your instructor."
 
 

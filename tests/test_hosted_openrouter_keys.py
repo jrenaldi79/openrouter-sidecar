@@ -9,6 +9,7 @@ import respx
 from openrouter_image_mcp.errors import AuthRequiredError
 from openrouter_image_mcp.hosted.openrouter_keys import (
     BUDGET_GUARDRAIL,
+    TEAM_GUARDRAIL,
     KeyManagementError,
     KeyManager,
     current_key,
@@ -175,3 +176,28 @@ async def test_current_key_rejected_is_auth_required():
     respx.get(f"{API}/key").mock(return_value=httpx.Response(401, json={}))
     with pytest.raises(AuthRequiredError):
         await current_key("sk-or-v1-alice")
+
+
+@respx.mock
+async def test_create_with_the_team_guardrail_assigns_it_and_caches_per_name(manager):
+    respx.get(f"{API}/guardrails").mock(return_value=httpx.Response(200, json={
+        "data": [{"id": "g-budget", "name": BUDGET_GUARDRAIL}, {"id": "g-team", "name": TEAM_GUARDRAIL}],
+        "total_count": 2}))
+    team = respx.post(f"{API}/guardrails/g-team/assignments/keys").mock(
+        return_value=httpx.Response(200, json={"assigned_count": 1}))
+    student = respx.post(f"{API}/guardrails/g-budget/assignments/keys").mock(
+        return_value=httpx.Response(200, json={"assigned_count": 1}))
+    respx.post(f"{API}/keys").mock(return_value=httpx.Response(
+        201, json={"key": "sk-or-v1-team", "data": _key(1)}))
+    await manager.create("Sidecar · abbott · 2027", WS, guardrail=TEAM_GUARDRAIL)
+    await manager.create("Sidecar · alice@u.edu · 2027", WS)
+    assert team.call_count == 1 and student.call_count == 1
+
+
+@respx.mock
+async def test_missing_team_guardrail_names_it_and_creates_no_key(manager):
+    _budget_routes()  # only the student guardrail exists
+    create = respx.post(f"{API}/keys")
+    with pytest.raises(KeyManagementError, match=TEAM_GUARDRAIL):
+        await manager.create("n", WS, guardrail=TEAM_GUARDRAIL)
+    assert not create.called
