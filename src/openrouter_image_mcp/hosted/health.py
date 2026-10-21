@@ -12,15 +12,15 @@ import logging
 import os
 from pathlib import Path
 
-import psycopg
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from .. import storage
+from .ownership import OWNER_LOCK, OwnerLock  # noqa: F401 - OWNER_LOCK kept importable
 from .workspaces import Gate
 
 log = logging.getLogger(__name__)
-OWNER_LOCK = 0x51DECA4
+NOT_OWNER = "Another Sidecar instance is active; this one is not serving."
 MAINTENANCE = "The Sidecar is under maintenance; retry in a few minutes."
 
 
@@ -29,23 +29,25 @@ class Health:
                  asset_dir: str | None = None):
         self.target, self.gate, self.maintenance = target, gate, maintenance
         self.asset_dir = asset_dir
-        self._owner: psycopg.Connection | None = None
+        # The gate hooks come first; later owners of background work append to lock.on_gain/on_lose.
+        self.lock = OwnerLock(target, on_gain=[self._gained], on_lose=[self._lost])
 
-    async def start(self) -> None:
-        if storage.is_postgres(self.target):
-            self._owner = await asyncio.to_thread(psycopg.connect, self.target, autocommit=True)
-            row = await asyncio.to_thread(
-                lambda: self._owner.execute("SELECT pg_try_advisory_lock(%s)", (OWNER_LOCK,)).fetchone())
-            if not row[0]:
-                self.gate.reason = "Another Sidecar instance is active; this one is not serving."
-                log.error("single-owner lock is held by another instance")
-                return
+    async def _gained(self) -> None:
         self.gate.reason = MAINTENANCE if self.maintenance else None
 
+    async def _lost(self) -> None:
+        # Keep a more specific reason, such as the shutdown notice.
+        if self.gate.reason in (None, MAINTENANCE):
+            self.gate.reason = NOT_OWNER
+
+    async def start(self) -> None:
+        await self.lock.start()
+        if not self.lock.held:
+            self.gate.reason = NOT_OWNER
+            log.error("single-owner lock is held by another instance")
+
     async def stop(self) -> None:
-        if self._owner is not None:
-            await asyncio.to_thread(self._owner.close)  # releases the session lock
-            self._owner = None
+        await self.lock.stop()
 
     def _database_ok(self) -> bool:
         try:

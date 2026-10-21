@@ -85,12 +85,9 @@ def _pg_schema_url():
     return base, schema, base + separator + "options=" + quote(f"-csearch_path={schema}")
 
 
-@pytest.fixture(params=["sqlite", pytest.param("pg", marks=pytest.mark.pg)])
-def db_target(request, tmp_path):
-    """Storage target for either backend: a SQLite file path or a Postgres URL."""
-    if request.param == "sqlite":
-        yield tmp_path / "advisor.sqlite3"
-        return
+@pytest.fixture
+def pg_target():
+    """A Postgres URL in a fresh schema (Postgres-only tests; skipped without TEST_DATABASE_URL)."""
     base, schema, url = _pg_schema_url()
     yield url
     import psycopg
@@ -100,3 +97,12 @@ def db_target(request, tmp_path):
     storage.close_pool(url)  # each test's URL gets its own pool; don't let them pile up
     with psycopg.connect(base, autocommit=True) as db:
         db.execute(f"DROP SCHEMA {schema} CASCADE")
+
+
+@pytest.fixture(params=["sqlite", pytest.param("pg", marks=pytest.mark.pg)])
+def db_target(request, tmp_path):
+    """Storage target for either backend: a SQLite file path or a Postgres URL."""
+    if request.param == "sqlite":
+        yield tmp_path / "advisor.sqlite3"
+        return
+    yield request.getfixturevalue("pg_target")

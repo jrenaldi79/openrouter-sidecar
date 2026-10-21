@@ -153,6 +153,7 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/hosted/limits.py](../src/openrouter_image_mcp/hosted/limits.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/main.py](../src/openrouter_image_mcp/hosted/main.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/openrouter&#95;keys.py](../src/openrouter_image_mcp/hosted/openrouter_keys.py)
+- [src/openrouter&#95;image&#95;mcp/hosted/ownership.py](../src/openrouter_image_mcp/hosted/ownership.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/principal.py](../src/openrouter_image_mcp/hosted/principal.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/provisioning.py](../src/openrouter_image_mcp/hosted/provisioning.py)
 - [src/openrouter&#95;image&#95;mcp/hosted/retention.py](../src/openrouter_image_mcp/hosted/retention.py)

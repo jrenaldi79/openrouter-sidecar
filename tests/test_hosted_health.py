@@ -37,3 +37,39 @@ async def test_unwritable_asset_dir_is_not_ready(tmp_path):
         assert await health.ready() == (False, "asset storage is not writable")
     finally:
         volume.chmod(0o755)
+
+
+async def test_health_gate_follows_the_lock_hooks(tmp_path):
+    from openrouter_image_mcp.hosted.health import MAINTENANCE
+
+    health = Health(tmp_path / "db.sqlite3", Gate(), maintenance=True)
+    await health.start()
+    assert health.gate.reason == MAINTENANCE and health.lock.held
+    await health.lock.on_lose[0]()
+    assert health.gate.reason and "Another Sidecar instance" in health.gate.reason
+    await health.lock.on_gain[0]()
+    assert health.gate.reason == MAINTENANCE
+    await health.stop()
+
+
+@pytest.mark.pg
+async def test_second_instance_is_unready_until_the_owner_stops(pg_target):
+    import asyncio
+
+    first, second = Health(pg_target, Gate()), Health(pg_target, Gate())
+    second.lock.every_s = 0.05
+    await first.start()
+    await second.start()
+    try:
+        assert await first.ready() == (True, "ready")
+        ok, detail = await second.ready()
+        assert not ok and "Another Sidecar instance" in detail
+        await first.stop()
+        for _ in range(100):
+            if second.lock.held:
+                break
+            await asyncio.sleep(0.02)
+        assert await second.ready() == (True, "ready")
+    finally:
+        await first.stop()
+        await second.stop()
