@@ -9,9 +9,11 @@ import re
 import httpx
 
 from .config import ADVISOR_MAX_TIMEOUT_S, API_BASE, APP_TITLE, APP_URL
-from .errors import KEY_REJECTED, AuthRequiredError, ProviderError
+from .errors import KEY_REJECTED, AuthRequiredError, BadRequestError, ProviderError
+from .logs import redact
 
 FILE_ID = re.compile(r"or_file_[A-Za-z0-9]+\Z")
+CONTAINER_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 MAX_STREAM_FRAME = 256_000
 MAX_STREAM_BYTES = 20_000_000
 
@@ -88,6 +90,38 @@ class AdvisorClient:
     async def respond(self, key: str, payload: dict) -> dict:
         # This adapter is internal. MCP callers can never supply this payload.
         return await self._request("POST", "responses", key, json=payload)
+
+    async def container_file(self, key: str, container_id: str, file_id: str, *,
+                             max_bytes: int) -> bytes:
+        """Download a sandbox output file, refusing anything over `max_bytes`."""
+        # Ids come from model output; the pattern keeps them from altering the path.
+        if not (CONTAINER_ID.fullmatch(container_id) and CONTAINER_ID.fullmatch(file_id)):
+            raise BadRequestError("Sandbox file reference is invalid.")
+        too_big = ProviderError(redact(f"Sandbox file is larger than {max_bytes} bytes."))
+        chunks, total = [], 0
+        try:
+            async with asyncio.timeout(self._timeout_s):
+                async with self._http.stream(
+                    "GET", f"containers/{container_id}/files/{file_id}/content",
+                    headers={"Authorization": "Bearer " + key},
+                    params={"workspace_id": self.workspace_id}, timeout=self._timeout_s,
+                ) as response:
+                    if response.status_code == 401:
+                        raise AuthRequiredError(KEY_REJECTED)
+                    if not 200 <= response.status_code < 300:
+                        raise ProviderError(redact(
+                            f"Sandbox file download failed (HTTP {response.status_code})."))
+                    declared = response.headers.get("content-length", "")
+                    if declared.isdigit() and int(declared) > max_bytes:
+                        raise too_big
+                    async for chunk in response.aiter_bytes():
+                        total += len(chunk)
+                        if total > max_bytes:
+                            raise too_big
+                        chunks.append(chunk)
+        except (httpx.TransportError, TimeoutError):
+            raise ProviderError("Sandbox file download could not be completed.") from None
+        return b"".join(chunks)
 
     async def respond_stream(self, key: str, payload: dict, on_text, check_event) -> dict:
         """Bounded SSE reader. Only final assistant output text reaches the callback.
