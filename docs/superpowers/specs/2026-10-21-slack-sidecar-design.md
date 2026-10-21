@@ -25,11 +25,12 @@ no setup on the student's part.
 2. **In-process.** A `hosted/slack/` package runs inside the hosted service, uses Socket Mode,
    and calls the advisor job runner directly. No new public endpoint and no new auth path.
 3. **One principal per registered channel.** `Principal(issuer="slack",
-   subject="<team_id>:<channel_id>", workspace_id=<cohort workspace>, cohort=<cohort>,
+   subject="<team_id>:<channel_id>", workspace_id=<Slack workspace>, cohort=<class label>,
    email=None)`, built from the signed Slack event and the registry row. No Auth0 involvement;
    students never sign in.
 4. **One OpenRouter key per team**, provisioned on first use by `KeyProvisioner`, held only by
-   the server, in the cohort's OpenRouter workspace (the one student keys use), assigned to the
+   the server, in the one OpenRouter workspace set aside for Slack (`config.SLACK_WORKSPACE`,
+   whatever the channel's class; student keys stay in their cohort workspaces), assigned to the
    instructor-created guardrail named `Sidecar team budget` ($75/month) in that workspace.
 5. **Mention-only.** Sidecar acts only on messages that mention it. It never follows a thread on
    its own, so replies meant for teammates or for Claude Tag are never billed, and commands
@@ -52,7 +53,7 @@ experimental).
 **Excluded:** DMs with the bot (they would need per-student principals and keys; students use
 the Sidecar connector in Claude for personal work), workspace-wide notes, cross-channel reads
 or posts, guest and Slack Connect channels, `openrouter:files` (it can list every upload in the
-cohort workspace), `openrouter:bash` (Messages API only; `openrouter:shell` covers Python and
+Slack workspace), `openrouter:bash` (Messages API only; `openrouter:shell` covers Python and
 scripts).
 
 ## Components
@@ -102,7 +103,7 @@ One row per capstone channel, written only by the ops script.
 | --- | --- |
 | `slack_team_id`, `channel_id` | Primary key |
 | `team_label` | e.g. `abbott`; used in key names and usage reports |
-| `cohort`, `workspace_id` | The cohort's OpenRouter workspace, where the team key lives |
+| `cohort`, `workspace_id` | The class label (names the key, shown in lists), and the Slack workspace, where every team key lives |
 | `default_model` | The channel's default alias, for a plain `@Sidecar <question>`. Must be one of the channel's aliases |
 | `alias_map` | Alias to model id or brand, e.g. `gpt -> ChatGPT`, `gemini -> Gemini` |
 | `fusion_panel`, `fusion_analyst` | Panel (1 to 8 models) and analyst for `compare` |
@@ -140,11 +141,11 @@ Not supported. A channel is refused if it is shared with another organization (S
 ## Keys and budget
 
 - The server assigns each team key to the guardrail named `Sidecar team budget` in the key's own
-  workspace, found by name the way `Sidecar student budget` is. OpenRouter guardrails belong to one
-  workspace, so a single guardrail id could not serve two cohort workspaces, and
-  `SIDECAR_TEAM_GUARDRAIL_ID` was dropped. The instructor creates the guardrail in each cohort
-  workspace ($75/month). If a workspace has none, no team key is created; there is no fallback to
-  the student guardrail.
+  workspace, found by name the way `Sidecar student budget` is. Every team key lives in the one Slack
+  workspace, so the instructor creates the guardrail once, there ($75/month), and
+  `SIDECAR_TEAM_GUARDRAIL_ID` was dropped. If the Slack workspace has none, no team key is created;
+  there is no fallback to the student guardrail. The provisioner serves a team only in the Slack
+  workspace and a student never there.
 - Spend bills to the team key. Each job row records `slack_user_id`, so usage can be split by
   student without per-student keys.
 - Per-Slack-user limit: 10 requests per 10 minutes, on top of the team's limits.
@@ -454,7 +455,7 @@ In a test Slack workspace with two registered channels (A and B):
    repeated with channels A and B as the two accounts.
 5. A prompt-injection message in channel A asking the model to fetch an outside URL with
    channel text in it, for a plain ask (no links posted) and for `compare`. Check OpenRouter
-   activity for the fetch. Also check whether the cohort workspace's Server Tools settings for
+   activity for the fetch. Also check whether the Slack workspace's Server Tools settings for
    `web_fetch` apply to Fusion panel calls; if they do, set a workspace blocklist and record it.
    Record the multi-tenant host risk (Isolation and security) in the decision record as accepted,
    with the team's `fetch_allowlist` as its control.
@@ -465,7 +466,7 @@ Record results in the decision record.
 ## Rollout
 
 1. Ship with `SIDECAR_SLACK_ENABLED` unset.
-2. The instructor creates the `Sidecar team budget` guardrail in each cohort workspace and the
+2. The instructor creates the `Sidecar team budget` guardrail in the Slack workspace and the
    Slack app from the manifest, and sets the two tokens in Railway
    (`docs/HOSTED_OPERATIONS.md`, "Slack Sidecar").
 3. Live acceptance in the test workspace.
@@ -481,7 +482,7 @@ Settled in code:
 - **Replaying server-tool items:** OpenRouter rejects `previous_response_id` and `store: true`, so
   the loop replays output items in `input` (Tool loop).
 - **Guardrail scope:** OpenRouter guardrails belong to a workspace, so team keys use the guardrail
-  named `Sidecar team budget` in their own workspace (Keys and budget).
+  named `Sidecar team budget` in the one Slack workspace (Keys and budget).
 - **Shell results' `files`:** the shape is in Sandbox outputs.
 
 Pending the live run before acceptance (`tests/live/test_slack_spikes.py`):

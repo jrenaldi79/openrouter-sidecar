@@ -66,7 +66,7 @@ async def test_register_saves_row_key_models_and_audit(rig):
 async def test_setup_failure_then_finish(rig, failure):
     if failure == "guardrail":
         rig.provisioner.error = NoGuardrailError(UNAVAILABLE)
-        reason = copy.NO_GUARDRAIL.format(cohort="2027").rstrip(".")
+        reason = copy.NO_GUARDRAIL.rstrip(".")
     elif failure == "not_set_up":  # only a missing guardrail may say "no guardrail"
         rig.provisioner.error = AuthRequiredError(NOT_SET_UP)
         reason = copy.KEY_NOT_SET_UP

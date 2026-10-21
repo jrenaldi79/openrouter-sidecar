@@ -63,7 +63,7 @@ def test_model_ids_skips_brands():
 
 def test_failure_reason_is_plain_and_never_raw():
     current = row()
-    missing = copy.NO_GUARDRAIL.format(cohort="2027").rstrip(".")
+    missing = copy.NO_GUARDRAIL.rstrip(".")
     assert failure_reason(NoGuardrailError("Couldn't create the key."), current) == missing
     assert failure_reason(BadRequestError("Choose a model."), current) == copy.MODEL_NOT_ACCEPTED
     down = failure_reason(ProviderError("key abc is down"), current)
@@ -74,7 +74,7 @@ def test_failure_reason_is_plain_and_never_raw():
 
 
 @pytest.mark.parametrize(("message", "sentence"), [
-    (NOT_SERVED, copy.KEY_NOT_SERVED.format(cohort="2027")), (NOT_SET_UP, copy.KEY_NOT_SET_UP),
+    (NOT_SERVED, copy.KEY_NOT_SERVED), (NOT_SET_UP, copy.KEY_NOT_SET_UP),
     (NOT_READY, copy.KEY_NOT_READY), (KEY_REJECTED, copy.KEY_REJECTED), (DISABLED, copy.KEY_DISABLED),
     ("secret detail nobody listed", copy.KEY_OTHER)])
 def test_key_problems_are_worded_for_admins_not_students(message, sentence):

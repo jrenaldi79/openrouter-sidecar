@@ -66,8 +66,11 @@ def _cohort(workspace_id: str) -> str | None:
 
 
 class KeyProvisioner:
-    def __init__(self, store: StudentKeyStore, manager, workspaces: set[str]):
+    def __init__(self, store: StudentKeyStore, manager, workspaces: set[str], *,
+                 team_workspaces: frozenset[str] = frozenset()):
+        """`workspaces` are the students' (cohort) workspaces; `team_workspaces` hold Slack team keys."""
         self.store, self.manager, self.workspaces = store, manager, set(workspaces)
+        self.team_workspaces = frozenset(team_workspaces)
         self._locks: dict[tuple[str, str], asyncio.Lock] = {}
 
     def _lock(self, principal: Principal) -> asyncio.Lock:
@@ -80,11 +83,13 @@ class KeyProvisioner:
         """The principal's usable key row, creating the key at OpenRouter if needed.
 
         Slack team principals must pass `team` and students must not, so a student key can
-        never be created under a team name or guardrail, nor a team key under a student's.
+        never be created under a team name or guardrail, nor a team key under a student's. Each kind is
+        served only in its own workspaces, so a student can't get a key in the Slack workspace nor a team in a
+        cohort's.
         """
         if (principal.issuer == SLACK_ISSUER) != (team is not None):
             raise BadRequestError("Team keys are only for Slack teams, and Slack teams need a team key.")
-        if principal.workspace_id not in self.workspaces:
+        if principal.workspace_id not in (self.team_workspaces if team else self.workspaces):
             raise AuthRequiredError(NOT_SERVED)
         row = await self._row(principal)
         if row is not None and row.rejected_at is None:

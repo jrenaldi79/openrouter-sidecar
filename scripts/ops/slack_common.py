@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 import httpx
 from slack_sdk.web.async_client import AsyncWebClient
 
-from openrouter_image_mcp.config import COHORT_WORKSPACES
+from openrouter_image_mcp.config import COHORT_WORKSPACES, SLACK_WORKSPACE
 from openrouter_image_mcp.errors import OpenRouterError
 from openrouter_image_mcp.hosted.app import storage_target
 from openrouter_image_mcp.hosted.openrouter_keys import KeyManager
@@ -26,7 +26,7 @@ from openrouter_image_mcp.hosted.slack.api import (
 )
 from openrouter_image_mcp.hosted.slack.principal import acting_as, team_principal
 from openrouter_image_mcp.hosted.slack.registry import ChannelRow
-from openrouter_image_mcp.hosted.slack.wiring import cohort_services
+from openrouter_image_mcp.hosted.slack.wiring import slack_services
 from openrouter_image_mcp.hosted.student_keys import StudentKeyStore
 from openrouter_image_mcp.hosted.vault import Vault
 from openrouter_image_mcp.preferences import FAMILIES
@@ -87,7 +87,7 @@ def parse_family_defaults(items: list[str]) -> dict[str, str]:
 async def model_seeder(transport=None):
     """`seed(row, family_defaults)`: save the team's per-family model defaults.
 
-    The PreferenceService is the server's own (`cohort_services`), acting as the team principal, so the
+    The PreferenceService is the server's own (`slack_services`), acting as the team principal, so the
     catalog check is the one the bot applies. It checks against the catalog with the team's key, so the
     key is created first if it does not exist yet (needs OPENROUTER_MANAGEMENT_KEY and the team guardrail).
     `transport` replaces the OpenRouter HTTP transport in tests.
@@ -96,13 +96,14 @@ async def model_seeder(transport=None):
     keys = keys_store(db_target)
     management = os.environ.get("OPENROUTER_MANAGEMENT_KEY", "").strip()
     manager = KeyManager(management, transport=transport) if management else None
-    provisioner = KeyProvisioner(keys, manager, set(COHORT_WORKSPACES.values()))
-    services = cohort_services(db_target, keys, sandbox_allowed=False, transport=transport)
+    provisioner = KeyProvisioner(keys, manager, set(COHORT_WORKSPACES.values()),
+                                 team_workspaces=frozenset({SLACK_WORKSPACE}))
+    services = slack_services(db_target, keys, sandbox_allowed=False, transport=transport)
 
     async def seed(row: ChannelRow, family_defaults: dict[str, str]) -> None:
         principal = team_principal(row.slack_team_id, row.channel_id, row)
         await provisioner.ensure(principal, team=TeamKey(row.team_label))
-        preferences = services[row.cohort].preferences
+        preferences = services.preferences
         with acting_as(principal):
             saved = preferences.get()
             await preferences.update(saved["settings_id"], saved["revision"], family_defaults=family_defaults)
@@ -110,8 +111,7 @@ async def model_seeder(transport=None):
     try:
         yield seed
     finally:
-        for service in services.values():
-            await service.client.aclose()
+        await services.client.aclose()
         if manager is not None:
             await manager.aclose()
 

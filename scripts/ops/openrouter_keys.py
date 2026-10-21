@@ -1,4 +1,4 @@
-"""Instructor tool for the Sidecar's provisioned student OpenRouter keys.
+"""Instructor tool for the Sidecar's provisioned OpenRouter keys: students' and Slack teams'.
 
 Reads OPENROUTER_MANAGEMENT_KEY from the environment and never prints it. Talks to the
 real OpenRouter management API through the server's own seam (`hosted/openrouter_keys.py`).
@@ -9,6 +9,10 @@ real OpenRouter management API through the server's own seam (`hosted/openrouter
     uv run python scripts/ops/openrouter_keys.py delete <email> [--cohort 2027] [--yes]
     uv run python scripts/ops/openrouter_keys.py usage [--csv]
     uv run python scripts/ops/openrouter_keys.py guardrails
+
+Students' keys live in their cohort's workspace; every Slack team's key lives in the one Slack workspace
+(`config.SLACK_WORKSPACE`, shown as `slack`; `--cohort slack` limits a command to it). A team's key is named
+after its label, which the commands take where a student's takes the email.
 
 `disable` blocks a student (their calls report "disabled by your instructor"). `delete`
 resets them: the Sidecar issues a fresh key on their next call.
@@ -22,11 +26,16 @@ import csv
 import os
 import sys
 
-from openrouter_image_mcp.config import COHORT_WORKSPACES
+from openrouter_image_mcp.config import COHORT_WORKSPACES, SLACK_WORKSPACE
 from openrouter_image_mcp.errors import OpenRouterError
-from openrouter_image_mcp.hosted.openrouter_keys import BUDGET_GUARDRAIL, KeyManager
+from openrouter_image_mcp.hosted.openrouter_keys import (
+    BUDGET_GUARDRAIL,
+    TEAM_GUARDRAIL,
+    KeyManager,
+)
 
 PREFIX = "Sidecar · "
+SLACK = "slack"  # the group name of the Slack workspace, beside the cohort years
 
 
 def _email(key: dict) -> str:
@@ -38,14 +47,21 @@ def _money(value) -> str:
     return f"${value:.2f}" if isinstance(value, int | float) else "?"
 
 
+def targets(group: str | None) -> list[tuple[str, str, str]]:
+    """(group, workspace id, guardrail name): each cohort's student workspace, then the Slack workspace."""
+    found = [(year, workspace, BUDGET_GUARDRAIL) for year, workspace in sorted(COHORT_WORKSPACES.items())]
+    found.append((SLACK, SLACK_WORKSPACE, TEAM_GUARDRAIL))
+    return [target for target in found if group in (None, target[0])]
+
+
+async def _sidecar_keys_in(manager: KeyManager, workspace: str) -> list[dict]:
+    return [key for key in await manager.list_keys(workspace) if key.get("name", "").startswith(PREFIX)]
+
+
 async def sidecar_keys(manager: KeyManager, cohort: str | None) -> list[tuple[str, dict]]:
-    """(cohort, key) for every Sidecar key in the cohort workspaces."""
-    found = []
-    for year, workspace in sorted(COHORT_WORKSPACES.items()):
-        if cohort in (None, year):
-            found += [(year, key) for key in await manager.list_keys(workspace)
-                      if key.get("name", "").startswith(PREFIX)]
-    return found
+    """(group, key) for every Sidecar key in the student workspaces and the Slack workspace."""
+    return [(group, key) for group, workspace, _ in targets(cohort)
+            for key in await _sidecar_keys_in(manager, workspace)]
 
 
 async def matching(manager: KeyManager, email: str, cohort: str | None) -> list[tuple[str, dict]]:
@@ -62,7 +78,7 @@ def _row(year: str, key: dict) -> str:
 
 async def cmd_list(manager, args) -> int:
     rows = await sidecar_keys(manager, args.cohort)
-    print("cohort  created     this month  state     name")
+    print("group   created     this month  state     name")
     for year, key in rows:
         print(_row(year, key))
     print(f"{len(rows)} Sidecar keys")
@@ -110,7 +126,7 @@ async def cmd_usage(manager, args) -> int:
     rows = await sidecar_keys(manager, args.cohort)
     if args.csv:
         out = csv.writer(sys.stdout)
-        out.writerow(["cohort", "email", "usage_monthly", "usage_total", "disabled", "created_at"])
+        out.writerow(["group", "email", "usage_monthly", "usage_total", "disabled", "created_at"])
         for year, key in rows:
             out.writerow([year, _email(key), key.get("usage_monthly"), key.get("usage"),
                           bool(key.get("disabled")), key.get("created_at")])
@@ -121,26 +137,28 @@ async def cmd_usage(manager, args) -> int:
     return 0
 
 
+async def _report_guardrail(manager, group: str, workspace: str, name: str, assigned: dict) -> None:
+    guardrails = {g.get("id"): g for g in await manager.guardrails(workspace)}
+    wanted = next((g for g in guardrails.values() if g.get("name") == name), None)
+    keys = await _sidecar_keys_in(manager, workspace)
+    print(f"{group} (workspace {workspace})")
+    if wanted is None:
+        print(f"  NO '{name}' GUARDRAIL -> the server refuses to create keys here")
+    else:
+        print(f"  {name}: {_money(wanted.get('limit_usd'))} per key, reset {wanted.get('reset_interval') or 'never'}")
+    for key in keys:
+        if wanted is None or assigned.get(key.get("hash")) != wanted.get("id"):
+            other = guardrails.get(assigned.get(key.get("hash")), {})
+            print(f"  NOT ON THE BUDGET: {key.get('name')} -> {other.get('name') or 'no guardrail'}")
+    on_budget = sum(1 for key in keys if wanted and assigned.get(key.get("hash")) == wanted.get("id"))
+    print(f"  {on_budget} of {len(keys)} Sidecar keys on the budget")
+
+
 async def cmd_guardrails(manager, args) -> int:
+    """Each student workspace needs its student budget guardrail; the Slack workspace, the team budget one."""
     assigned = {row.get("key_hash"): row.get("guardrail_id") for row in await manager.key_assignments()}
-    for year, workspace in sorted(COHORT_WORKSPACES.items()):
-        if args.cohort not in (None, year):
-            continue
-        guardrails = {g.get("id"): g for g in await manager.guardrails(workspace)}
-        budget = next((g for g in guardrails.values() if g.get("name") == BUDGET_GUARDRAIL), None)
-        keys = [key for y, key in await sidecar_keys(manager, year)]
-        print(f"{year} (workspace {workspace})")
-        if budget is None:
-            print(f"  NO '{BUDGET_GUARDRAIL}' GUARDRAIL -> the server refuses to create keys here")
-        else:
-            print(f"  {BUDGET_GUARDRAIL}: {_money(budget.get('limit_usd'))} per key, reset "
-                  f"{budget.get('reset_interval') or 'never'}")
-        for key in keys:
-            if budget is None or assigned.get(key.get("hash")) != budget.get("id"):
-                other = guardrails.get(assigned.get(key.get("hash")), {})
-                print(f"  NOT ON THE BUDGET: {key.get('name')} -> {other.get('name') or 'no guardrail'}")
-        on_budget = sum(1 for key in keys if budget and assigned.get(key.get("hash")) == budget.get("id"))
-        print(f"  {on_budget} of {len(keys)} Sidecar keys on the budget")
+    for group, workspace, name in targets(args.cohort):
+        await _report_guardrail(manager, group, workspace, name, assigned)
     return 0
 
 
@@ -153,7 +171,7 @@ def _parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     for name in COMMANDS:
         command = sub.add_parser(name)
-        command.add_argument("--cohort", choices=sorted(COHORT_WORKSPACES))
+        command.add_argument("--cohort", choices=[*sorted(COHORT_WORKSPACES), SLACK])
         if name in ("show", "disable", "enable", "delete"):
             command.add_argument("email")
     sub.choices["delete"].add_argument("--yes", action="store_true", help="really delete")

@@ -4,10 +4,10 @@ import asyncio
 
 import httpx
 import pytest
-from helpers import WS_2027
 from slack_fakes import FakeSlack
 
 from openrouter_image_mcp.advisor_client import AdvisorClient
+from openrouter_image_mcp.config import SLACK_WORKSPACE
 from openrouter_image_mcp.errors import (
     BadRequestError,
     ContainerFileTooLargeError,
@@ -162,7 +162,7 @@ async def test_real_client_over_cap_is_reported_as_the_size_limit():
             return httpx.Response(200, content=b"x" * (MAX_BYTES + 1))
         return httpx.Response(500)
 
-    client = AdvisorClient(WS_2027, 30, transport=httpx.MockTransport(handle))
+    client = AdvisorClient(SLACK_WORKSPACE, 30, transport=httpx.MockTransport(handle))
     notes = await post(FakeSlack(), client, ("f1", "outputs/big.bin"), ("f2", "outputs/gone.bin"))
     assert notes == [f"big.bin wasn't posted: {BIG}", f"gone.bin wasn't posted: {FETCH}"]
 

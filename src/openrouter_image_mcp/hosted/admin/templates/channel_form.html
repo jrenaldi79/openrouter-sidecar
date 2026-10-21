@@ -21,14 +21,14 @@
   {% for field in ["default_model", "alias_map", "fusion_panel", "fusion_analyst", "subagent_model", "fetch_allowlist", "daily_cap_usd", "max_concurrent", "invoker_allowlist", "family_models"] %}
   <input type="hidden" name="orig_{{ field }}" value="{{ orig[field]|tojson|forceescape }}">
   {% endfor %}
-  <p><span class="muted">Label</span> <code>{{ row.team_label }}</code> · <span class="muted">Cohort</span> <code>{{ row.cohort }}</code></p>
+  <p><span class="muted">Label</span> <code>{{ row.team_label }}</code> · <span class="muted">Class</span> <code>{{ row.cohort }}</code></p>
   <p class="muted">{{ copy.LABEL_FIXED }}</p>
   {% else %}
   <label>Label
     <input name="label" value="{{ values.label }}" required maxlength="40" pattern="[a-z0-9\-]{1,40}" autocomplete="off">
     <small>{{ copy.LABEL_HELP }}</small>
   </label>
-  <label>Cohort
+  <label>Class
     <select name="cohort">
       {% for c in cohorts %}
       <option value="{{ c }}"{% if c == values.cohort %} selected{% endif %}>{{ c }}</option>

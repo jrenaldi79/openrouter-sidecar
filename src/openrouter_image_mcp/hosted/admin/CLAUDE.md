@@ -58,7 +58,7 @@ read_when: "Changing or adding files in src/openrouter_image_mcp/hosted/admin/."
   `mpd-auth`, never from this repo.
 - The client secret is never logged or rendered. Sessions and pending logins are stored hashed.
 - Registry writes and their audit entries share one transaction.
-- A missing `Sidecar team budget` guardrail is `errors.NoGuardrailError`; the page shows the `NO_GUARDRAIL` sentence and
+- A missing `Sidecar team budget` guardrail (in the one Slack workspace, `config.SLACK_WORKSPACE`) is `errors.NoGuardrailError`; the page shows the `NO_GUARDRAIL` sentence and
   leaves the row off with Finish setup. Until the team has a key its saved models read as nothing saved, so the model
   selects stay on and Finish setup posts the typed ones.
 - A row turns on only when its `default_model` alias resolves to a model: a brand alias needs its family's model, an

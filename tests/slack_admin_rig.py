@@ -119,7 +119,7 @@ class Rig:
         self.slack.users = {"U1": {"profile": {"display_name": "Zed"}}, "U2": {"profile": {"display_name": "Ana"}}}
         self.client, self.provisioner = FakeClient(), FakeProvisioner()
         self.prefs = FakePreferences(self.provisioner)
-        services = {c: SimpleNamespace(preferences=self.prefs, client=self.client) for c in ("2027", "2028")}
+        services = SimpleNamespace(preferences=self.prefs, client=self.client)
         self.admin = ChannelAdmin(self.registry, self.slack, services, self.provisioner, self.audit,
                                   utcnow=lambda: NOW)
 

@@ -67,7 +67,7 @@ def new_row(team_id: str, channel_id: str, label: str, cohort: str, *, fusion_pa
         raise ValueError(f"Unknown cohort {cohort!r}.")
     optional.setdefault("default_model", "gemini")
     optional["alias_map"] = dict(optional.get("alias_map", DEFAULT_ALIASES))
-    return ChannelRow(team_id, channel_id, label, cohort, config.COHORT_WORKSPACES[cohort],
+    return ChannelRow(team_id, channel_id, label, cohort, config.SLACK_WORKSPACE,
                       fusion_panel=tuple(fusion_panel), fusion_analyst=fusion_analyst,
                       subagent_model=subagent_model, **optional)
 
@@ -77,6 +77,8 @@ def _validate(row: ChannelRow) -> None:
         raise ValueError("team_label must match ^[a-z0-9-]{1,40}$.")
     if row.cohort not in config.COHORT_WORKSPACES:
         raise ValueError(f"Unknown cohort {row.cohort!r}.")
+    if row.workspace_id != config.SLACK_WORKSPACE:
+        raise ValueError("A Slack team's workspace must be the Slack workspace.")
     if len(row.fusion_panel) not in PANEL_SIZE:
         raise ValueError("fusion_panel needs 1 to 8 models.")
     if not (row.slack_team_id and row.channel_id):
@@ -166,8 +168,6 @@ class ChannelRegistry:
         unknown = set(changes) - allowed
         if unknown:
             raise ValueError(f"Cannot update: {', '.join(sorted(unknown))}.")
-        if "cohort" in changes and changes["cohort"] in config.COHORT_WORKSPACES:
-            changes["workspace_id"] = config.COHORT_WORKSPACES[changes["cohort"]]
         for name, kind in _JSON.items():
             if name in changes:
                 changes[name] = kind(changes[name])

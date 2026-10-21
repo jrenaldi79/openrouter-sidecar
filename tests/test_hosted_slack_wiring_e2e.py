@@ -70,7 +70,7 @@ async def setup_team(app, slack):
     slack.users["U1"] = {"profile": {"display_name": "Ana"}}
     principal = team_principal("T1", "C1", row)
     await deps.provisioner.ensure(principal, team=TeamKey(row.team_label))
-    preferences = app.services["2027"].preferences
+    preferences = app.services.preferences
     with acting_as(principal):
         saved = preferences.get()
         await preferences.update(saved["settings_id"], saved["revision"], general_default=MODEL,
