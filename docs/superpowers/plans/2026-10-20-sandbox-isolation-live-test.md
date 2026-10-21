@@ -202,5 +202,5 @@ already staged in the container. B's grep found its own per-turn bundles under
 container expiry, visible to instructors but not to other students, so the student notice
 should say sandbox files and inputs stay in the container, not only generated outputs.
 
-**Go.** Every go criterion holds. Enabling the sandbox for students is the instructor's call;
-until then the flag stays unset.
+**Go.** Every go criterion holds. The flag was unset after the window, then turned on for
+students the same day at the user's request (`SIDECAR_SANDBOX_ENABLED=true`).

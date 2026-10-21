@@ -110,7 +110,7 @@ async def test_large_inline_files_get_gemini_cache_breakpoint(make):
 
 async def test_sandbox_refused_while_disabled(make):
     service, _ = make(**INLINE)
-    with pytest.raises(BadRequestError, match="isolation"):
+    with pytest.raises(BadRequestError, match="turned off"):
         await service.start(MODEL, "Box", sandbox=True)
     assert service.list() == []
 

@@ -153,7 +153,7 @@ async def test_hosted_sandbox_is_disabled_and_chats_are_private(running):
     running.keys.insert(bob, "sk-or-v1-bob", "hash-bob", "Bob key")
     async with running.client(running.token()) as alice:
         refused = await alice.call_tool("ask_advisor", {"prompt": "x", "model": MODEL, "sandbox": True})
-        assert refused.is_error and "isolation" in _text(refused)
+        assert refused.is_error and "turned off" in _text(refused)
         asked = (await alice.call_tool("ask_advisor", {"prompt": "Mine", "model": MODEL})).structured_content
     async with running.client(running.token(sub="email|bob")) as client:
         foreign = await client.call_tool("ask_advisor", {"prompt": "Show me", "chat_id": asked["chat_id"]})

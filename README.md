@@ -44,7 +44,7 @@ The server takes the workspace from the signed-in profile; there is no personal-
 
 **What is stored on the server:** advisor transcripts and any files you chose to send, job metadata and costs, preferences, your encrypted OpenRouter key, and image uploads and results. Auth0 tokens and model reasoning traces are not stored. Chats idle for 90 days are purged, and images are kept for 30 days. See [the decision record](docs/superpowers/specs/2026-10-18-hosted-decision-record.md). The student-facing notice wording is not yet approved.
 
-**Per-person limits** (server defaults): 2 concurrent advisor jobs, 20 requests per minute and $5.00 per day of reported advisor cost; image calls are limited to 2 at a time and 20 per minute. The advisor sandbox (a shell for the advisor) is disabled, so advisor sessions are inline: files go into the prompt and the advisor has no tools.
+**Per-person limits** (server defaults): 2 concurrent advisor jobs, 20 requests per minute and $5.00 per day of reported advisor cost; image calls are limited to 2 at a time and 20 per minute. Advisor sessions are inline by default: files go into the prompt and the advisor has no tools. A chat started with `sandbox: true` gives the advisor a shell with no network; files sent to it and files it writes stay in the class workspace for 30 days, where instructors (not other students) can see them.
 
 The connector brings its own workflow guide (server instructions) and the class skills, adapted for hosted use, as prompts and `skill://` resources: `openrouter-image` and `architectural-render-polish`. Nothing needs installing in claude.ai or Claude Desktop, and Claude can pass these skills to an advisor.
 
@@ -84,7 +84,7 @@ Operators: see [docs/HOSTED_OPERATIONS.md](docs/HOSTED_OPERATIONS.md) for config
 | `wait_advisor_job` | Headless: keeps waiting for a long `ask_advisor` job and returns the same result shape. |
 | `list_advisor_chats` | Lists your chats. |
 | `get_advisor_chat` | Shows metadata and a bounded message count, without returning the transcript to the parent model. |
-| `reset_advisor_sandbox` | Assigns a fresh container while preserving chat history. Only relevant to sandbox chats, which are disabled on the server. |
+| `reset_advisor_sandbox` | Assigns a fresh container while preserving chat history. Only relevant to sandbox chats. |
 | `delete_advisor_chat` | Deletes the owned transcript and mapping. |
 | `retry_advisor_cleanup` | Retries exact recorded skill-upload deletions without inference. |
 | `get_advisor_job` | Checks an owned job's status, cost, and cleanup without reading the answer. |

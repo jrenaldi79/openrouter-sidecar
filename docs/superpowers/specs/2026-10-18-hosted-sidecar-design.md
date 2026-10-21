@@ -123,9 +123,10 @@ accepted).
   (refreshed every turn) and works in `/workspace/project/work`. `max_tool_calls`
   rises from 8 to 24. Re-uploading every turn makes container expiry or reset
   harmless for inputs, so no expiry detection is needed.
-- **Sandbox is disabled by a server flag** until per-student isolation is solved. A
-  2026-10-05 live test showed another key could list and download uploads and
-  generated container files in the shared cohort workspace. While disabled,
+- **Sandbox is gated by a server flag** (`SIDECAR_SANDBOX_ENABLED`). A 2026-10-05 live
+  test showed another key could list and download uploads and generated container files
+  in the shared cohort workspace, so it stayed off until students stopped holding keys.
+  It was turned on on 2026-10-21 after a live two-account test. While off,
   `sandbox: true` returns an explanatory error.
 
 ## 4. Hosted images
@@ -207,7 +208,7 @@ TDD throughout.
 ## Open items
 
 - Unified-auth contract finalization (separate sub-project).
-- Per-student isolation for sandbox mode (per-student workspaces or a verified
-  provider control). Until then sandbox stays disabled.
+- Per-student isolation for sandbox mode: resolved on 2026-10-21 by server-held keys
+  (see the sandbox isolation live test plan); sandbox is on.
 - class-identity's open gates (production SMTP, Railway backups needing Pro) apply to
   any student rollout on the shared tenant.

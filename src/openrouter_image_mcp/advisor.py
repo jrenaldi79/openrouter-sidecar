@@ -21,8 +21,8 @@ from .session_files import FilePacket, SessionFiles, validate_files
 __all__ = ["INSTRUCTIONS", "RETENTION", "AdvisorService", "FilePacket", "SkillPacket"]
 
 RETENTION = (
-    "Shareable skills only. Generated container home files may remain for 30 days "
-    "after last use. Reset changes the working container; it does not erase the old "
+    "Shareable skills only. In a sandbox chat, the files sent and the files the advisor "
+    "writes stay in its container for 30 days after last use (instructors can see them). Reset changes the working container; it does not erase the old "
     "provider container. Transcripts are stored locally, not as container files."
 )
 

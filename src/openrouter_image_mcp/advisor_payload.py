@@ -34,9 +34,8 @@ the evidence needed to assess them.
 """
 
 SANDBOX_DISABLED = (
-    "Sandbox sessions are disabled on this server until per-student isolation is "
-    "available: files uploaded to the shared cohort workspace could be read by other "
-    "keys in it. Use an inline session (the default); pass files with `files`."
+    "Sandbox sessions are turned off on this server. Use an inline session (the "
+    "default); pass files with `files`."
 )
 
 

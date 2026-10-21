@@ -133,7 +133,7 @@ async def test_other_account_cannot_wait_on_job(keys, rig):
 
 
 @pytest.mark.parametrize("arguments,match", [
-    ({"prompt": "x", "model": MODEL, "sandbox": True}, "isolation"),
+    ({"prompt": "x", "model": MODEL, "sandbox": True}, "turned off"),
     ({"prompt": "x", "model": MODEL, "wait_s": 46}, "wait_s"),
     ({"prompt": "x", "model": MODEL, "wait_s": True}, "wait_s"),
     ({"prompt": "x", "model": MODEL, "container_id": "nu_other"}, "Unsupported"),

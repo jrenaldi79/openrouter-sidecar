@@ -25,10 +25,10 @@
    - Chats idle for 90 days are purged with their jobs and files. Expired link attempts go after 1 day.
    - Provider-side container files follow OpenRouter's own expiry (30 days idle).
    - Generated images and uploads (M3) are kept for 30 days from creation. The server sweeps them hourly; each account is capped at 2 GB.
-6. **Sandbox mode stays disabled** (`SIDECAR_SANDBOX_ENABLED` unset). On 2026-10-05 a live test showed that another key in the shared cohort workspace could list and download uploads. Inline sessions send files in the prompt and offer no tools.
+6. **Sandbox mode** was disabled (`SIDECAR_SANDBOX_ENABLED` unset) until 2026-10-21. On 2026-10-05 a live test showed that another key in the shared cohort workspace could list and download uploads. Inline sessions send files in the prompt and offer no tools.
    - 2026-10-21: the live two-account test (`../plans/2026-10-20-sandbox-isolation-live-test.md`) passed every
-     go criterion now that students never hold keys. The flag was set only for the test window and unset
-     afterwards; enabling sandbox mode for students is a separate instructor decision.
+     go criterion now that students never hold keys. The user then turned it on for students the same day
+     (`SIDECAR_SANDBOX_ENABLED=true`). Chats stay inline unless started with `sandbox: true`.
 7. **Spend.** Each student's own OpenRouter key is charged, within the cohort workspace. Server limits: 2 concurrent jobs, 20 requests/min, $5/day per principal.
    - 2026-10-19: OpenRouter linking was replaced by provisioned keys. The server creates one key per student and cohort with an org management key (`OPENROUTER_MANAGEMENT_KEY`); each cohort workspace's default guardrail budgets every key at $25/month. Students need no OpenRouter account. See `2026-10-19-provisioned-student-keys-design.md`.
 8. **Local stdio server** stays until M5 parity, then it is retired.
@@ -44,3 +44,6 @@
 > Your OpenRouter key is stored encrypted and is only used for your own requests,
 > which are billed to your key. Instructors can disable access at any time. Don't
 > send confidential or personal information you wouldn't put in a class assignment.
+> If you ask for a sandbox (where the advisor can run code), the files you send it and
+> the files it creates stay in the class's OpenRouter workspace for 30 days, where
+> instructors can see them; other students can't.
