@@ -133,6 +133,7 @@ Rollback: redeploy the previous image. Schema changes are additive (`CREATE TABL
 - **Link signing key** (`LINK_SIGNING_KEY`). Replace it and deploy. Outstanding upload and import URLs (10 minutes) and download links (24 hours) stop working; ask for fresh ones.
 - **Management key** (`OPENROUTER_MANAGEMENT_KEY`). Create a new management key in OpenRouter, set it yourself with `railway variables set OPENROUTER_MANAGEMENT_KEY=…` (at a quiet time, see §4), then delete the old one in OpenRouter. Student keys are unaffected.
 - **A student's OpenRouter key.** `scripts/ops/openrouter_keys.py delete <email> --yes`. Their next call gets a fresh key.
+- **Everything at once** (a leak of the Railway variables). Run `uv run python scripts/ops/rotate_secrets.py` on a Mac. It asks you to copy each new key (management key, both Slack tokens, the admin client secret) and reads it from the clipboard, generates `VAULT_KEYS` and `LINK_SIGNING_KEY`, and sets them all without a deploy. Its `VAULT_KEYS` holds no old entry, because the old key must stop working, so afterwards delete every stored student and team key (§7, "The database is exposed"). The Postgres password is not covered: change it in Postgres, then update `POSTGRES_PASSWORD` and `PGPASSWORD` on the Postgres service.
 
 ## 6. Retention purge
 

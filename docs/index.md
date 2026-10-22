@@ -173,6 +173,7 @@ Filenames grouped by folder; each heading links that folder's note.
 - [scripts/ops/acceptance&#95;probe.py](../scripts/ops/acceptance_probe.py)
 - [scripts/ops/openrouter&#95;keys.py](../scripts/ops/openrouter_keys.py)
 - [scripts/ops/real&#95;login.py](../scripts/ops/real_login.py)
+- [scripts/ops/rotate&#95;secrets.py](../scripts/ops/rotate_secrets.py)
 - [scripts/ops/slack&#95;channels.py](../scripts/ops/slack_channels.py)
 - [scripts/ops/slack&#95;common.py](../scripts/ops/slack_common.py)
 - [scripts/ops/slack&#95;usage.py](../scripts/ops/slack_usage.py)
