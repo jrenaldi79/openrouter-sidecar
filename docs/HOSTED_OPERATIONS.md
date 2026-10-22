@@ -117,8 +117,8 @@ Railway restarts the service on every deploy, **and on every variable change**. 
    ```
 
    Deploy only when it prints `{"active_jobs": 0}`. Jobs run at most 30 minutes (`ADVISOR_MAX_TIMEOUT_S`).
-2. Deploy (`railway up`, or a manual deploy of the commit).
-3. Verify `/health` and `/ready`.
+2. Deploy from a clean, current `main` in the repo folder: `railway up --service sidecar --detach`. Deploys come from the CLI; a push to GitHub ships nothing. `railway redeploy` repeats the last build, and Railway may refuse it during its own incidents (it did on 2026-10-22), so `railway up` is the reliable path.
+3. Verify `/health` and `/ready`. After a change to secrets, run the full check in §7 ("Checks after a rotation").
 
 `SIDECAR_MAINTENANCE=true` is not a drain switch, because setting it restarts the service. Use it to keep a broken or mid-migration deployment closed: tool calls are refused and `/ready` reports maintenance. Clear it to reopen.
 
@@ -133,7 +133,7 @@ Rollback: redeploy the previous image. Schema changes are additive (`CREATE TABL
 - **Link signing key** (`LINK_SIGNING_KEY`). Replace it and deploy. Outstanding upload and import URLs (10 minutes) and download links (24 hours) stop working; ask for fresh ones.
 - **Management key** (`OPENROUTER_MANAGEMENT_KEY`). Create a new management key in OpenRouter, set it yourself with `railway variables set OPENROUTER_MANAGEMENT_KEY=…` (at a quiet time, see §4), then delete the old one in OpenRouter. Student keys are unaffected.
 - **A student's OpenRouter key.** `scripts/ops/openrouter_keys.py delete <email> --yes`. Their next call gets a fresh key.
-- **Everything at once** (a leak of the Railway variables). Run `uv run python scripts/ops/rotate_secrets.py` on a Mac. It asks you to copy each new key (management key, both Slack tokens, the admin client secret) and reads it from the clipboard, generates `VAULT_KEYS` and `LINK_SIGNING_KEY`, and sets them all without a deploy. Its `VAULT_KEYS` holds no old entry, because the old key must stop working, so afterwards delete every stored student and team key (§7, "The database is exposed"). The Postgres password is not covered: change it in Postgres, then update `POSTGRES_PASSWORD` and `PGPASSWORD` on the Postgres service.
+- **Everything at once** (a leak of the Railway variables). Run `uv run python scripts/ops/rotate_secrets.py` on a Mac. It asks you to copy each new key (management key, both Slack tokens, the admin client secret) and reads it from the clipboard, generates `VAULT_KEYS` and `LINK_SIGNING_KEY`, and sets them all without a deploy. Its `VAULT_KEYS` holds no old entry, because the old key must stop working, so afterwards delete every stored student and team key (§7, "The database is exposed"). The Postgres password is not covered: regenerate it in the Railway dashboard (§7, step 6), never by hand.
 
 ## 6. Retention purge
 
@@ -168,14 +168,21 @@ The first command is a dry run. Review its counts before running `--apply`. To a
   3. **Slack app-level token.** On Basic Information, App-Level Tokens: generate a new token with `connections:write`, leave its dialog open for step 4, then revoke the old token. The new token can't be shown again once the dialog closes.
   4. **Set them in Railway.** From the repo folder (from anywhere else the script path isn't found): `uv run python scripts/ops/rotate_secrets.py` (§5). Copy each key when it asks. Skip the Auth0 secret with `--only` if you rotate it later.
   5. **Auth0 admin client secret.** Rotate it on the MPD Sidecar Admin client, with the mpd-auth owner told first (§10), then `rotate_secrets.py --only SIDECAR_ADMIN_CLIENT_SECRET`.
-  6. **Postgres password.** Change it in Postgres, then `POSTGRES_PASSWORD` and `PGPASSWORD` on the Postgres service; `DATABASE_URL` follows by reference.
-  7. **Deploy or restart** at a quiet time (§4); until then the server keeps the old values. Then delete every stored student and team key (the bullet above), revoke anything old that is still live, and check `openrouter_keys.py list` for keys the Sidecar didn't create.
+  6. **Postgres password.** Railway dashboard → `openrouter-sidecar` → `Postgres` → **Database** → **Config** → Connection → **Regenerate** ([Railway's guide](https://blog.railway.com/p/security-disclosure-recommendation-rotate-postgresql-database-credentials)). Railway changes the role's password and the Postgres service's variables (`POSTGRES_PASSWORD`, `PGPASSWORD`, `DATABASE_URL`) together and restarts Postgres. The sidecar's `DATABASE_URL` is a reference, so it picks up the new password at the next deploy; until then the running server can't open new connections. Never run `ALTER USER` or edit those variables by hand: the password and the variables drift apart. The CLI has no command for this. To confirm the change without printing the URL, compare a hash before and after: `railway variable list --service Postgres --environment production --kv | grep '^DATABASE_URL=' | shasum | cut -c1-12`.
+  7. **Deploy** at a quiet time (§4); until then the server keeps the old values. Then clear every stored student and team key. They are sealed with the removed vault key, so the server can't open them (`Unknown vault key version`) and calls for those principals fail until the row is gone:
+     - Delete the keys at OpenRouter: `railway run uv run python scripts/ops/openrouter_keys.py list`, then `delete <email-or-label> --yes` for each. This needs only the management key, not the vault. `list` should then show 0 Sidecar keys.
+     - Delete the rows: `DELETE FROM student_keys;` (team keys share the table). Use the Postgres service's **Data** tab in the dashboard, which keeps the database private. From a laptop instead: `railway tcp-proxy create --port 5432 --service Postgres` opens a public address; run the delete with `psql -v ON_ERROR_STOP=1` against it, check `SELECT count(*) FROM student_keys` returns 0 in a separate call, then `railway tcp-proxy delete` at once and confirm `railway tcp-proxy list` is empty.
+     - Students and teams get a fresh key on their next call. Revoke anything old that is still live, and check `openrouter_keys.py list` for keys the Sidecar didn't create.
   8. Clear your clipboard manager's history if it keeps one.
-  9. **The other MPD projects on the same Railway account** leaked too. On 2026-10-22, `mpd-class-mcp` (the Interview Coach) was rotated as follows:
-     - Its two Auth0 client secrets were rotated with `auth0 api post clients/<id>/rotate-secret`, piped into `railway variable set --stdin` without being printed: MPD Class MCP roster reader (`AUTH0_MGMT_CLIENT_SECRET`) and MPD MCP Admin (`AUTH0_CLIENT_SECRET`). The rotation kills the old secret at once.
-     - `SESSION_SECRET` was set from `openssl rand -hex 32`.
-     - The provider keys were set with `rotate_secrets.py --target coach`.
-     - Resend has a second key for Auth0's SMTP relay, which sends the sign-in codes. That one isn't in Railway; leave it. The coach's key is the one whose prefix matches its `RESEND_API_KEY`.
+  9. **The other MPD projects on the same Railway account** leaked too. `mpd-class-mcp` (the Interview Coach) has its own script and guide in its repo: `npm run secrets:rotate` and `docs/secret-rotation.md`. `mpd-claude-cloud-mcp-bridge` is still in development: regenerate its Postgres password and rotate the `mpd_identity_app` role's password before it launches.
+  10. **Check** (below), then record what was done in `docs/superpowers/status/` (the 2026-10-22 run: `2026-10-22-railway-leak-rotation.md`).
+- **Checks after a rotation.** Run them after the deploy; each proves a different secret.
+  - `/health` and `/ready` (the database password and the owner lock); `curl -s -o /dev/null -w '%{http_code}' https://sidecar-production-e110.up.railway.app/mcp` returns 401.
+  - The deploy log shows the Slack Socket Mode session connected (both Slack tokens) and no `authentication failed` lines.
+  - `/admin` sign-in works (`SIDECAR_ADMIN_CLIENT_SECRET`).
+  - The operator probe from §3 step 6 (`real_login.py --prompt-login --audience https://<domain>/mcp`, then `acceptance_probe.py --url https://<domain>/mcp`): every check passes. Its `account_status` issues the signed-in account a new key (management key and new vault key), and its image upload and download use signed links (`LINK_SIGNING_KEY`).
+  - `railway run uv run python scripts/ops/openrouter_keys.py guardrails` (the management key can read each workspace's guardrail).
+  - Delete `.dev-state/real-token` afterwards.
 - **Logs** never contain bearer tokens, OpenRouter keys (management or student) or signed upload/download tokens. Key hashes may appear; they are not secrets. Anything that looks like a key is a bug to report.
 
 ## 8. Student OpenRouter keys

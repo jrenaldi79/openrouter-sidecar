@@ -17,18 +17,17 @@ by path, not repeated.
 - **Code:** the Slack Sidecar (plan Tasks 0–23), the `/admin` UI (plan Tasks 1–9), the single Slack workspace move
   and the sandbox folders fix are all on `main`, which equals `feat/slack-sidecar`. CI is green on Linux, macOS and
   Windows. The last full run gave 2919 passed, 22 skipped, Postgres included.
-- **Production is still on the old build.** Railway service `sidecar`
-  (`https://sidecar-production-e110.up.railway.app`) is running deployment `cb472970` from 2026-10-21 06:27 UTC,
-  which has none of this work. Railway paused builds on every plan (status page incident "Dashboard and API
-  unavailable, builds paused"). `railway up` answered "Deploys have been paused temporarily" on every try. A retry
-  loop ran about 6 hours, then was stopped for this handoff. **Nothing has been deployed.**
-- **Staged in Railway** with `--skip-deploys`, so the next deploy picks them up and turns the bot on:
-  `SIDECAR_SLACK_ENABLED=true`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `SIDECAR_ADMIN_CLIENT_ID`,
-  `SIDECAR_ADMIN_CLIENT_SECRET`. The maintainer entered the secrets; all five were checked present by name.
+- **Production runs `main`.** Railway service `sidecar` (`https://sidecar-production-e110.up.railway.app`) runs
+  deployment `fe83ea67` from `main` (`62eaf29`), deployed 2026-10-22 22:03 UTC once Railway reopened builds. The
+  Slack bot and `/admin` are live: Socket Mode connected at boot, `/health` and `/ready` pass, `/admin` signs in and
+  the operator probe passes.
+- **Every secret was rotated** on 2026-10-22 after Railway's breach, and the stored student keys were cleared:
+  `docs/superpowers/status/2026-10-22-railway-leak-rotation.md`.
 - **Slack app:** "Sidecar", App ID `A0CB1AQM8EA`, in the Northwestern MPD workspace. It uses Socket Mode, so there is
   no request URL. The bot token is `xoxb-`; the app-level token is `xapp-` with `connections:write`.
-- **OpenRouter:** the guardrail `Sidecar team budget` exists in the Slack workspace
-  (`config.SLACK_WORKSPACE`). Team keys are created only under it.
+- **OpenRouter:** the guardrail `Sidecar team budget` is **missing** from the Slack workspace
+  (`config.SLACK_WORKSPACE`; `openrouter_keys.py guardrails`, 2026-10-22). Team keys are created only under it, so
+  none can be created until it exists.
 - **Auth0:** the client "MPD Sidecar Admin" was created through the `auth0` CLI. It is a regular web app using
   `authorization_code` only; its only connection is `email`, and its grants carry `sidecar:use` and `sidecar:admin`.
   Callbacks are prod and `localhost:8000`. The ids are in `docs/HOSTED_OPERATIONS.md` §10. The change is logged in
@@ -43,17 +42,10 @@ by path, not repeated.
 
 ## Next steps, in order
 
-1. **Deploy once Railway builds reopen.** Check status.railway.com. Then, from a clean checkout of `main`'s tip:
-   - Check the service is quiet. `railway logs --since 35m --service sidecar` should show only `GET /health` and
-     `GET /ready`; otherwise wait, since a restart interrupts in-process advisor jobs. `railway run ... active-jobs`
-     can't reach the private Postgres from a laptop, and `railway ssh` is blocked from the maintainer's network.
-   - Run `railway up --service sidecar --ci`. Output containing "deploys have been paused" or "not signed in" means
-     nothing deployed, even on exit 0.
-   - If the CLI is signed out, the maintainer runs `railway login`.
-2. **Verify:**
-   - `curl` `/health` and `/ready`.
-   - The logs show the Slack Socket Mode connection, with no errors at boot.
-   - `/admin` signs in with an admin account.
+1. **Deploy and verify: done** on 2026-10-22 (see "Where things stand"). Later deploys follow
+   `docs/HOSTED_OPERATIONS.md` §4.
+2. **Create the `Sidecar team budget` guardrail** in the Slack workspace, then check it with
+   `railway run uv run python scripts/ops/openrouter_keys.py guardrails`.
 3. **Live acceptance, with the maintainer:**
    - Slack: `docs/superpowers/plans/2026-10-21-slack-sidecar.md`, "Task 24: Live acceptance", and the spec's
      "Live acceptance" items 1–6 in `docs/superpowers/specs/2026-10-21-slack-sidecar-design.md`.
@@ -90,9 +82,6 @@ by path, not repeated.
 
 - `scripts/ops/slack_channels.py` still runs its own registry and Slack checks. Move it onto
   `hosted/slack/channel_admin.py` (`ChannelAdmin`), which `/admin` already uses, so the two paths can't drift.
-- Remove the merged subagent worktrees under `.claude/worktrees/agent-*` (local only).
-- Stop the throwaway local Postgres used for `pytest -m pg` (port 54999, database `sidecar_test`), if it is still
-  running.
 
 ## Where the history lives
 

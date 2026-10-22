@@ -141,6 +141,7 @@ Use maintained guidance, status, and reference documents for current decisions. 
 | [Sidecar onboarding polish](superpowers/specs/2026-10-06-sidecar-onboarding-polish-design.md) | completed | Design spec: Sidecar onboarding polish. | Revisiting the design decisions behind this feature. |
 | [Outcome-focused Sidecar walkthrough](superpowers/specs/2026-10-06-sidecar-outcome-onboarding.md) | completed | Design spec: Outcome-focused Sidecar walkthrough. | Revisiting the design decisions behind this feature. |
 | [OpenRouter Sidecar name](superpowers/specs/2026-10-06-sidecar-rename-design.md) | completed | Design spec: OpenRouter Sidecar name. | Revisiting the design decisions behind this feature. |
+| [Railway leak rotation (2026-10-22)](superpowers/status/2026-10-22-railway-leak-rotation.md) | completed | Record of the secret rotation after Railway's 2026-10-22 breach: what was rotated in each MPD project, how it was checked, what went wrong and what was still open | When rotating secrets after another leak, or checking what was changed on 2026-10-22 |
 
 ## Source inventory
 

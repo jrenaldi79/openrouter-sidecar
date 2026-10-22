@@ -1,12 +1,14 @@
-"""Rotate a Railway service's secrets, reading new keys from the macOS clipboard.
+"""Rotate the sidecar service's Railway secrets, reading new keys from the macOS clipboard.
 
-For each key made elsewhere (OpenRouter, Slack, Auth0, Tavily, ...) the script tells the operator what
+For each key made elsewhere (OpenRouter, Slack, Auth0) the script tells the operator what
 to copy, waits for Enter, reads the clipboard with `pbpaste`, checks the value's shape and clears the
 clipboard. Values that need no provider are generated here. Nothing is set until the operator confirms
 the summary; each value then goes to `railway variable set KEY --stdin --skip-deploys`, so no value is
 printed, passed on a command line or deployed by this script.
 
-    uv run python scripts/ops/rotate_secrets.py [--target sidecar|coach] [--only NAME ...]
+    uv run python scripts/ops/rotate_secrets.py [--only NAME ...]
+
+The Interview Coach (mpd-class-mcp) has its own: `npm run secrets:rotate` in that repo.
 """
 
 from __future__ import annotations
@@ -62,26 +64,11 @@ SIDECAR = Target(
     ],
     """- Revoke or delete the old OpenRouter management key, Slack tokens and Auth0 secret if you haven't already.
 - The old vault key is gone, so stored student and team keys can no longer be opened:
-  delete each with scripts/ops/openrouter_keys.py delete <email-or-label> --yes and clear the student_keys rows.
-- Deploy or restart at a quiet time (docs/HOSTED_OPERATIONS.md section 4).""",
+  after the deploy, delete each with scripts/ops/openrouter_keys.py delete <email-or-label> --yes and clear the
+  student_keys rows (docs/HOSTED_OPERATIONS.md section 7, "Railway's variables leaked").
+- Deploy at a quiet time from a clean main: railway up --service sidecar --detach (section 4).""",
 )
 
-COACH = Target(
-    "mpd-class-mcp",
-    "mpd-class-mcp",
-    [
-        pasted("OPENROUTER_API_KEY", "OpenRouter > Keys: create a new key for the coach (same workspace and limit as the old one) and copy it.", "sk-or-", 32),
-        pasted("TAVILY_API_KEY", "Tavily (app.tavily.com) > API Keys: create a new key and copy it.", "tvly-"),
-        pasted("FIRECRAWL_API_KEY", "Firecrawl (firecrawl.dev/app/api-keys): create a new key and copy it.", "fc-"),
-        pasted("RESEND_API_KEY", "Resend > API Keys: create a key with the old one's permission and domain, and copy it.", "re_"),
-        pasted("SLACK_BOT_TOKEN", "Slack app MPD Interview Coach > " + SLACK_REVOKE, "xoxb-"),
-    ],
-    """- Delete the old keys in OpenRouter, Tavily, Firecrawl and Resend.
-- Update or delete the copies in mpd-class-mcp/.env, .env.bak and .env.railway.
-- Restart the coach (Railway redeploy) so it loads the new values.""",
-)
-
-TARGETS = {"sidecar": SIDECAR, "coach": COACH}
 
 
 class Stop(Exception):
@@ -191,10 +178,9 @@ def chosen(target: Target, only: list[str] | None) -> list[Step]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--target", choices=sorted(TARGETS), default="sidecar", help="which Railway service (default sidecar)")
     parser.add_argument("--only", nargs="+", metavar="NAME", help="rotate only these variables")
     args = parser.parse_args(argv)
-    target = TARGETS[args.target]
+    target = SIDECAR
     try:
         steps = chosen(target, args.only)
         project = project_id(target)
