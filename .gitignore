@@ -12,3 +12,7 @@ ui/playwright-report/
 
 # Subagent worktrees (Claude Code)
 .claude/worktrees/
+
+# Local environment files and secrets
+.env
+.env.*

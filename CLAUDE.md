@@ -83,6 +83,8 @@ Path-scoped rules live in `.claude/rules/` (TDD, code quality, testing, Python, 
 | Hosted operations (Railway, Auth0, deploy, rotation, incidents) | `docs/HOSTED_OPERATIONS.md` |
 | Local synthetic end-to-end run | `docs/E2E_LOCAL.md` |
 | Hosted design and decisions | `docs/superpowers/specs/2026-10-18-hosted-*.md` |
+| Maintainer's working agreements (any harness) | `docs/WORKING_AGREEMENTS.md` |
+| Current work and next steps | latest handoff in `docs/superpowers/status/` |
 | Every doc, classified | `docs/index.md` (metadata in `docs/catalog.json`) |
 
 ## Documentation maintenance
