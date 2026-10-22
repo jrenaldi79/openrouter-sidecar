@@ -134,10 +134,26 @@ async def test_sandbox_session_uploads_a_text_file_bundle_each_turn(make):
     payload = payloads(seen)[-1]
     assert payload["tools"][0]["parameters"]["environment"]["file_ids"]
     assert payload["max_tool_calls"] == 24
-    assert "/workspace/project/inputs" in payload["instructions"]
+    instructions = payload["instructions"]
+    assert "/tmp/sidecar/inputs/<path>" in instructions and "/workspace/home/work/" in instructions
+    assert "/tmp/sidecar/scratch/" in instructions and "absolute or has a .. segment" in instructions
+    assert "persists between turns" not in instructions and "/workspace/project" not in instructions
     assert sum(r.method == "DELETE" for r in seen) == 1
     await service.send(chat["chat_id"], "Again")
     assert sum(r.method == "POST" and r.url.path.endswith("/files") for r in seen) == 2
+
+
+async def test_sandbox_instructions_reset_inputs_and_forbid_final_reports_for_students(make):
+    from openrouter_image_mcp.advisor_payload import INSTRUCTIONS
+
+    service, seen = make(sandbox_default=False, sandbox_allowed=True)
+    chat = await service.start(MODEL, "Box", sandbox=True)
+    await service.send(chat["chat_id"], "No files this turn")
+    instructions = payloads(seen)[-1]["instructions"]
+    assert instructions == INSTRUCTIONS
+    assert "Do not write conversation transcripts, task briefs or your final answer into" in instructions
+    assert "remove\n/tmp/sidecar/inputs if it exists" in instructions
+    assert "persists between turns" not in instructions and "/workspace/project" not in instructions
 
 
 async def test_legacy_stdio_chats_keep_the_shell(make):

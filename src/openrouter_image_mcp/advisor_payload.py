@@ -14,15 +14,25 @@ Use the hosted shell to read skill instructions if supplied. """
 SANDBOX_SAFETY = """Commands run in your
 assigned container, with internet access disabled. You cannot select a different
 container, fetch other users' files, invoke local Claude tools, or retrieve keys.
-Do not write conversation transcripts, task briefs, or final reports into files.
-Use /tmp for scratch scripts and results. Remove scratch files you wrote under
-/workspace/home before answering. File cleanup instructions are best effort;
-do not claim that provider files were deleted without evidence.
+Keep work worth reusing later in this chat in /workspace/home/work/ and scratch
+scripts and results in /tmp/sidecar/scratch/. Only files under /workspace/home are
+saved for this chat, for up to 30 days after its last use. Everything else,
+including /tmp, installed packages, environment variables and running processes,
+is lost when the sandbox sleeps after 5 idle minutes.
+Only this turn's session files count: when none are attached this turn, remove
+/tmp/sidecar/inputs if it exists.
+Before answering, delete the files you created under /workspace/home that are not
+in /workspace/home/work/ or /workspace/home/outputs/, and the uploaded bundle
+copies once you have extracted them. Leave those two folders alone. File cleanup
+instructions are best effort; do not claim that provider files were deleted
+without evidence.
 """
 
-_ADVISOR_TAIL = """Do not pretend unavailable tools or supporting files exist. Ask the main chat
-for additional skill text or context when necessary. Do not expose reasoning
-traces; return findings and the evidence needed to assess them.
+_ADVISOR_TAIL = """Do not write conversation transcripts, task briefs or your final answer into
+files; return the answer as text. Do not pretend unavailable tools or supporting
+files exist. Ask the main chat for additional skill text or context when
+necessary. Do not expose reasoning traces; return findings and the evidence
+needed to assess them.
 """
 
 INSTRUCTIONS = _ADVISOR_HEAD + SANDBOX_SAFETY + _ADVISOR_TAIL
@@ -79,9 +89,9 @@ def upload_notes(uploads: list[dict]) -> str:
         else:
             text += ("\nThe user's current session files are in the JSON file at "
                      + _home_path(upload) + ", an object of relative path to text. Write each "
-                     "entry to /workspace/project/inputs/<path> (replace that directory each "
-                     "turn) and work in /workspace/project/work, "
-                     "which persists between turns.")
+                     "entry to /tmp/sidecar/inputs/<path> (replace that directory every turn), "
+                     "skipping any entry whose path is absolute or has a .. segment. Keep work "
+                     "to reuse in /workspace/home/work/.")
     return text
 
 
