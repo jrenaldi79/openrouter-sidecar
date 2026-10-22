@@ -32,8 +32,19 @@ the Interview Coach. This page records the run.
 `SESSION_SECRET`, the OpenRouter, Tavily, Firecrawl and Resend keys, the MPD Interview Coach Slack bot token and the
 Postgres password; deployed `90162b3b` with `railway up`. Details are in that repo's `docs/secret-rotation.md`.
 
-**`mpd-claude-cloud-mcp-bridge`**: in development and unused, so it was left for later. Regenerate its Postgres
-password and rotate the `mpd_identity_app` role before it launches.
+**`mpd-claude-cloud-mcp-bridge`** (in development, unused), rotated later the same evening:
+
+- The `postgres` password, regenerated in the dashboard (the `DATABASE_URL` hash changed); Railway redeployed Postgres.
+- The `mpd_identity_app` login used by `class-identity`. It is the bridge's own role, not Railway's, so it was
+  changed with `ALTER ROLE ... PASSWORD` through a temporary TCP proxy (deleted right after). The script sent a
+  SCRAM-SHA-256 verifier, so the plaintext never reached the server or its logs. The new password was checked to
+  work and the old one to be refused, then written into `class-identity`'s `DATABASE_URL`.
+- The migrator and backup roles' passwords were never in Railway and were left alone.
+- `class-identity` is **down**. It stopped when Postgres restarted (its startup failed while the database was away),
+  and every rebuild since used the repo's root probe `Dockerfile` instead of `Dockerfile.identity`. The service's
+  saved builder is `RAILPACK` with `dockerfilePath` `Dockerfile.identity`, and Railway's new builder ignores the path.
+  The bridge repo documents this fault and a recovery (`deploymentRedeploy` with `usePreviousImageTag: false`), which
+  also built the probe image this time. The deploy is left for the bridge's owner.
 
 ## Checks
 
@@ -62,12 +73,12 @@ password and rotate the `mpd_identity_app` role before it launches.
 
 ## Open when this was written
 
-- Delete the old keys at the providers: the old OpenRouter management key, and the coach's old OpenRouter, Tavily,
-  Firecrawl and Resend keys.
-- Confirm the OpenRouter key printed in a terminal during an earlier spike is deleted.
-- Clear the clipboard manager's history.
-- Clean the old keys out of the coach's local `.env`, `.env.bak` and `.env.railway`.
+- Done later the same day: the old provider keys and the OpenRouter key printed during an earlier spike were
+  deleted, the clipboard history was cleared, and the old values were blanked in the coach's local `.env`,
+  `.env.bak` and `.env.railway`.
+- The coach's local env files also held a retired Google service-account key (`mpd-interview-coach@...`, key id
+  starting `c797d381`), now blanked. Delete that key in Google Cloud if it still exists.
 - The `Sidecar team budget` guardrail is missing from the Slack workspace (`openrouter_keys.py guardrails`), so team
   keys can't be created. Create it before the Slack launch.
-- Rotate the bridge's database passwords before it launches.
+- Bring `class-identity` back up with an identity image (see the bridge entry above).
 - Optionally, log the three Auth0 secret rotations in `../mpd-auth/docs/ROLLOUT_LOG.md`.
