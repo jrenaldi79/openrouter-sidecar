@@ -162,6 +162,15 @@ The first command is a dry run. Review its counts before running `--apply`. To a
 - **A student key may have leaked.** `scripts/ops/openrouter_keys.py delete <email> --yes`; the student gets a new key on their next call.
 - **The management key may have leaked.** Delete it in OpenRouter at once (new students then can't get keys), create a new one and set it on Railway (§5). Check `openrouter_keys.py list` for keys the Sidecar didn't create.
 - **The database is exposed.** Student keys are AES-GCM sealed and bound to their principal. Rotate the vault key (§5) and delete every student key (`openrouter_keys.py delete` each, or remove them in OpenRouter); the Sidecar issues new ones on next use.
+- **Railway's variables leaked** (a Railway breach, or anyone who could read the project's variables). Treat every secret in both services as known, and the sealed student and team keys as readable, since the attacker holds `VAULT_KEYS` and the database URL. First used on 2026-10-22.
+  1. **OpenRouter management key.** Create a new one; keep the old one until step 4, then delete it.
+  2. **Slack bot token.** On the app's OAuth & Permissions page, use **Revoke All OAuth Tokens** first, then **Reinstall to Northwestern MPD**. A reinstall without the revoke can hand back the same `xoxb-` token. Leave **Token Rotation** off: it makes bot tokens expire every 12 hours, the server doesn't refresh them, and it can't be turned off.
+  3. **Slack app-level token.** On Basic Information, App-Level Tokens: generate a new token with `connections:write`, leave its dialog open for step 4, then revoke the old token. The new token can't be shown again once the dialog closes.
+  4. **Set them in Railway.** From the repo folder, where the Railway CLI is linked (from anywhere else the script isn't found): `uv run python scripts/ops/rotate_secrets.py` (§5). Copy each key when it asks. Skip the Auth0 secret with `--only` if you rotate it later.
+  5. **Auth0 admin client secret.** Rotate it on the MPD Sidecar Admin client, with the mpd-auth owner told first (§10), then `rotate_secrets.py --only SIDECAR_ADMIN_CLIENT_SECRET`.
+  6. **Postgres password.** Change it in Postgres, then `POSTGRES_PASSWORD` and `PGPASSWORD` on the Postgres service; `DATABASE_URL` follows by reference.
+  7. **Deploy or restart** at a quiet time (§4); until then the server keeps the old values. Then delete every stored student and team key (the bullet above), revoke anything old that is still live, and check `openrouter_keys.py list` for keys the Sidecar didn't create.
+  8. Clear your clipboard manager's history if it keeps one.
 - **Logs** never contain bearer tokens, OpenRouter keys (management or student) or signed upload/download tokens. Key hashes may appear; they are not secrets. Anything that looks like a key is a bug to report.
 
 ## 8. Student OpenRouter keys
