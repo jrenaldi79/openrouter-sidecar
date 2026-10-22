@@ -1,12 +1,12 @@
-"""Rotate the sidecar service's secrets in Railway, reading new keys from the macOS clipboard.
+"""Rotate a Railway service's secrets, reading new keys from the macOS clipboard.
 
-For each key made elsewhere (OpenRouter, Slack, Auth0) the script tells the operator what to copy,
-waits for Enter, reads the clipboard with `pbpaste`, checks the value's shape and clears the clipboard.
-VAULT_KEYS and LINK_SIGNING_KEY are generated here. Nothing is set until the operator confirms the
-summary; each value then goes to `railway variable set KEY --stdin --skip-deploys`, so no value is
+For each key made elsewhere (OpenRouter, Slack, Auth0, Tavily, ...) the script tells the operator what
+to copy, waits for Enter, reads the clipboard with `pbpaste`, checks the value's shape and clears the
+clipboard. Values that need no provider are generated here. Nothing is set until the operator confirms
+the summary; each value then goes to `railway variable set KEY --stdin --skip-deploys`, so no value is
 printed, passed on a command line or deployed by this script.
 
-    uv run python scripts/ops/rotate_secrets.py [--only NAME ...]
+    uv run python scripts/ops/rotate_secrets.py [--target sidecar|coach] [--only NAME ...]
 """
 
 from __future__ import annotations
@@ -22,52 +22,66 @@ import subprocess
 import sys
 from dataclasses import dataclass
 
-PROJECT = "openrouter-sidecar"
 ENVIRONMENT = "production"
-SERVICE = "sidecar"
 
 
 @dataclass(frozen=True)
 class Step:
     name: str
-    where: str  # what to create and copy; empty for a generated value
-    check: str  # the shape a pasted value must have, said to the operator
+    where: str  # what to create and copy; empty for a value generated here
+    check: str = ""  # the shape a pasted value must have, said to the operator
     pattern: str = ""
     min_len: int = 0
 
 
-STEPS = [
-    Step(
-        "OPENROUTER_MANAGEMENT_KEY",
-        "OpenRouter > organization settings > Management keys: create a new key and copy it.",
-        "starts with sk-or-",
-        pattern=r"sk-or-\S+",
-        min_len=32,
-    ),
-    Step(
-        "SLACK_BOT_TOKEN",
-        "Slack app Sidecar > OAuth & Permissions: after revoking and reinstalling, copy the Bot User OAuth Token.",
-        "starts with xoxb-",
-        pattern=r"xoxb-\S+",
-        min_len=20,
-    ),
-    Step(
-        "SLACK_APP_TOKEN",
-        "Slack app Sidecar > Basic Information > App-Level Tokens: generate one with connections:write and copy it.",
-        "starts with xapp-",
-        pattern=r"xapp-\S+",
-        min_len=20,
-    ),
-    Step(
-        "SIDECAR_ADMIN_CLIENT_SECRET",
-        "Auth0 > Applications > MPD Sidecar Admin > Credentials: rotate the client secret and copy it.",
-        "at least 32 characters, no spaces",
-        pattern=r"\S+",
-        min_len=32,
-    ),
-    Step("VAULT_KEYS", "", ""),
-    Step("LINK_SIGNING_KEY", "", ""),
-]
+@dataclass(frozen=True)
+class Target:
+    project: str
+    service: str
+    steps: list[Step]
+    after: str  # what the operator still has to do, printed at the end
+
+
+def pasted(name: str, where: str, prefix: str = "", min_len: int = 20) -> Step:
+    check = f"starts with {prefix}" if prefix else "no spaces"
+    return Step(name, where, check, re.escape(prefix) + r"\S+", min_len)
+
+
+SLACK_REVOKE = "OAuth & Permissions: Revoke All OAuth Tokens, reinstall to the workspace, then copy the Bot User OAuth Token."
+
+SIDECAR = Target(
+    "openrouter-sidecar",
+    "sidecar",
+    [
+        pasted("OPENROUTER_MANAGEMENT_KEY", "OpenRouter > organization settings > Management keys: create a new key and copy it.", "sk-or-", 32),
+        pasted("SLACK_BOT_TOKEN", "Slack app Sidecar > " + SLACK_REVOKE, "xoxb-"),
+        pasted("SLACK_APP_TOKEN", "Slack app Sidecar > Basic Information > App-Level Tokens: generate one with connections:write and copy it.", "xapp-"),
+        pasted("SIDECAR_ADMIN_CLIENT_SECRET", "Auth0 > Applications > MPD Sidecar Admin > Credentials: rotate the client secret and copy it.", min_len=32),
+        Step("VAULT_KEYS", ""),
+        Step("LINK_SIGNING_KEY", ""),
+    ],
+    """- Revoke or delete the old OpenRouter management key, Slack tokens and Auth0 secret if you haven't already.
+- The old vault key is gone, so stored student and team keys can no longer be opened:
+  delete each with scripts/ops/openrouter_keys.py delete <email-or-label> --yes and clear the student_keys rows.
+- Deploy or restart at a quiet time (docs/HOSTED_OPERATIONS.md section 4).""",
+)
+
+COACH = Target(
+    "mpd-class-mcp",
+    "mpd-class-mcp",
+    [
+        pasted("OPENROUTER_API_KEY", "OpenRouter > Keys: create a new key for the coach (same workspace and limit as the old one) and copy it.", "sk-or-", 32),
+        pasted("TAVILY_API_KEY", "Tavily (app.tavily.com) > API Keys: create a new key and copy it.", "tvly-"),
+        pasted("FIRECRAWL_API_KEY", "Firecrawl (firecrawl.dev/app/api-keys): create a new key and copy it.", "fc-"),
+        pasted("RESEND_API_KEY", "Resend > API Keys: create a key with the old one's permission and domain, and copy it.", "re_"),
+        pasted("SLACK_BOT_TOKEN", "Slack app MPD Interview Coach > " + SLACK_REVOKE, "xoxb-"),
+    ],
+    """- Delete the old keys in OpenRouter, Tavily, Firecrawl and Resend.
+- Update or delete the copies in mpd-class-mcp/.env, .env.bak and .env.railway.
+- Restart the coach (Railway redeploy) so it loads the new values.""",
+)
+
+TARGETS = {"sidecar": SIDECAR, "coach": COACH}
 
 
 class Stop(Exception):
@@ -135,31 +149,31 @@ def railway(*args: str, value: str | None = None) -> subprocess.CompletedProcess
     return subprocess.run(["railway", *args], input=value, capture_output=True, text=True, check=False)
 
 
-def check_target() -> None:
-    result = railway("status", "--json")
+def project_id(target: Target) -> str:
+    result = railway("list", "--json")
     if result.returncode != 0:
-        raise Stop("`railway status` failed. Run `railway login` and `railway link` in this repo.")
-    status = json.loads(result.stdout)
-    project = status.get("name")
-    environments = [e["node"]["name"] for e in status.get("environments", {}).get("edges", [])]
-    if project != PROJECT or ENVIRONMENT not in environments:
-        raise Stop(f"This checkout is linked to project {project!r}, not {PROJECT!r} with {ENVIRONMENT!r}.")
+        raise Stop("`railway list` failed. Run `railway login` first.")
+    for project in json.loads(result.stdout):
+        environments = [e["node"]["name"] for e in project.get("environments", {}).get("edges", [])]
+        if project.get("name") == target.project and ENVIRONMENT in environments:
+            return project["id"]
+    raise Stop(f"No Railway project {target.project!r} with a {ENVIRONMENT!r} environment on this login.")
 
 
-def confirm(values: dict[str, str]) -> None:
-    print(f"\nReady to set on {PROJECT} / {ENVIRONMENT} / {SERVICE} (no deploy):")
+def confirm(target: Target, values: dict[str, str]) -> None:
+    print(f"\nReady to set on {target.project} / {ENVIRONMENT} / {target.service} (no deploy):")
     for name, value in values.items():
         print(f"  {name}  ({len(value)} characters)")
     if input("Set these now? Type yes: ").strip().lower() != "yes":
         raise Stop("Stopped. Nothing was set in Railway.")
 
 
-def apply(values: dict[str, str]) -> None:
+def apply(target: Target, project: str, values: dict[str, str]) -> None:
     done: list[str] = []
     for name, value in values.items():
         result = railway(
-            "variable", "set", name, "--stdin", "--skip-deploys",
-            "--service", SERVICE, "--environment", ENVIRONMENT, value=value,
+            "variable", "set", name, "--stdin", "--skip-deploys", "--project", project,
+            "--service", target.service, "--environment", ENVIRONMENT, value=value,
         )
         if result.returncode != 0:
             raise Stop(f"Setting {name} failed (exit {result.returncode}). Already set: {', '.join(done) or 'none'}.")
@@ -167,34 +181,35 @@ def apply(values: dict[str, str]) -> None:
         print(f"  Set {name}.")
 
 
-NEXT_STEPS = """
-Done. Nothing has restarted; the new values load on the next deploy or restart (HOSTED_OPERATIONS.md section 4).
-- Revoke or delete the old OpenRouter management key, Slack tokens and Auth0 secret if you haven't already.
-- The old vault key is gone, so stored student and team keys can no longer be opened:
-  delete each with scripts/ops/openrouter_keys.py delete <email-or-label> --yes and clear the student_keys rows.
-- If your clipboard manager keeps history, clear it.
-"""
+def chosen(target: Target, only: list[str] | None) -> list[Step]:
+    names = [step.name for step in target.steps]
+    unknown = sorted(set(only or []) - set(names))
+    if unknown:
+        raise Stop(f"Not a {target.service} variable: {', '.join(unknown)}. Choose from: {', '.join(names)}.")
+    return [step for step in target.steps if not only or step.name in only]
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    names = [step.name for step in STEPS]
-    parser.add_argument("--only", nargs="+", choices=names, metavar="NAME", help="rotate only these: " + ", ".join(names))
+    parser.add_argument("--target", choices=sorted(TARGETS), default="sidecar", help="which Railway service (default sidecar)")
+    parser.add_argument("--only", nargs="+", metavar="NAME", help="rotate only these variables")
     args = parser.parse_args(argv)
-    steps = [step for step in STEPS if not args.only or step.name in args.only]
+    target = TARGETS[args.target]
     try:
-        check_target()
+        steps = chosen(target, args.only)
+        project = project_id(target)
         values = collect(steps)
         if not values:
             raise Stop("Nothing to set.")
-        confirm(values)
-        apply(values)
+        confirm(target, values)
+        apply(target, project, values)
     except (Stop, KeyboardInterrupt, EOFError) as stop:
         clear_clipboard()
         # An interrupt during apply() leaves the "Set NAME." lines above as the record of what was set.
         print("\n" + (str(stop) if isinstance(stop, Stop) else "Stopped."), file=sys.stderr)
         return 1
-    print(NEXT_STEPS)
+    print("\nDone. Nothing has restarted; the new values load on the next deploy or restart.")
+    print(target.after + "\n- If your clipboard manager keeps history, clear it.")
     return 0
 
 
