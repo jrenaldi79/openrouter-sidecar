@@ -1,7 +1,8 @@
 # Hosted OpenRouter Sidecar (Streamable HTTP). See docs/HOSTED_OPERATIONS.md.
-FROM ghcr.io/astral-sh/uv:0.6.14 AS uv
+# Images are pinned to their multi-arch index digest; change a tag and its digest together.
+FROM ghcr.io/astral-sh/uv:0.13.5@sha256:32a7bb39b496babbd997b0a39a4d66c126bdaf5661b302bf6f06abda8deca6ff AS uv
 
-FROM python:3.12-slim AS build
+FROM python:3.12-slim@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704 AS build
 COPY --from=uv /uv /bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 WORKDIR /app
@@ -11,7 +12,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY src ./src
 RUN uv sync --frozen --no-dev
 
-FROM python:3.12-slim
+FROM python:3.12-slim@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704
 RUN useradd --system --uid 10001 --home-dir /app sidecar
 WORKDIR /app
 COPY --from=build --chown=sidecar:sidecar /app /app
