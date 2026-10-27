@@ -59,7 +59,7 @@ async def test_filter_catalog_matches_student_catalog():
     assert by_id["qwen/qwen-a"]["pricing"] == {"completion": "0.5"}
     assert by_id["x-ai/grok-a"]["context_length"] is None
     assert KEY not in by_id["google/gemini-named"]["name"]
-    assert set(shared[0]) == {"id", "name", "pricing", "context_length", "created", "family"}
+    assert set(shared[0]) == {"id", "name", "pricing", "context_length", "created", "family", "vision"}
 
 
 def test_filter_catalog_empty_secret_keeps_rows():

@@ -309,7 +309,7 @@ async def test_view_is_bounded_and_sanitizes_malformed_catalog(rig, monkeypatch)
     assert KEY_A not in encoded and owner not in encoded
     assert view["workspace_id"] == WORKSPACE and view["cohort"] == "2027"
     assert 1 <= len(view["models"]) <= 1000
-    assert all(set(model) == {"id", "name", "pricing", "context_length", "created", "family"} for model in view["models"])
+    assert all(set(model) == {"id", "name", "pricing", "context_length", "created", "family", "vision"} for model in view["models"])
     assert all(len(model["name"]) <= 200 for model in view["models"])
     assert view["models"][0]["id"] == "google/safe"
     assert view["models"][0]["family"] == "google"

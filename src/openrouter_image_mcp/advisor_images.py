@@ -37,7 +37,9 @@ def sniff(data: bytes) -> str | None:
 
 
 def vision(row: dict) -> bool:
-    return "image" in ((row.get("architecture") or {}).get("input_modalities") or [])
+    architecture = row.get("architecture")
+    modalities = architecture.get("input_modalities") if isinstance(architecture, dict) else None
+    return isinstance(modalities, list) and "image" in modalities
 
 
 def _store_inline(assets: AssetStore, scope, value: str):

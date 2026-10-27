@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 
 from . import storage
+from .advisor_images import vision
 from .advisor_store import AdvisorAccessError
 from .config import COHORT_WORKSPACES
 from .errors import BadRequestError
@@ -119,7 +120,8 @@ def filter_catalog(rows, now, *, secrets=()):
             context = None
         result.append({"id": model_id, "name": _text(row.get("name"), secrets, model_id),
                        "pricing": _pricing(row.get("pricing"), secrets), "context_length": context,
-                       "created": created, "family": family})
+                       "created": created, "family": family,
+                       "vision": row.get("vision") is True or vision(row)})
         if len(result) >= MAX_MODELS:
             break
     return result

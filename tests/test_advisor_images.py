@@ -168,6 +168,15 @@ async def test_list_models_reports_vision_flag(rig):
     assert rows[TEXT_ONLY]["vision"] is False
 
 
+async def test_hosted_model_list_keeps_vision_flag(rig):
+    from openrouter_image_mcp.preferences import PreferenceService
+
+    service, *_ = rig
+    rows = {row["id"]: row for row in (await PreferenceService(service).view())["models"]}
+    assert rows[VISION]["vision"] is True
+    assert rows[TEXT_ONLY]["vision"] is False
+
+
 async def test_send_without_images_is_unchanged(rig):
     service, jobs, _assets, _scope, seen = rig
     chat = await service.start(TEXT_ONLY, "Plain")
