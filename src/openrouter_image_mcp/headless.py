@@ -41,7 +41,8 @@ class HeadlessAdvisor:
         self.service, self.jobs, self.preferences = service, jobs, preferences
 
     async def ask(self, prompt, *, chat_id=None, model=None, title=None, sandbox=None,
-                  files=None, replace_files=False, skills=None, wait_s=None, progress=None) -> dict:
+                  files=None, replace_files=False, skills=None, wait_s=None, progress=None,
+                  images=None) -> dict:
         wait = check_wait(wait_s)
         if chat_id is None:
             chat_id = await self._create(model, title, sandbox)
@@ -53,7 +54,7 @@ class HeadlessAdvisor:
             created = False
         try:
             started = await self.jobs.start(chat_id, prompt, skills, files=files,
-                                            replace_files=replace_files)
+                                            replace_files=replace_files, images=images)
         except OpenRouterError as error:
             if created:
                 self.service.delete(chat_id)  # never leave an empty session behind

@@ -89,10 +89,9 @@ def _principal(settings: HostedSettings, gate: Gate):
 
 
 def _register_images(server: MCPServer, settings: HostedSettings, target, services: dict,
-                     gate: Gate, admission: Limits) -> dict:
+                     gate: Gate, admission: Limits, assets: AssetStore) -> dict:
     """Image tools and transfer routes; only with a blob volume (ASSET_DIR)."""
     scope_for = _scope_for(settings, gate)
-    assets = AssetStore(target, LocalDirBlobs(settings.asset_dir))
     transfers = TransferTokens(target, settings.link_signing_key, settings.public_origin)
     hosted = HostedImages(assets, transfers, services["images"], scope_for, max_input_edge=2048,
                           admit=admission.image_call)
@@ -132,10 +131,11 @@ def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transpor
     gate = Gate()
     services = {}
     admission = Limits(AdvisorStore(target), **(limits or {}))
+    assets = AssetStore(target, LocalDirBlobs(settings.asset_dir)) if settings.asset_dir else None
     workspaces = build_workspaces(target, keys, profile_claim=settings.profile_claim,
                                   admit=admission.admit, transport=transport,
                                   sandbox_enabled=settings.sandbox_enabled,
-                                  summary_model=settings.summary_model)
+                                  summary_model=settings.summary_model, assets=assets)
     health = Health(target, gate, maintenance=settings.maintenance, asset_dir=settings.asset_dir)
     shares = AdvisorShares(ByWorkspace(workspaces, settings.profile_claim, gate, "jobs"))
     slack_app = _build_slack(settings, target, keys, provisioner, admission, health, transport, slack)
@@ -188,7 +188,7 @@ def build_hosted_server(settings: HostedSettings, *, key_resolver=None, transpor
     _register_imports(server, settings, target, gate)
     register_guidance(server)
     if settings.asset_dir:
-        images.update(_register_images(server, settings, target, services, gate, admission))
+        images.update(_register_images(server, settings, target, services, gate, admission, assets))
     health.register(server)
     # Served by every replica: the admin page doesn't depend on the owner lock.
     admin_app = register_admin(server, settings, target, slack_app, provisioner, admission, options=admin)

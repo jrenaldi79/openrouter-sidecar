@@ -100,9 +100,10 @@ def _sandbox_instructions(uploads: list[dict]) -> str:
 
 
 def build_payload(chat, brief: str, files: list[dict], uploads: list[dict],
-                  demo_limits: tuple[int, int] | None = None) -> dict:
+                  demo_limits: tuple[int, int] | None = None, *, history=None, turn=None) -> dict:
     payload = {"model": chat.model,
-               "input": chat.history + [{"role": "user", "content": brief}],
+               "input": (chat.history if history is None else history)
+               + [{"role": "user", "content": brief if turn is None else turn}],
                "max_output_tokens": demo_limits[0] if demo_limits else 6000,
                "stream": False, "store": False}
     if not chat.sandbox:

@@ -79,8 +79,8 @@ Operators: see [docs/HOSTED_OPERATIONS.md](docs/HOSTED_OPERATIONS.md) for config
 | --- | --- |
 | `list_chat_models` | Discovers text advisor models supporting tools, with pricing and context limits. |
 | `start_advisor_chat` | Creates a chat using an exact ID, a saved brand default, or the general default; no inference. |
-| `send_advisor_message` | Starts a background advisor job and opens its result viewer; returns status only. Accepts `files`. |
-| `ask_advisor` | Headless: asks an advisor and returns its answer to the caller (wrapped as untrusted output). Creates a session or continues one by `chat_id`; accepts `files`. |
+| `send_advisor_message` | Starts a background advisor job and opens its result viewer; returns status only. Accepts `files` and `images`. |
+| `ask_advisor` | Headless: asks an advisor and returns its answer to the caller (wrapped as untrusted output). Creates a session or continues one by `chat_id`; accepts `files` and `images`. |
 | `wait_advisor_job` | Headless: keeps waiting for a long `ask_advisor` job and returns the same result shape. |
 | `list_advisor_chats` | Lists your chats. |
 | `get_advisor_chat` | Shows metadata and a bounded message count, without returning the transcript to the parent model. |
@@ -115,6 +115,17 @@ The app-only operations are omitted for clients without MCP Apps capability.
 3. Reuse `chat_id` for follow-ups. The session keeps its transcript and files, so a
    later call from any client signed in as the same person continues where it left off.
    If a job is still running, the result is `{status: "busy", running_job_id}`.
+
+Show an advisor images with `images` (up to 8 per turn; needs a model whose
+`list_chat_models` entry has `vision: true`, otherwise the call is refused before any
+inference). Each item is either:
+- an asset id (`img_...`) from `create_image_upload` (run the `curl -T` it returns) or the
+  image uploader in claude.ai and Claude Desktop, or
+- a base64 data URL (`data:image/png;base64,...`, PNG, JPEG, WebP or GIF, up to 4 MB), handy
+  for a small image in Claude Code.
+
+Images stay in the chat transcript, so a follow-up with the same `chat_id` can refer to
+them without re-sending. Image tokens are included in `cost_usd`.
 
 The server can't read your machine or repository, so pass every relevant source
 file explicitly:

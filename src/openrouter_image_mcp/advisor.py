@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from . import storage
 from .advisor_client import AdvisorClient
+from .advisor_images import image_ids, turn_content, vision
 from .advisor_payload import INSTRUCTIONS, SANDBOX_DISABLED, build_payload, files_bundle
 from .advisor_store import AdvisorAccessError, AdvisorStore, Scope
 from .credentials import CHANGED, CredentialSource
@@ -39,7 +40,7 @@ class SkillPacket(BaseModel):
 
 class AdvisorService:
     def __init__(self, workspace_id: str, store: AdvisorStore, client: AdvisorClient, *,
-                 credentials: CredentialSource, sandbox_default: bool = True,
+                 credentials: CredentialSource, sandbox_default: bool = True, assets=None,
                  sandbox_allowed: bool = True):
         if workspace_id != client.workspace_id:
             raise ValueError("Advisor client workspace does not match configuration.")
@@ -48,6 +49,7 @@ class AdvisorService:
         # The hosted server passes inline by default, with the sandbox behind a server flag.
         self.sandbox_default, self.sandbox_allowed = sandbox_default, sandbox_allowed
         self.credentials = credentials
+        self.assets = assets  # AssetStore for image attachments; None on servers without a blob volume
         if self.credentials.workspace_id != workspace_id:
             raise ValueError("Advisor credentials workspace does not match configuration.")
 
@@ -68,6 +70,7 @@ class AdvisorService:
         rows = await self.client.models(key)
         self._current(scope)
         return [{name: row.get(name) for name in ("id", "name", "pricing", "context_length", "created")}
+                | {"vision": vision(row)}
                 for row in rows]
 
     async def start(self, model: str, title: str = "Advisor", *, sandbox: bool | None = None) -> dict:
@@ -241,7 +244,7 @@ class AdvisorService:
     async def send(self, chat_id: str, prompt: str, skills: list[SkillPacket] | None = None,
                    *, files: list[FilePacket] | None = None, replace_files: bool = False,
                    on_text=None, _scope=None, _lease_token=None, _guard=None,
-                   _demo_limits=None, _before_request=None,
+                   _demo_limits=None, _before_request=None, images=None,
                    _stream_guard=None) -> dict:
         if _demo_limits not in (None, (256, 1)):
             raise ValueError('Invalid internal demo limits')
@@ -250,6 +253,7 @@ class AdvisorService:
             self._current(_scope)
             scope = _scope
         chat, skills, bundle, brief = self._prepare(chat_id, prompt, skills, key, scope, files)
+        turn_ids = image_ids(self.assets, scope, images)
 
         def guard():
             self._current(scope)
@@ -271,7 +275,9 @@ class AdvisorService:
                 uploads = (await self._sandbox_uploads(key, scope, chat, token, skills, bundle,
                                                        current, guard) if chat.sandbox else [])
                 guard()
-                payload = build_payload(chat, brief, current, uploads, _demo_limits)
+                history, turn = turn_content(self.assets, scope, chat.history, brief, turn_ids)
+                payload = build_payload(chat, brief, current, uploads, _demo_limits,
+                                        history=history, turn=turn)
                 configure_cache(payload, chat.id, allow_explicit=not uploads)
                 if _before_request:
                     _before_request()
@@ -282,7 +288,7 @@ class AdvisorService:
             finally:
                 cleanup_ok = await self._cleanup(key, scope, chat_id, token)
             guard()
-            self.store.append_turn(scope, chat_id, brief, final, token)
+            self.store.append_turn(scope, chat_id, brief, final, token, images=turn_ids)
             usage = body.get("usage") or {}
             cost = usage.get("cost") if isinstance(usage, dict) else None
             return {"chat_id": chat_id, "model": chat.model, "answer": final,

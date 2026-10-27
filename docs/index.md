@@ -184,6 +184,7 @@ Filenames grouped by folder; each heading links that folder's note.
 - [src/openrouter&#95;image&#95;mcp/&#95;&#95;init&#95;&#95;.py](../src/openrouter_image_mcp/__init__.py)
 - [src/openrouter&#95;image&#95;mcp/advisor.py](../src/openrouter_image_mcp/advisor.py)
 - [src/openrouter&#95;image&#95;mcp/advisor&#95;client.py](../src/openrouter_image_mcp/advisor_client.py)
+- [src/openrouter&#95;image&#95;mcp/advisor&#95;images.py](../src/openrouter_image_mcp/advisor_images.py)
 - [src/openrouter&#95;image&#95;mcp/advisor&#95;jobs.py](../src/openrouter_image_mcp/advisor_jobs.py)
 - [src/openrouter&#95;image&#95;mcp/advisor&#95;loop.py](../src/openrouter_image_mcp/advisor_loop.py)
 - [src/openrouter&#95;image&#95;mcp/advisor&#95;payload.py](../src/openrouter_image_mcp/advisor_payload.py)

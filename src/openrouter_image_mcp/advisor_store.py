@@ -145,13 +145,15 @@ class AdvisorStore:
                            "WHERE id=? AND owner=? AND workspace=? AND lease_token=?",
                            (chat_id, scope.owner, scope.workspace, token))
 
-    def append_turn(self, scope: Scope, chat_id: str, prompt: str, answer: str, token: str):
+    def append_turn(self, scope: Scope, chat_id: str, prompt: str, answer: str, token: str, *,
+                    images=None):
         with self._connection() as db:
             db.execute("BEGIN IMMEDIATE")
             row = self._row(db, scope, chat_id)
             self._leased(row, token)
+            user = {"role": "user", "content": prompt} | ({"images": images} if images else {})
             history = json.loads(row["history"]) + [
-                {"role": "user", "content": prompt},
+                user,
                 {"role": "assistant", "content": answer},
             ]
             db.execute("UPDATE advisor_chats SET history=?, last_active=? WHERE id=?",

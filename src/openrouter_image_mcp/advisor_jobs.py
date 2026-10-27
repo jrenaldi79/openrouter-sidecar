@@ -8,6 +8,7 @@ import secrets
 import time
 
 from .advisor import RETENTION
+from .advisor_images import image_ids, require_vision
 from .advisor_results import ACTIVE, HEARTBEAT_S, AdvisorResults
 from .advisor_store import AdvisorAccessError
 from .advisor_summary import DEFAULT_SUMMARY_MODEL, SUMMARY_PROMPT, summarize
@@ -72,8 +73,14 @@ class AdvisorJobs:
         self.service._current(scope)
         return scope, row
 
-    async def start(self, chat_id, prompt, skills=None, *, files=None, replace_files=False):
-        return self._start(chat_id, prompt, skills, files=files, replace_files=replace_files)
+    async def start(self, chat_id, prompt, skills=None, *, files=None, replace_files=False,
+                    images=None):
+        if images:  # a model check that makes no inference call, before any job row
+            key, scope = self.service._credentials()
+            require_vision(await self.service.client.models(key),
+                           self.service.store.get(scope, chat_id).model)
+        return self._start(chat_id, prompt, skills, files=files, replace_files=replace_files,
+                           images=images)
 
     async def start_demo(self, chat_id, prompt, skills=None, *, _context_guard=None,
                          _before_request=None):
@@ -82,7 +89,8 @@ class AdvisorJobs:
                            _context_guard=_context_guard, _before_request=_before_request)
 
     def _start(self, chat_id, prompt, skills=None, *, source_job_id=None, files=None,
-               replace_files=False, _demo_limits=None, _context_guard=None, _before_request=None):
+               replace_files=False, images=None, _demo_limits=None, _context_guard=None,
+               _before_request=None):
         key, scope = self.service._credentials()
         self.service._current(scope)
         if self.admit:
@@ -92,6 +100,7 @@ class AdvisorJobs:
         if _before_request:
             _before_request()
         chat, skills, _, _ = self.service._prepare(chat_id, prompt, skills, key, scope, files)
+        images = image_ids(self.service.assets, scope, images)
         if self._closed:
             raise BadRequestError("Advisor server is shutting down; no inference was requested.")
         row = self.results.create(scope, chat, redact(prompt), self.process_id,
@@ -100,7 +109,7 @@ class AdvisorJobs:
                                   model=self.summary_model if source_job_id else None)
         task = asyncio.create_task(self._run(scope, row, skills, _demo_limits, _context_guard,
                                             _before_request, files=files,
-                                            replace_files=replace_files),
+                                            replace_files=replace_files, images=images),
                                    name="advisor-" + row["id"])
         self._tasks[row["id"]] = task
         self._records[row["id"]] = (scope, row)
@@ -140,7 +149,7 @@ class AdvisorJobs:
         self.results.update(scope, job_id, self.process_id, answer=text)
 
     async def _run(self, scope, row, skills, demo_limits=None, context_guard=None,
-                   before_request=None, *, files=None, replace_files=False):
+                   before_request=None, *, files=None, replace_files=False, images=None):
         heartbeat = None
         job_id = row["id"]
         partial = _Partial(self.clock, lambda text: self._save_partial(scope, job_id, text))
@@ -167,7 +176,7 @@ class AdvisorJobs:
                     on_text=partial, _scope=scope,
                     _lease_token=row["lease_token"], _guard=guard,
                     _stream_guard=_throttled(self.clock, guard),
-                    _demo_limits=demo_limits, _before_request=before_request,
+                    _demo_limits=demo_limits, _before_request=before_request, images=images,
                 )
             self._guard(scope, job_id)
             self.results.update(scope, job_id, self.process_id, status="completed",
