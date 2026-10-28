@@ -60,7 +60,8 @@ def _link(note: dict) -> str | None:
     # Parentheses and spaces would end the Markdown link early.
     url = quote(url, safe=":/?#[]@!$&'*+,;=%~-._")
     title = note.get("title")
-    if not isinstance(title, str) or not title.strip():
+    # Grok titles citations with their index ("1"), which tells a reader nothing.
+    if not isinstance(title, str) or not title.strip(" []").strip() or title.strip(" []").isdigit():
         return url
     title = " ".join(title.split())[:200].replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
     return f"[{title}]({url})"

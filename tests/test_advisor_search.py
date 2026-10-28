@@ -79,6 +79,15 @@ def test_sources_note_caps_the_list_and_escapes_titles():
     assert lines[1] == "- [a\\]b](https://example.com/0)"
 
 
+def test_sources_note_shows_index_titles_as_plain_urls():
+    body = cited(annotations=[citation("https://x.com/a/status/1", "1"),
+                              citation("https://x.com/b/status/2", "[2]"),
+                              citation("https://x.com/c/status/3", "Post 3")])
+    assert sources_note(body).strip().splitlines()[1:] == [
+        "- https://x.com/a/status/1", "- https://x.com/b/status/2",
+        "- [Post 3](https://x.com/c/status/3)"]
+
+
 def test_sources_note_is_empty_without_citations():
     assert sources_note(cited()) == ""
     assert sources_note({"output": "nonsense"}) == ""

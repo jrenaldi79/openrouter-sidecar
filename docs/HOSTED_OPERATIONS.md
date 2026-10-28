@@ -113,10 +113,10 @@ Railway restarts the service on every deploy, **and on every variable change**. 
 1. Pick a quiet time and check that nothing is running:
 
    ```bash
-   railway run openrouter-image-mcp active-jobs
+   railway ssh --service sidecar -- openrouter-image-mcp active-jobs
    ```
 
-   Deploy only when it prints `{"active_jobs": 0}`. Jobs run at most 30 minutes (`ADVISOR_MAX_TIMEOUT_S`).
+   This runs inside the service, where the private `DATABASE_URL` resolves. `railway run` runs the command on your laptop with the service's variables, so it can't reach that database and times out after 10 seconds. Deploy only when it prints `{"active_jobs": 0}`. Jobs run at most 30 minutes (`ADVISOR_MAX_TIMEOUT_S`).
 2. Deploy from a clean, current `main` in the repo folder: `railway up --service sidecar --detach`. Deploys come from the CLI; a push to GitHub ships nothing. `railway redeploy` repeats the last build, and Railway may refuse it during its own incidents (it did on 2026-10-22), so `railway up` is the reliable path.
 3. Verify `/health` and `/ready`. After a change to secrets, run the full check in §7 ("Checks after a rotation").
 
