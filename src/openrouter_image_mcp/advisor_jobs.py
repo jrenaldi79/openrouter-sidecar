@@ -10,6 +10,7 @@ import time
 from .advisor import RETENTION
 from .advisor_images import image_ids, require_vision
 from .advisor_results import ACTIVE, HEARTBEAT_S, AdvisorResults
+from .advisor_search import check_search
 from .advisor_store import AdvisorAccessError
 from .advisor_summary import DEFAULT_SUMMARY_MODEL, SUMMARY_PROMPT, summarize
 from .errors import BadRequestError, OpenRouterError
@@ -74,13 +75,14 @@ class AdvisorJobs:
         return scope, row
 
     async def start(self, chat_id, prompt, skills=None, *, files=None, replace_files=False,
-                    images=None):
+                    images=None, search=False):
+        check_search(search)
         if images:  # a model check that makes no inference call, before any job row
             key, scope = self.service._credentials()
             require_vision(await self.service.client.models(key),
                            self.service.store.get(scope, chat_id).model)
         return self._start(chat_id, prompt, skills, files=files, replace_files=replace_files,
-                           images=images)
+                           images=images, search=search)
 
     async def start_demo(self, chat_id, prompt, skills=None, *, _context_guard=None,
                          _before_request=None):
@@ -90,7 +92,7 @@ class AdvisorJobs:
 
     def _start(self, chat_id, prompt, skills=None, *, source_job_id=None, files=None,
                replace_files=False, images=None, _demo_limits=None, _context_guard=None,
-               _before_request=None):
+               _before_request=None, search=False):
         key, scope = self.service._credentials()
         self.service._current(scope)
         if self.admit:
@@ -109,7 +111,7 @@ class AdvisorJobs:
                                   model=self.summary_model if source_job_id else None)
         task = asyncio.create_task(self._run(scope, row, skills, _demo_limits, _context_guard,
                                             _before_request, files=files,
-                                            replace_files=replace_files, images=images),
+                                            replace_files=replace_files, images=images, search=search),
                                    name="advisor-" + row["id"])
         self._tasks[row["id"]] = task
         self._records[row["id"]] = (scope, row)
@@ -149,7 +151,8 @@ class AdvisorJobs:
         self.results.update(scope, job_id, self.process_id, answer=text)
 
     async def _run(self, scope, row, skills, demo_limits=None, context_guard=None,
-                   before_request=None, *, files=None, replace_files=False, images=None):
+                   before_request=None, *, files=None, replace_files=False, images=None,
+                   search=False):
         heartbeat = None
         job_id = row["id"]
         partial = _Partial(self.clock, lambda text: self._save_partial(scope, job_id, text))
@@ -176,7 +179,7 @@ class AdvisorJobs:
                     on_text=partial, _scope=scope,
                     _lease_token=row["lease_token"], _guard=guard,
                     _stream_guard=_throttled(self.clock, guard),
-                    _demo_limits=demo_limits, _before_request=before_request, images=images,
+                    _demo_limits=demo_limits, _before_request=before_request, images=images, search=search,
                 )
             self._guard(scope, job_id)
             self.results.update(scope, job_id, self.process_id, status="completed",

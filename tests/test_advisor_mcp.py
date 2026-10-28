@@ -91,6 +91,16 @@ async def test_advisor_tools_expose_only_chat_handles_and_skill_text(rig):
         assert not requests
 
 
+async def test_turn_tools_advertise_images_and_search(rig):
+    server, _, _, _ = rig
+    async with Client(server, mode="legacy") as client:
+        tools = {tool.name: tool for tool in (await client.list_tools()).tools}
+        for name in ("ask_advisor", "send_advisor_message"):
+            assert {"images", "search"} <= tools[name].input_schema["properties"].keys()
+            assert "search: true" in tools[name].description and "images:" in tools[name].description
+        assert "search" not in tools["start_advisor_chat"].input_schema["properties"]
+
+
 @pytest.mark.parametrize("operation", [
     "get_advisor_chat", "send_advisor_message", "reset_advisor_sandbox",
     "delete_advisor_chat", "retry_advisor_cleanup",

@@ -79,8 +79,8 @@ Operators: see [docs/HOSTED_OPERATIONS.md](docs/HOSTED_OPERATIONS.md) for config
 | --- | --- |
 | `list_chat_models` | Discovers text advisor models supporting tools, with pricing and context limits. |
 | `start_advisor_chat` | Creates a chat using an exact ID, a saved brand default, or the general default; no inference. |
-| `send_advisor_message` | Starts a background advisor job and opens its result viewer; returns status only. Accepts `files` and `images`. |
-| `ask_advisor` | Headless: asks an advisor and returns its answer to the caller (wrapped as untrusted output). Creates a session or continues one by `chat_id`; accepts `files` and `images`. |
+| `send_advisor_message` | Starts a background advisor job and opens its result viewer; returns status only. Accepts `files`, `images` and `search`. |
+| `ask_advisor` | Headless: asks an advisor and returns its answer to the caller (wrapped as untrusted output). Creates a session or continues one by `chat_id`; accepts `files`, `images` and `search`. |
 | `wait_advisor_job` | Headless: keeps waiting for a long `ask_advisor` job and returns the same result shape. |
 | `list_advisor_chats` | Lists your chats. |
 | `get_advisor_chat` | Shows metadata and a bounded message count, without returning the transcript to the parent model. |
@@ -126,6 +126,13 @@ inference). Each item is either:
 
 Images stay in the chat transcript, so a follow-up with the same `chat_id` can refer to
 them without re-sending. Image tokens are included in `cost_usd`.
+
+Pass `search: true` when a turn needs current or public information. The advisor gets
+OpenRouter's web search tool for that turn (the provider's own search where it has one,
+Exa otherwise), up to 3 searches. Grok models (`x-ai/grok-...`) also search X posts,
+profiles and threads. Answers end with a list of the sources they cite. Search fees are
+included in `cost_usd`; xAI bills X search per post and profile returned (about $5 per
+1,000 posts and $10 per 1,000 profiles), so it stays off unless a turn asks for it.
 
 The server can't read your machine or repository, so pass every relevant source
 file explicitly:

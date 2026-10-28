@@ -12,6 +12,7 @@ from . import storage
 from .advisor_client import AdvisorClient
 from .advisor_images import image_ids, turn_content, vision
 from .advisor_payload import INSTRUCTIONS, SANDBOX_DISABLED, build_payload, files_bundle
+from .advisor_search import check_search, sources_note
 from .advisor_store import AdvisorAccessError, AdvisorStore, Scope
 from .credentials import CHANGED, CredentialSource
 from .errors import BadRequestError, OpenRouterError, ProviderError
@@ -245,7 +246,7 @@ class AdvisorService:
                    *, files: list[FilePacket] | None = None, replace_files: bool = False,
                    on_text=None, _scope=None, _lease_token=None, _guard=None,
                    _demo_limits=None, _before_request=None, images=None,
-                   _stream_guard=None) -> dict:
+                   _stream_guard=None, search=False) -> dict:
         if _demo_limits not in (None, (256, 1)):
             raise ValueError('Invalid internal demo limits')
         key, scope = self._credentials()
@@ -277,13 +278,14 @@ class AdvisorService:
                 guard()
                 history, turn = turn_content(self.assets, scope, chat.history, brief, turn_ids)
                 payload = build_payload(chat, brief, current, uploads, _demo_limits,
-                                        history=history, turn=turn)
+                                        history=history, turn=turn, search=check_search(search))
                 configure_cache(payload, chat.id, allow_explicit=not uploads)
                 if _before_request:
                     _before_request()
                 # Jobs pass a cheaper per-event check; checkpoints keep the full guard.
                 body = await self._infer(key, chat, payload, on_text, _stream_guard or guard)
-                final = self._answer(body, chat.container_id).replace(key, "[credential withheld]")
+                final = self._answer(body, chat.container_id) + (redact(sources_note(body)) if search else "")
+                final = final.replace(key, "[credential withheld]")
                 guard()
             finally:
                 cleanup_ok = await self._cleanup(key, scope, chat_id, token)
